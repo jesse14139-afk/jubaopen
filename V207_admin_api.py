@@ -159,7 +159,8 @@ def dispatch(h,m,p,q,a,db):
    counts['audit']=c.execute('SELECT count(*) FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE u.organization_id=?',(org,)).fetchone()[0]
    channel=rows(c,'SELECT channel name,count(*) value FROM channel_accounts WHERE organization_id=? GROUP BY channel',(org,));status=rows(c,'SELECT status name,count(*) value FROM devices WHERE organization_id=? GROUP BY status',(org,))
    recent=rows(c,'SELECT l.*,u.display_name actor_name FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE u.organization_id=? ORDER BY audit_id DESC LIMIT 8',(org,))
-  return h.sendj({'ok':True,'counts':counts,'channelDistribution':channel,'deviceStatus':status,'recentAudit':recent,'database':db.quick_check(),'schemaVersion':SCHEMA_VERSION,'version':PRODUCT_VERSION}) or True
+   trend=rows(c,"SELECT date(l.created_at/1000,'unixepoch','localtime') day,count(*) value FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE u.organization_id=? AND l.created_at>=? GROUP BY day ORDER BY day",(org,now_ms()-7*86400*1000))
+  return h.sendj({'auditTrend':trend,'ok':True,'counts':counts,'channelDistribution':channel,'deviceStatus':status,'recentAudit':recent,'database':db.quick_check(),'schemaVersion':SCHEMA_VERSION,'version':PRODUCT_VERSION}) or True
  # teams
  if root=='teams':
   if m=='GET':
@@ -556,6 +557,7 @@ def dispatch(h,m,p,q,a,db):
   if op:cond+=' AND l.operation=?';args.append(op)
   if uid:cond+=' AND l.actor_id=?';args.append(uid)
   if eid:cond+=' AND l.entity_id=?';args.append(eid)
+  if q.get('days'):cond+=' AND l.created_at>=?';args.append(now_ms()-int(q['days'])*86400*1000)
   with db.tx(False) as c:total=c.execute(f'SELECT count(*) FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE {cond}',tuple(args)).fetchone()[0];its=rows(c,f'SELECT l.*,u.display_name actor_name FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE {cond} ORDER BY audit_id DESC LIMIT ? OFFSET ?',tuple(args+[size,off]))
   return h.sendj(pack(its,total,pno,size)) or True
  # recycle bin (deleted contacts)
