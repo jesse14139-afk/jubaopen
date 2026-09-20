@@ -178,7 +178,7 @@ def build_schema_catalog(db):
     if fname in TIME_FIELDS or fname.endswith('_at'):tags.append('时间戳')
     if fname in SENSITIVE:tags.append('敏感')
     physical=[f for f in fks if f['from']==fname]
-    logical=[{'table':rel[2],'field':rel[3],'description':rel[4],'kind':'logical','evidence':'V207_schema_catalog.LOGICAL_RELATIONS'} for rel in LOGICAL_RELATIONS if rel[0]==name and rel[1]==fname]
+    logical=[{'toTable':rel[2],'toField':rel[3],'description':rel[4],'kind':'logical','evidence':'V207_schema_catalog.LOGICAL_RELATIONS'} for rel in LOGICAL_RELATIONS if rel[0]==name and rel[1]==fname]
     if physical:tags.append('FK')
     elif logical:tags.append('逻辑关联')
     for f in physical:
