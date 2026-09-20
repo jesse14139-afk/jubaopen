@@ -223,13 +223,13 @@ def build_schema_catalog(db):
     if fname in JSON_FIELDS or fname.endswith('_json'):tags.append('JSON')
     if fname in TIME_FIELDS or fname.endswith('_at'):tags.append('时间戳')
     if fname in SENSITIVE:tags.append('敏感')
-    physical=[f for f in fks if f['from']==fname]
+    physical=[{'fromField':f['from'],'toTable':f['table'],'toField':f['to'],'on_delete':f['on_delete'],'on_update':f['on_update'],'kind':'physical','description':_physical_fk_description(name,fname,f['table'],f['to'])} for f in fks if f['from']==fname]
     logical=[{'toTable':rel[2],'toField':rel[3],'description':rel[4],'kind':'logical','evidence':'V207_schema_catalog.LOGICAL_RELATIONS'} for rel in LOGICAL_RELATIONS if rel[0]==name and rel[1]==fname]
     if physical:tags.append('FK')
     elif logical:tags.append('逻辑关联')
     for f in physical:
-     _pdesc=_physical_fk_description(name,fname,f['table'],f['to'])
-     physical_relations.append({'fromTable':name,'fromField':fname,'toTable':f['table'],'toField':f['to'],'description':_pdesc,'kind':'physical','cardinality':'N:1','onDelete':f['on_delete'],'onUpdate':f['on_update'],'evidence':'PRAGMA foreign_key_list'})
+     _pdesc=_physical_fk_description(name,fname,f['toTable'],f['toField'])
+     physical_relations.append({'fromTable':name,'fromField':fname,'toTable':f['toTable'],'toField':f['toField'],'description':_pdesc,'kind':'physical','cardinality':'N:1','onDelete':f['on_delete'],'onUpdate':f['on_update'],'evidence':'PRAGMA foreign_key_list'})
     fields.append({'position':x['cid']+1,'name':fname,'label':LABELS.get(fname,fname),'type':x['type'] or 'ANY','notNull':bool(x['notnull']),'primaryKeyOrder':x['pk'],'default':x['dflt_value'],'hidden':x.get('hidden',0),'tags':tags,'sensitive':fname in SENSITIVE,'description':_field_description(name,fname) if documented or fname in LABELS else '暂无业务释义。','physicalRelations':physical,'logicalRelations':logical})
    inbound=[]
    tables.append({'name':name,'label':cn,'category':cat,'purpose':purpose,'objectType':obj['type'],'documented':documented,'documentationStatus':'complete' if documented else 'missing','scopeType':_scope_type(fields),'fieldCount':len(fields),'fields':fields,'indexes':indexes,'physicalForeignKeys':fks,'createSql':obj['sql'] or '','inboundRelations':inbound})
