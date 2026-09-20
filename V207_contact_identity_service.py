@@ -109,4 +109,36 @@ def handle(h,m,seg,q,a,db,org):
   except LookupError:return bad(h,'CONTACT_NOT_FOUND','联系人不存在',404)
   except sqlite3.IntegrityError:return bad(h,'IDENTITY_CONFLICT','身份或主身份约束冲突',409)
   return h.sendj({'ok':True}) or True
+ if len(seg)==4 and seg[3]=='merge' and m=='POST':
+  if not allowed(db,a,'contact.identity.manage',org):return bad(h,'FORBIDDEN','无联系人身份管理权限',403)
+  b=h.body();src=str(b.get('sourceContactId') or '').strip()
+  if not src:return bad(h,'INVALID_SOURCE','sourceContactId 不能为空')
+  if src==contact_id:return bad(h,'INVALID_SOURCE','不能合并自身')
+  try:
+   with db.tx() as c:
+    scope=resolve_scope(c,org,contact=contact_id);wid=scope['workspace_id']
+    try:sscope=resolve_scope(c,org,contact=src)
+    except LookupError:return bad(h,'CONTACT_NOT_FOUND','来源联系人不存在',404)
+    if sscope['workspace_id']!=wid:return bad(h,'WORKSPACE_MISMATCH','两个联系人不在同一工作区，无法合并',409)
+    src_row=one(c,'SELECT contact_id,display_name,deleted_at FROM contacts WHERE contact_id=? AND organization_id=? AND workspace_id=?',(src,org,wid))
+    if not src_row:return bad(h,'CONTACT_NOT_FOUND','来源联系人不存在',404)
+    if src_row.get('deleted_at'):return bad(h,'CONTACT_DELETED','来源联系人已删除',409)
+    moved=0;dedup=0
+    for it in rows(c,'SELECT * FROM contact_identities WHERE organization_id=? AND workspace_id=? AND contact_id=? ORDER BY is_primary DESC,first_seen_at',(org,wid,src)):
+     dup=one(c,'SELECT contact_identity_id FROM contact_identities WHERE organization_id=? AND platform_id IS ? AND identity_type=? AND canonical_value=? AND contact_id<>?',(org,it.get('platform_id'),it['identity_type'],it['canonical_value'],src))
+     if dup:dedup+=1;continue
+     moved+=1;c.execute('UPDATE contact_identities SET contact_id=?,last_seen_at=? WHERE contact_identity_id=?',(contact_id,now_ms(),it['contact_identity_id']))
+    tgt_has_primary=one(c,'SELECT contact_identity_id FROM contact_identities WHERE organization_id=? AND workspace_id=? AND contact_id=? AND is_primary=1',(org,wid,contact_id))
+    if not tgt_has_primary:
+     first=one(c,'SELECT contact_identity_id FROM contact_identities WHERE organization_id=? AND workspace_id=? AND contact_id=? ORDER BY is_primary DESC,first_seen_at,contact_identity_id LIMIT 1',(org,wid,contact_id))
+     if first:c.execute('UPDATE contact_identities SET is_primary=1 WHERE contact_identity_id=?',(first[0],))
+    remaining=c.execute('SELECT count(*) FROM contact_identities WHERE organization_id=? AND workspace_id=? AND contact_id=?',(org,wid,src)).fetchone()[0]
+    c.execute('UPDATE contacts SET deleted_at=?,deleted_by=?,delete_reason=?,updated_at=? WHERE contact_id=?',(now_ms(),a['user_id'],'merged:'+contact_id,now_ms(),src))
+    if remaining==0 and one(c,'SELECT contact_id FROM contacts WHERE contact_id=? AND organization_id=? AND workspace_id=?',(contact_id,org,wid)):
+     f=one(c,'SELECT contact_identity_id FROM contact_identities WHERE organization_id=? AND workspace_id=? AND contact_id=? ORDER BY is_primary DESC,first_seen_at LIMIT 1',(org,wid,contact_id))
+     if f and not one(c,'SELECT contact_identity_id FROM contact_identities WHERE contact_identity_id=? AND is_primary=1',(f[0],)):c.execute('UPDATE contact_identities SET is_primary=1 WHERE contact_identity_id=?',(f[0],))
+    audit(c,a,'merge',contact_id,{'source':src,'source_name':src_row.get('display_name')},{'moved':moved,'deduped':dedup,'deleted_source':True},str(b.get('reason') or 'identity merge'),wid)
+  except LookupError:return bad(h,'CONTACT_NOT_FOUND','联系人不存在',404)
+  except sqlite3.IntegrityError:return bad(h,'IDENTITY_CONFLICT','身份或主身份约束冲突',409)
+  return h.sendj({'ok':True,'moved':moved,'deduped':dedup,'mergedFrom':src}) or True
  return bad(h,'METHOD_NOT_ALLOWED','不支持的联系人身份操作',405)

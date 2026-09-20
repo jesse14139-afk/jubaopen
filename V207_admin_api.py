@@ -66,6 +66,38 @@ def dispatch(h,m,p,q,a,db):
  if not p.startswith('/api/v207/admin/'):return False
  seg=[x for x in p[len('/api/v207/admin/'):].split('/') if x]
  if not seg:return bad(h,'NOT_FOUND','管理接口不存在',404)
+ root=seg[0];ident=seg[1] if len(seg)>1 else None;action=seg[2] if len(seg)>2 else None
+ # [Stage3] 权限矩阵聚合（只读）
+ if root=='rbac' and ident=='matrix' and m=='GET':
+  org=target(q,a)
+  if not manage(db,a,'permission.read',org):return bad(h,'FORBIDDEN','无权限读取权限',403)
+  with db.tx(False) as c:
+   roles=rows(c,"SELECT role_id,name,role_code,scope_level,status,is_system,description FROM roles WHERE organization_id=? OR organization_id IS NULL ORDER BY is_system DESC,created_at",(org,))
+   perms=rows(c,"SELECT permission_key,description FROM permissions ORDER BY permission_key")
+   binds=rows(c,"SELECT rp.role_id,rp.permission_key FROM role_permissions rp JOIN roles r ON r.role_id=rp.role_id WHERE r.organization_id=? OR r.organization_id IS NULL",(org,))
+  return h.sendj({'ok':True,'roles':roles,'permissions':perms,'bindings':binds}) or True
+ # [Stage4-C1] 高风险操作确认凭证签发（方案乙：一次性、5分钟TTL、上下文绑定）
+ if root=='rbac' and ident=='confirmations' and m=='POST':
+  org=target(q,a)
+  if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无角色管理权限',403)
+  b=h.body();act=str(b.get('actionKey') or '').strip()
+  if act not in ('role.copy','role.delete'):return bad(h,'ACTION_INVALID','不支持的操作类型')
+  ctx={'name':str(b.get('name') or ''),'organizationId':org,'sourceRoleId':str(b.get('sourceRoleId') or '')}
+  try:r=issue_confirmation(db,a,act,ctx)
+  except ValueError as e:return bad(h,'CONFIRMATION_INVALID',str(e),400)
+  return h.sendj({'ok':True,**r}) or True
+ # [Stage3] 用户权限来源追溯（只读）
+ if root=='users' and ident and action=='permission-sources' and m=='GET':
+  org=target(q,a)
+  if not manage(db,a,'permission.read',org):return bad(h,'FORBIDDEN','无权限读取权限',403)
+  with db.tx(False) as c:
+   direct=rows(c,"SELECT b.binding_id,b.role_id,r.name role_name,r.scope_level,b.scope_type,b.scope_id,b.status FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=? AND (b.organization_id=? OR b.organization_id IS NULL)",(ident,org))
+   inherited=rows(c,"SELECT tm.team_id,t.name team_name,r.name role_name,r.scope_level FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id JOIN roles r ON r.role_id=tm.role_id WHERE tm.user_id=? AND t.organization_id=?",(ident,org))
+   channel=rows(c,"SELECT g.grant_id,ca.name account_name,g.status FROM user_channel_account_grants g JOIN channel_accounts ca ON ca.channel_account_id=g.channel_account_id WHERE g.user_id=?",(ident,))
+  return h.sendj({'ok':True,'direct':direct,'inherited':inherited,'channel':channel}) or True
+
+ seg=[x for x in p[len('/api/v207/admin/'):].split('/') if x]
+ if not seg:return bad(h,'NOT_FOUND','管理接口不存在',404)
  root=seg[0];ident=seg[1] if len(seg)>1 else None; action=seg[2] if len(seg)>2 else None
  # session/security
  if root=='profile' and m=='GET':
