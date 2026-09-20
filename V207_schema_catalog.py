@@ -81,7 +81,7 @@ LABELS={
  'source_id':'来源 ID','source_name':'来源名称','account_identity':'来源账号身份','last_device_id':'最后设备 ID','metadata_json':'扩展元数据','first_seen_at':'首次发现时间','device_id':'设备 ID','event_count':'事件次数','contact_observe_count':'联系人观测次数','last_operation':'最后操作',
  'installation_id':'安装实例 ID','device_name':'设备名称','computer_name':'计算机名称','assigned_user_id':'分配用户 ID','system_device_name':'系统设备名称','system_computer_name':'系统计算机名称','user_device_alias':'用户设备别名','user_computer_alias':'用户计算机别名','admin_device_name':'管理员设备名称','admin_computer_name':'管理员计算机名称','assignment_id':'分配记录 ID','assigned_at':'分配时间','released_at':'解除时间',
  'contact_id':'联系人 ID','external_contact_id':'外部联系人 ID','observed_phone':'观测电话','avatar_url':'头像地址','observed_json':'观测资料','observation_hash':'观测摘要','manual_name':'人工姓名','manual_phone':'人工电话','remark':'备注','business_json':'业务扩展资料','last_observed_device_id':'最后观测设备 ID','last_observed_at':'最后观测时间','version':'数据版本','deleted_at':'删除时间','deleted_by':'删除人','delete_reason':'删除原因',
- 'tag_id':'标签 ID','color':'颜色','category':'分类','sort_order':'排序值','enabled':'是否启用','field_key':'字段键','label':'字段名称','field_type':'字段类型','options':'候选选项','value_json':'字段值','updated_by':'更新人',
+ 'campaign_id':'活动 ID','campaign_name':'活动名称','campaign_code':'活动代码','campaign_type':'活动类型','platform_name':'平台名称','platform_code':'平台代码','platform_kind':'平台类型','touchpoint_type':'触点类型','path_position':'路径位置','verification_status':'验证状态','team_name':'团队名称','workspace_name':'工作区名称','security_event_id':'安全事件 ID','event_type':'事件类型','migration_id':'迁移编号','migration_name':'迁移名称','checksum':'校验值','applied_by':'执行人', 'source_link_id':'来源关系 ID','from_source_id':'父来源 ID','to_source_id':'子来源 ID','link_type':'关系类型','tag_id':'标签 ID','color':'颜色','category':'分类','sort_order':'排序值','enabled':'是否启用','field_key':'字段键','label':'字段名称','field_type':'字段类型','options':'候选选项','value_json':'字段值','updated_by':'更新人',
  'event_id':'事件 ID','request_id':'请求 ID','entity_type':'实体类型','entity_id':'实体 ID','operation':'操作类型','base_version':'基础版本','payload_json':'事件载荷','payload_hash':'载荷摘要','result_version':'结果版本','error_code':'错误编码','applied_at':'应用时间','result_json':'处理结果','change_id':'变更游标','changed_at':'变更时间',
  'audit_id':'审计 ID','actor_id':'操作者 ID','before_json':'变更前内容','after_json':'变更后内容','reason':'操作原因','confirmation_id':'确认凭证 ID','expected_version':'预期版本','impact_hash':'影响范围摘要','used_at':'使用时间','created_by':'创建人','revision':'配置修订号','items_json':'配置内容'}
 
@@ -101,7 +101,11 @@ SPECIAL={
  'changes.change_id':'SQLite 自增游标，客户端按该值获取增量变更。',
  'audit_logs.before_json':'写操作发生前的快照 JSON，仅结构页面不读取实际内容。',
  'audit_logs.after_json':'写操作发生后的快照 JSON，仅结构页面不读取实际内容。',
- 'delete_confirmations.impact_hash':'删除预览影响范围的摘要，确认时用于防止范围变化。'}
+ 'delete_confirmations.impact_hash':'删除预览影响范围的摘要，确认时用于防止范围变化。',
+ 'source_links.source_link_id':'来源关系的唯一标识。',
+ 'source_links.from_source_id':'关系起点的来源节点，指向 sources.source_id。',
+ 'source_links.to_source_id':'关系终点的来源节点，指向 sources.source_id。',
+ 'source_links.link_type':'关系类型，如父子、跳转、合并或业务链路。'}
 
 SENSITIVE={'password_hash','salt','access_token_hash','identity_value','observed_phone','manual_phone','payload_json','before_json','after_json','result_json','ip','user_agent'}
 JSON_FIELDS={x for x in LABELS if x.endswith('_json')}|{'items_json'}
@@ -109,6 +113,48 @@ TIME_FIELDS={x for x in LABELS if x.endswith('_at')}
 
 LOGICAL_RELATIONS=[
  ('organizations','organization_id','teams','organization_id','企业拥有团队'),('organizations','organization_id','users','organization_id','企业拥有用户'),('organizations','organization_id','workspaces','organization_id','企业拥有工作区'),('users','user_id','user_credentials','user_id','用户拥有认证凭证'),('users','user_id','sessions','user_id','用户产生登录会话'),('users','user_id','organization_memberships','user_id','用户加入企业'),('roles','role_id','organization_memberships','role_id','企业成员使用角色'),('users','user_id','team_memberships','user_id','用户加入团队'),('teams','team_id','team_memberships','team_id','团队包含成员'),('roles','role_id','team_memberships','role_id','团队成员使用角色'),('roles','role_id','role_permissions','role_id','角色包含权限'),('permissions','permission_key','role_permissions','permission_key','权限授予角色'),('organizations','organization_id','channel_accounts','organization_id','企业管理渠道账号'),('channel_accounts','channel_account_id','channel_account_identities','channel_account_id','账号包含外部身份'),('teams','team_id','team_channel_accounts','team_id','团队获得账号授权'),('channel_accounts','channel_account_id','team_channel_accounts','channel_account_id','账号授权给团队'),('channel_accounts','channel_account_id','sources','channel_account_id','来源归并到账号'),('sources','source_id','source_devices','source_id','来源出现于设备'),('devices','device_id','source_devices','device_id','设备观测来源'),('sources','source_id','contacts','source_id','来源产生联系人'),('devices','device_id','contacts','last_observed_device_id','设备最后观测联系人'),('contacts','contact_id','contact_tags','contact_id','联系人拥有标签'),('tags','tag_id','contact_tags','tag_id','标签关联联系人'),('contacts','contact_id','contact_custom_values','contact_id','联系人拥有扩展值'),('devices','device_id','device_assignments','device_id','设备具有分配历史')]
+
+# 物理外键通用语义映射：(fromField, toTable) -> 关系动作描述
+FK_REL_DESCRIPTIONS={
+ ('organization_id','organizations'):'归属企业',
+ ('workspace_id','workspaces'):'归属工作区',
+ ('team_id','teams'):'归属团队',
+ ('user_id','users'):'关联用户',
+ ('role_id','roles'):'关联角色',
+ ('contact_id','contacts'):'关联联系人',
+ ('source_id','sources'):'关联来源',
+ ('device_id','devices'):'关联设备',
+ ('channel_account_id','channel_accounts'):'关联渠道账号',
+ ('market_id','markets'):'关联市场',
+ ('business_line_id','business_lines'):'关联业务线',
+ ('department_id','departments'):'关联部门',
+ ('platform_id','platforms'):'关联平台',
+ ('parent_market_id','markets'):'上级市场为',
+ ('parent_business_line_id','business_lines'):'上级业务线为',
+ ('parent_department_id','departments'):'上级部门为',
+ ('from_source_id','sources'):'父来源为',
+ ('to_source_id','sources'):'子来源为',
+ ('last_device_id','devices'):'最后观测设备为',
+ ('assigned_user_id','users'):'分配给用户',
+ ('granted_by','users'):'授权人为',
+ ('deleted_by','users'):'删除人为',
+ ('updated_by','users'):'更新人为',
+ ('created_by','users'):'创建人为',
+}
+
+def _short_label(table):
+    l=TABLES.get(table,(None,table))[1]
+    return l[:-1] if l.endswith('表') and len(l)>1 else l
+
+def _physical_fk_description(from_table,from_field,to_table,to_field):
+    """物理外键释义：优先逻辑关联精确匹配，其次「表名+动作」语义映射，最后表名拼接。"""
+    ldesc=next((rel[4] for rel in LOGICAL_RELATIONS if rel[0]==from_table and rel[1]==from_field and rel[2]==to_table and rel[3]==to_field),None)
+    if ldesc:return ldesc
+    fl=_short_label(from_table)
+    action=FK_REL_DESCRIPTIONS.get((from_field,to_table))
+    if action:return fl+action
+    return fl+'关联'+_short_label(to_table)
+
 
 def _field_description(table,name):
  key=table+'.'+name
@@ -182,7 +228,8 @@ def build_schema_catalog(db):
     if physical:tags.append('FK')
     elif logical:tags.append('逻辑关联')
     for f in physical:
-     physical_relations.append({'fromTable':name,'fromField':fname,'toTable':f['table'],'toField':f['to'],'description':'SQLite 物理外键','kind':'physical','cardinality':'N:1','onDelete':f['on_delete'],'onUpdate':f['on_update'],'evidence':'PRAGMA foreign_key_list'})
+     _pdesc=_physical_fk_description(name,fname,f['table'],f['to'])
+     physical_relations.append({'fromTable':name,'fromField':fname,'toTable':f['table'],'toField':f['to'],'description':_pdesc,'kind':'physical','cardinality':'N:1','onDelete':f['on_delete'],'onUpdate':f['on_update'],'evidence':'PRAGMA foreign_key_list'})
     fields.append({'position':x['cid']+1,'name':fname,'label':LABELS.get(fname,fname),'type':x['type'] or 'ANY','notNull':bool(x['notnull']),'primaryKeyOrder':x['pk'],'default':x['dflt_value'],'hidden':x.get('hidden',0),'tags':tags,'sensitive':fname in SENSITIVE,'description':_field_description(name,fname) if documented or fname in LABELS else '暂无业务释义。','physicalRelations':physical,'logicalRelations':logical})
    inbound=[]
    tables.append({'name':name,'label':cn,'category':cat,'purpose':purpose,'objectType':obj['type'],'documented':documented,'documentationStatus':'complete' if documented else 'missing','scopeType':_scope_type(fields),'fieldCount':len(fields),'fields':fields,'indexes':indexes,'physicalForeignKeys':fks,'createSql':obj['sql'] or '','inboundRelations':inbound})
