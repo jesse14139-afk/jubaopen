@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Schema 207 只读数据字典：合并运行时 SQLite 元数据与中文业务释义。"""
+"""Schema 208 只读数据字典：合并运行时 SQLite 元数据与中文业务释义。"""
 from V207_version import SCHEMA_VERSION, PRODUCT_VERSION, CATALOG_VERSION
 
 CATEGORIES={
@@ -62,6 +62,8 @@ TABLES.update({
  'workspace_teams':('organization','工作区团队关系表','描述主责、协作、合规或支持团队及访问级别。'),
  'workspace_business_lines':('organization','工作区业务线关系表','描述工作区与业务线的多对多业务关系。'),
  'workspace_markets':('organization','工作区市场关系表','描述工作区覆盖或服务的市场范围。'),
+  'team_markets':('organization','团队市场关系表','描述团队负责或服务的市场，可标记唯一主市场。'),
+  'team_business_lines':('organization','团队业务线关系表','描述团队参与的业务线，可标记唯一主业务线。'),
  'platforms':('platform','全局平台表','定义消息、社交、广告、自有及线下等全局渠道平台。'),
  'campaigns':('campaign','营销活动表','记录营销活动、平台、承接账号和工作区。'),
  'contact_identities':('contact','联系人外部身份表','保存联系人跨平台的邮箱、电话、用户名或社交身份。'),
@@ -71,8 +73,8 @@ TABLES.update({
 
 LABELS={
  'key':'键','value':'值','name':'名称','status':'状态','created_at':'创建时间','updated_at':'更新时间',
- 'organization_id':'企业 ID','workspace_id':'工作区 ID','team_id':'团队 ID','user_id':'用户 ID','role_id':'角色 ID',
- 'permission_key':'权限编码','description':'说明','scope_level':'作用范围','login_name':'登录名','display_name':'显示名称',
+ 'organization_id':'企业 ID','market_id':'市场 ID','business_line_id':'业务线 ID','department_id':'部门 ID','parent_market_id':'上级市场 ID','parent_business_line_id':'上级业务线 ID','parent_department_id':'上级部门 ID','workspace_id':'工作区 ID','team_id':'团队 ID','user_id':'用户 ID','role_id':'角色 ID',
+ 'local_name':'本地名称','currency_code':'货币代码','is_primary':'是否主关系','scope_type':'作用域类型','scope_id':'作用域 ID','permission_key':'权限编码','description':'说明','scope_level':'作用范围','login_name':'登录名','display_name':'显示名称',
  'password_hash':'密码摘要','salt':'密码盐值','iterations':'派生迭代次数','must_change':'是否强制改密',
  'session_id':'会话 ID','access_token_hash':'访问令牌摘要','expires_at':'过期时间','ip':'IP 地址','user_agent':'客户端标识','last_seen_at':'最后活动时间','revoked_at':'撤销时间',
  'channel_account_id':'渠道账号 ID','channel':'渠道类型','identity_id':'身份 ID','identity_type':'身份类型','identity_value':'身份原值','canonical_value':'规范化身份值','permission_scope':'授权范围','granted_by':'授权人','granted_at':'授权时间',
@@ -127,7 +129,7 @@ def _quote_identifier(name):
 def _infer_category(name,object_type='table'):
  rules=(
   (('schema_','meta','workspace_configs'),'system'),
-  (('organizations','departments','teams','business_lines','markets','workspace_teams','workspace_business_lines','workspace_markets'),'organization'),
+  (('organizations','departments','teams','business_lines','markets','workspace_teams','workspace_business_lines','workspace_markets','team_markets','team_business_lines'),'organization'),
   (('users','user_credentials','sessions','organization_memberships','team_memberships'),'identity'),
   (('roles','permissions','role_permissions'),'rbac'),(('platforms',),'platform'),
   (('channel_','team_channel','user_channel'),'channel'),(('devices','device_','source_devices'),'device'),
@@ -201,6 +203,84 @@ def build_schema_catalog(db):
  if issues:diagnostics.append({'severity':'error','code':'FOREIGN_KEY_ISSUES','count':len(issues),'message':'检测到物理外键完整性问题。'})
  return {'ok':True,'readOnly':True,'productVersion':PRODUCT_VERSION,'schemaVersion':SCHEMA_VERSION,'catalogVersion':CATALOG_VERSION,'summary':{'tableCount':sum(1 for x in tables if x['objectType']=='table'),'viewCount':sum(1 for x in tables if x['objectType']=='view'),'triggerCount':len(triggers),'fieldCount':field_total,'indexCount':index_total,'physicalForeignKeyCount':fk_total,'logicalRelationCount':len(logical),'undocumentedObjectCount':undocumented,'documentationCoverage':coverage},'categories':categories,'tables':tables,'relations':all_rel,'triggers':triggers,'diagnostics':diagnostics,'integrity':{'quickCheck':quick,'foreignKeyIssues':issues},'notes':['仅读取 sqlite_schema 与 PRAGMA 结构元数据，不查询业务表记录。','未登记对象不会隐藏，将归入自动推断分类或“未分类”。','FK 表示 SQLite 物理外键；逻辑关联由领域服务和作用域校验维护。']}
 
-# V207.4.0-dev 更新说明（2026-09-20）：改用 table_xinfo/index_xinfo，覆盖全部表、视图、触发器；取消业务记录计数，补充分类、覆盖率、物理及逻辑关系诊断。
+# V207.5.0-dev 更新说明（2026-09-20）：改用 table_xinfo/index_xinfo，覆盖全部表、视图、触发器；取消业务记录计数，补充分类、覆盖率、物理及逻辑关系诊断。
 
-# V207.4.0-dev 更新说明（2026-09-20）：运行时提取表、视图、字段、索引和物理外键，并合并中文释义、逻辑关联与文档覆盖率；全程不读取业务记录。
+# V207.5.0-dev 更新说明（2026-09-20）：运行时提取表、视图、字段、索引和物理外键，并合并中文释义、逻辑关联与文档覆盖率；全程不读取业务记录。
+
+
+# ============================================================
+# 【字典补丁 v1】2026-09 全库审计补充：V207.7 新表登记 + 缺失字段释义 + 全量逻辑关系
+# 说明：本补丁为纯追加式（update/extend），不修改上方任何原有定义。
+# ============================================================
+
+# ---- 1. 补登记 5 张 V207.7 新增表（原"未分类"来源）----
+TABLES.update({
+    'positions':               ('organization','职位表','定义企业内职位及其部门归属，职位编码在企业内唯一。'),
+    'user_positions':          ('organization','用户职位关系表','建立用户与职位的多对多关系，可标记唯一主职位。'),
+    'role_bindings':           ('rbac','角色绑定表','按平台、企业、工作区、部门、团队或个人作用域将角色授予用户，是统一授权模型核心。'),
+    'platform_administrators': ('identity','平台管理员表','登记平台级管理员及其内置标记与首次登录引导状态。'),
+    'rbac_confirmations':      ('audit','RBAC 确认凭证表','为高风险授权操作签发短期二次确认凭证，含令牌摘要、过期时间与一次性消费标记。'),
+})
+
+# ---- 2. 补字段级释义（消除"XX 的持久化字段"兜底文案）----
+LABELS.update({
+    # 归因组
+    'attribution_id':'归因记录 ID','attribution_type':'归因类型','attribution_weight':'归因权重',
+    'confidence':'置信度','attributed_at':'归因时间','touchpoint_id':'触点 ID',
+    # 职位组
+    'position_id':'职位 ID','code':'编码','binding_id':'绑定记录 ID',
+    # RBAC 新表组
+    'action_key':'操作动作编码','token_digest':'确认令牌摘要','context_json':'操作上下文',
+    'consumed_at':'消费时间','onboarding_completed':'是否完成首次引导','is_builtin':'是否内置',
+    'link_type':'关系类型','occurred_at':'发生时间','link_id':'关系 ID',
+})
+
+SPECIAL.update({
+    'positions.code':                     '企业内职位编码，与 organization_id 联合唯一。',
+    'positions.department_id':            '可选；为空表示职位直属企业不挂部门。',
+    'role_bindings.scope_type':           '授权作用域层级：platform/organization/workspace/department/team/self。',
+    'role_bindings.scope_id':             '作用域对象 ID，含义随 scope_type 变化；self 时对应用户自身。',
+    'role_bindings.granted_by':           '授权操作者，用户删除时置空以保留审计线索。',
+    'platform_administrators.is_builtin': '是否系统内置管理员，内置账号不可删除。',
+    'rbac_confirmations.token_digest':    '确认令牌摘要，原文不落库，单次有效。',
+    'rbac_confirmations.expires_at':      '凭证过期时间（约 5 分钟 TTL），过期即作废。',
+    'rbac_confirmations.consumed_at':     '凭证被使用的时间；非空表示已消费不可复用。',
+    'contact_attributions.confidence':    '归因置信度，unknown 表示模型未给出确定判断。',
+    'contact_attributions.is_primary':    '同一联系人的多条归因中仅一条主关系。',
+})
+
+# ---- 3. 补全逻辑关系（物理外键中文释义 + 纯业务逻辑关联）----
+# 注意：个别字段名基于命名规范推断，部署后请刷新页面核对"实体关系目录"；
+#       若某条未生效，将字段名改为该表实际列名即可。
+LOGICAL_RELATIONS.extend([
+    # 职位域
+    ('positions','organization_id','organizations','organization_id','职位归属企业'),
+    ('positions','department_id','departments','department_id','职位归属部门（可空）'),
+    ('user_positions','user_id','users','user_id','用户担任职位'),
+    ('user_positions','position_id','positions','position_id','职位被用户担任'),
+    ('user_positions','organization_id','organizations','organization_id','任职关系限定企业'),
+    # 统一授权域
+    ('role_bindings','user_id','users','user_id','角色绑定授予用户'),
+    ('role_bindings','role_id','roles','role_id','绑定的角色'),
+    ('role_bindings','organization_id','organizations','organization_id','企业级绑定限定企业'),
+    ('role_bindings','granted_by','users','user_id','授权操作者'),
+    ('platform_administrators','user_id','users','user_id','平台管理员对应登录用户'),
+    ('rbac_confirmations','user_id','users','user_id','确认凭证所属用户'),
+    # 归因主链路
+    ('contact_attributions','contact_id','contacts','contact_id','归因指向的联系人'),
+    ('contact_attributions','source_id','sources','source_id','归因贡献来源'),
+    ('contact_attributions','touchpoint_id','source_touchpoints','touchpoint_id','归因贡献触点'),
+    # 触点链路
+    ('source_touchpoints','contact_id','contacts','contact_id','触点所属联系人'),
+    ('source_touchpoints','source_id','sources','source_id','触点发生的来源'),
+    ('source_touchpoints','campaign_id','campaigns','campaign_id','触点关联的营销活动'),
+    # 活动与渠道
+    ('campaigns','channel_account_id','channel_accounts','channel_id','活动承接的渠道账号'),
+    ('campaigns','workspace_id','workspaces','workspace_id','活动归属工作区'),
+    ('channel_accounts','platform_id','platforms','platform_id','渠道账号所属全局平台'),
+    # 组织层级
+    ('departments','parent_department_id','departments','department_id','部门上级（自引用层级）'),
+    ('business_lines','parent_business_line_id','business_lines','business_line_id','业务线上级（自引用层级）'),
+    ('markets','parent_market_id','markets','market_id','市场上级（自引用层级）'),
+    ('teams','organization_id','organizations','organization_id','团队归属企业'),
+])

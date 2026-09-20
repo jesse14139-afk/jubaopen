@@ -2,7 +2,7 @@
 """V207.1 来源领域服务：企业/工作区隔离、引用一致性与事务审计。"""
 import json, sqlite3, uuid
 from V207_shared_db import now_ms, dumps
-from V207_security import can
+from V207_security import can,is_platform_admin
 STATUSES={'active','disabled'}
 DIRECTIONS={'inbound','outbound','bidirectional','unknown'}
 INITIATORS={'customer','business','system','unknown'}
@@ -11,10 +11,11 @@ def one(c,s,a=()):
  x=c.execute(s,a).fetchone();return dict(x) if x else None
 def rows(c,s,a=()):return [dict(x) for x in c.execute(s,a)]
 def err(code,msg,status=400,**extra):return {'ok':False,'code':code,'message':msg,**extra},status
-def is_admin(a):return bool(a and a.get('user_id')=='usr_admin')
-def allowed(db,a,org,perm):return bool(org) and (is_admin(a) or (a.get('organization_id')==org and can(db,a,perm)))
+def is_admin(db,a):return is_platform_admin(db,a)
+def allowed(db,a,org,perm):return bool(org) and (is_admin(db,a) or (a.get('organization_id')==org and can(db,a,perm)))
 def audit(c,a,op,eid,before,after,wid,reason=None):
- c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid or 'default',a['user_id'],None,op,'source',eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
+ if not wid:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
+ c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,'source',eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
 def obj(v):
  if v is None:return {}
  if not isinstance(v,dict):raise ValueError

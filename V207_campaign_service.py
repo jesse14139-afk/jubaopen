@@ -2,15 +2,15 @@
 """V207.1 活动领域服务。"""
 import json,sqlite3,uuid
 from V207_shared_db import now_ms,dumps
-from V207_security import can
+from V207_security import can,is_platform_admin
 STATUSES={'draft','active','paused','completed','disabled'}
 TYPES={'marketing','paid','organic','referral','event','promotion','retention','other'}
 def one(c,s,a=()):
  x=c.execute(s,a).fetchone();return dict(x) if x else None
 def rows(c,s,a=()):return [dict(x) for x in c.execute(s,a)]
 def err(code,msg,status=400,**extra):return {'ok':False,'code':code,'message':msg,**extra},status
-def admin(a):return bool(a and a.get('user_id')=='usr_admin')
-def allowed(db,a,org,perm):return bool(org) and (admin(a) or (a.get('organization_id')==org and can(db,a,perm)))
+def admin(db,a):return is_platform_admin(db,a)
+def allowed(db,a,org,perm):return bool(org) and (admin(db,a) or (a.get('organization_id')==org and can(db,a,perm)))
 def audit(c,a,op,eid,before,after,wid,reason=None):c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,'campaign',eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
 def metadata(v):
  if v is None:return {}

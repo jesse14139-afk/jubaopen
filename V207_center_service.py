@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""聚宝盆 V207.4.0-dev 中心服务（Python 标准库，零第三方依赖）。"""
+"""聚宝盆 V207.6.0-dev 中心服务（Python 标准库，零第三方依赖）。"""
 import argparse,json,os,sys,uuid
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.parse import urlparse,parse_qs,unquote
 ROOT=os.path.dirname(os.path.abspath(__file__));sys.path.insert(0,ROOT)
 from V207_shared_db import Database,now_ms,dumps,hash_password
 from V207_version import PRODUCT_VERSION,SCHEMA_VERSION
-from V207_security import login,actor_from_token,can,canonical,password_strong
+from V207_security import login,actor_from_token,can,canonical,password_strong,grant_binding_in_tx,revoke_token_session_in_tx
 from V207_admin_api import dispatch as admin_dispatch
 from V207_core import session_context,resolve_account,register_device,rename_device,graph,ok,err
 from V206_core_compat import (list_contacts,get_contact,changes,apply_event,delete_preview,get_workspace,update_workspace,list_sources,list_tags,save_tag,delete_tag,list_field_definitions,save_field_definition,delete_field_definition,admin_contact_lifecycle,admin_logs,admin_schema)
@@ -37,7 +37,15 @@ class H(BaseHTTPRequestHandler):
     team=r['team_id'] if r else None
   return can(DB,a,perm,wid,team) if perm else can(DB,a,'organization.read',wid,team)
  def audit(self,a,op,typ,eid,before,after,reason=None):
-  with DB.tx() as c:c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(after.get('workspace_id','default') if isinstance(after,dict) else 'default',a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
+  candidates=[]
+  for value in (after,before):
+   if isinstance(value,dict):candidates.append(value.get('workspace_id') or value.get('workspaceId'))
+  wid=next((x for x in candidates if x),None)
+  if not wid:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
+  with DB.tx() as c:
+   scope=c.execute('SELECT organization_id FROM workspaces WHERE workspace_id=?',(wid,)).fetchone()
+   if not scope or scope['organization_id']!=a['organization_id']:raise RuntimeError('AUDIT_SCOPE_MISMATCH')
+   c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms(),a['organization_id']))
  def do_OPTIONS(self):self.send_response(204);self.security_headers();self.end_headers()
  def safe_route(self,m):
   try:self.route(m)
@@ -50,7 +58,7 @@ class H(BaseHTTPRequestHandler):
  def do_PATCH(self):self.safe_route('PATCH')
  def do_DELETE(self):self.safe_route('DELETE')
  def route(self,m):
-  u=urlparse(self.path);p=u.path;q={k:v[-1] for k,v in parse_qs(u.query).items()};wid=q.get('workspace_id','default')
+  u=urlparse(self.path);p=u.path;q={k:v[-1] for k,v in parse_qs(u.query).items()};wid=str(q.get('workspace_id') or '').strip()
   if p in ('/health','/api/health'):return self.sendj({'ok':True,'version':VERSION,'schemaVersion':SCHEMA_VERSION,'database':DB.quick_check()})
   if p in ('/admin','/admin/'):
    self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(ADMIN)));self.security_headers();self.end_headers();return self.wfile.write(ADMIN)
@@ -65,8 +73,8 @@ class H(BaseHTTPRequestHandler):
   if p.startswith('/api/v207/admin/') and p!='/api/v207/admin/channel-accounts' and admin_dispatch(self,m,p,q,a,DB):return
   if p=='/api/v207/session/context' and m=='GET':r,s=session_context(DB,a);return self.sendj(r,s)
   if p=='/api/v207/auth/logout' and m=='POST':
-   token=self.headers.get('Authorization','')[7:].strip();import hashlib
-   with DB.tx() as c:c.execute('UPDATE sessions SET revoked_at=? WHERE access_token_hash=?',(now_ms(),hashlib.sha256(token.encode()).hexdigest()))
+   token=self.headers.get('Authorization','')[7:].strip()
+   with DB.tx() as c:revoke_token_session_in_tx(c,token,a['user_id'],a['user_id'],'logout')
    return self.sendj({'ok':True})
   if p=='/api/v207/accounts/resolve' and m=='POST':r,s=resolve_account(DB,a,self.body());return self.sendj(r,s)
   if p=='/api/v207/devices/register' and m=='POST':
@@ -148,12 +156,11 @@ class H(BaseHTTPRequestHandler):
   return self.sendj({'ok':False,'code':'NOT_FOUND'},404)
  def event(self,a,b):r,s=self.apply_event_checked(a,b);return self.sendj(r,s)
  def apply_event_checked(self,a,b):
-  b=dict(b);b.pop('actor_id',None);b.pop('actorId',None);wid=str(b.get('workspaceId') or b.get('workspace_id') or 'default');sid=str(b.get('sourceId') or b.get('source_id') or '');op=str(b.get('operation') or '').lower();perm='contact.delete' if op in ('delete','contact.delete') else ('contact.restore' if op in ('restore','contact.restore') else 'contact.update')
+  b=dict(b);b.pop('actor_id',None);b.pop('actorId',None);wid=str(b.get('workspaceId') or b.get('workspace_id') or '').strip();sid=str(b.get('sourceId') or b.get('source_id') or '').strip();op=str(b.get('operation') or '').lower();perm='contact.delete' if op in ('delete','contact.delete') else ('contact.restore' if op in ('restore','contact.restore') else 'contact.update')
   with DB.tx(False) as c:
    s=c.execute('SELECT workspace_id,organization_id,team_id,channel_account_id FROM sources WHERE source_id=?',(sid,)).fetchone()
    if not s or s['workspace_id']!=wid or s['organization_id']!=a['organization_id']:return err('SOURCE_SCOPE_INVALID','来源不属于当前企业或工作区',403)
-   authorized=c.execute("SELECT 1 FROM team_memberships WHERE user_id=? AND team_id=? AND status='active'",(a['user_id'],s['team_id'])).fetchone();superadmin=c.execute("SELECT 1 FROM organization_memberships WHERE user_id=? AND organization_id=? AND role_id='role_superadmin' AND status='active'",(a['user_id'],a['organization_id'])).fetchone()
-  if not (authorized or superadmin) or not can(DB,a,perm,wid,s['team_id']):return err('FORBIDDEN','无此联系人操作权限',403)
+  if not can(DB,a,perm,wid,s['team_id'],organization_id=a['organization_id']):return err('FORBIDDEN','无此联系人操作权限',403)
   b['workspaceId']=wid;b['workspace_id']=wid;b['sourceId']=sid;b['source_id']=sid;b['actor_id']=a['user_id'];b['user_id']=a['user_id'];r,status=apply_event(DB,b)
   if r.get('ok'):
    with DB.tx() as c:c.execute('UPDATE events SET user_id=? WHERE event_id=?',(a['user_id'],str(b.get('eventId') or b.get('event_id') or '')))
@@ -182,15 +189,19 @@ class H(BaseHTTPRequestHandler):
   if not password_strong(pwd) or not loginname:return self.sendj({'ok':False,'code':'WEAK_OR_INVALID_CREDENTIAL'},400)
   h,salt,it=hash_password(pwd)
   try:
-   with DB.tx() as c:c.execute('INSERT INTO users(user_id,organization_id,login_name,display_name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(uid,a['organization_id'],loginname,str(b.get('displayName') or loginname),'active',n,n));c.execute('INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,?,?)',(uid,h,salt,it,1,n));c.execute('INSERT INTO team_memberships(user_id,team_id,role_id,status) VALUES(?,?,?,\'active\')',(uid,team,role))
+   with DB.tx() as c:c.execute('INSERT INTO users(user_id,organization_id,login_name,display_name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(uid,a['organization_id'],loginname,str(b.get('displayName') or loginname),'active',n,n));c.execute('INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,?,?)',(uid,h,salt,it,1,n));grant_binding_in_tx(c,uid,role,a['organization_id'],'team',team,a['user_id'])
   except Exception:return self.sendj({'ok':False,'code':'USER_CREATE_FAILED'},409)
   return self.sendj({'ok':True,'userId':uid},201)
 def main():
  global DB
- ap=argparse.ArgumentParser();ap.add_argument('--db',default='jubaopen-v207.db');ap.add_argument('--host',default='127.0.0.1');ap.add_argument('--port',type=int,default=8765);ap.add_argument('--admin-password');a=ap.parse_args();DB=Database(a.db);DB.initialize(a.admin_password)
- with DB.tx(False) as c:pwd=c.execute("SELECT value FROM meta WHERE key='initial_admin_password'").fetchone()
- if pwd:print('首次管理员：admin / '+pwd[0]+'（登录后请立即修改）')
- print('V207 服务：http://%s:%s/admin'%(a.host,a.port));ThreadingHTTPServer((a.host,a.port),H).serve_forever()
+ ap=argparse.ArgumentParser();ap.add_argument('--db',default='jubaopen-v207.db');ap.add_argument('--host',default='127.0.0.1');ap.add_argument('--port',type=int,default=8765)
+ for arg in ('organization-id','organization-name','workspace-id','workspace-name','team-id','team-name','admin-user-id','admin-login','admin-display-name','admin-password'):ap.add_argument('--'+arg)
+ a=ap.parse_args();DB=Database(a.db)
+ bootstrap={k:getattr(a,k) for k in ('organization_id','organization_name','workspace_id','workspace_name','team_id','team_name','admin_user_id','admin_login','admin_display_name','admin_password')}
+ if any(bootstrap.values()):bootstrap['builtin_default']='0'
+ else:bootstrap=None
+ DB.initialize(bootstrap)
+ print('V207.7 服务：http://%s:%s/admin'%(a.host,a.port));ThreadingHTTPServer((a.host,a.port),H).serve_forever()
 if __name__=='__main__':main()
 
-# V207.4.0-dev 更新说明（2026-09-20）：统一版本源并接入严格只读数据字典接口。
+# V207.7.0-dev 更新说明（2026-09-20）：统一版本源并接入严格只读数据字典接口。

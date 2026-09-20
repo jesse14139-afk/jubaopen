@@ -2,7 +2,7 @@
 """V207 联系人外部身份领域服务。负责租户隔离、验证、事务与审计。"""
 import re, sqlite3, uuid
 from V207_shared_db import now_ms, dumps, loads
-from V207_security import can
+from V207_security import can,is_platform_admin
 from V207_scope import resolve_scope
 
 IDENTITY_TYPES={'external_id','email','login','username','handle','phone','mobile','whatsapp','telegram','instagram','facebook','messenger','line','wechat','tiktok'}
@@ -15,10 +15,10 @@ def rows(c,sql,args=()):return [dict(x) for x in c.execute(sql,args)]
 
 def bad(h,code,msg,status=400):return h.sendj({'ok':False,'code':code,'message':msg},status) or True
 
-def platform(a):return bool(a and a.get('user_id')=='usr_admin')
+def platform(db,a):return is_platform_admin(db,a)
 
 def allowed(db,a,permission,org):
- return bool(org) and (platform(a) or (org==a.get('organization_id') and can(db,a,permission)))
+ return bool(org) and (platform(db,a) or (org==a.get('organization_id') and can(db,a,permission)))
 
 def canonical_identity(identity_type,value):
  v=str(value or '').strip();typ=str(identity_type or 'external_id').strip().lower()
@@ -35,8 +35,9 @@ def validate_identity(identity_type,value,status,metadata):
  if not isinstance(metadata,dict):return None,'INVALID_METADATA','metadata 必须是对象'
  return (typ,canonical),None,None
 
-def audit(c,a,op,eid,before,after,reason=None,wid='default'):
- c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid or 'default',a['user_id'],None,op,'contact_identity',eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
+def audit(c,a,op,eid,before,after,reason=None,wid=None):
+ if not wid:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
+ c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,'contact_identity',eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
 
 def handle(h,m,seg,q,a,db,org):
  """处理 /admin/contacts/{contactId}/identities[/{identityId}]；不匹配返回 False。"""

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """V207 多租户业务扩展。"""
 from V207_shared_db import now_ms,dumps
-from V207_security import canonical,permissions
-VERSION='207.0.0';SCHEMA_VERSION=207
+from V207_version import PRODUCT_VERSION,SCHEMA_VERSION
+from V207_security import canonical,permissions,can
+VERSION=PRODUCT_VERSION
 DOMAIN_CHANNEL={'web.whatsapp.com':'whatsapp','www.instagram.com':'instagram','www.messenger.com':'messenger','www.facebook.com':'facebook','web.telegram.org':'telegram'}
 def ok(**x):return {'ok':True,**x},200
 def err(code,message,status=400,**x):return {'ok':False,'code':code,'message':message,**x},status
@@ -12,9 +13,14 @@ def trusted_channel(host,path=''):
  return DOMAIN_CHANNEL.get(host)
 def session_context(db,a):
  with db.tx(False) as c:
-  ms=[dict(x) for x in c.execute("SELECT t.team_id,t.name team_name,t.workspace_id,r.role_id,r.name role_name FROM team_memberships m JOIN teams t ON t.team_id=m.team_id JOIN roles r ON r.role_id=m.role_id WHERE m.user_id=? AND m.status='active' AND t.status='active'",(a['user_id'],))]
-  for m in ms:m['permissions']=sorted(permissions(db,a['user_id'],m['team_id']))
-  org=dict(c.execute('SELECT * FROM organizations WHERE organization_id=?',(a['organization_id'],)).fetchone())
+  ms=[dict(x) for x in c.execute("""SELECT t.team_id,t.name team_name,t.workspace_id,b.role_id,r.name role_name
+  FROM role_bindings b JOIN teams t ON b.scope_type='team' AND b.scope_id=t.team_id JOIN roles r ON r.role_id=b.role_id
+  WHERE b.user_id=? AND b.organization_id=? AND b.status='active' AND t.status='active' AND r.status='active'
+  ORDER BY t.created_at,r.name""",(a['user_id'],a['organization_id']))]
+  for m in ms:m['permissions']=sorted(permissions(db,a['user_id'],team_id=m['team_id'],workspace_id=m['workspace_id'],organization_id=a['organization_id']))
+  orgrow=c.execute('SELECT * FROM organizations WHERE organization_id=?',(a['organization_id'],)).fetchone()
+  if not orgrow:return err('ORGANIZATION_NOT_FOUND','企业不存在',404)
+  org=dict(orgrow)
   return ok(user={k:a[k] for k in ('user_id','login_name','display_name')},organization=org,memberships=ms)
 def resolve_account(db,a,p):
  ch=trusted_channel(p.get('host'),p.get('path',''))
@@ -24,16 +30,12 @@ def resolve_account(db,a,p):
  identity=canonical(p.get('identity'))
  if not identity:return err('ACCOUNT_IDENTITY_REQUIRED',f'无法识别当前 {ch} 登录账号，请刷新后重试',409,channel=ch)
  with db.tx(False) as c:
-  rows=[dict(x) for x in c.execute("""SELECT DISTINCT ca.channel_account_id,ca.display_name,s.source_id,s.source_name,t.team_id,t.name team_name,w.workspace_id
+  candidates=[dict(x) for x in c.execute("""SELECT DISTINCT ca.channel_account_id,ca.display_name,s.source_id,s.source_name,t.team_id,t.name team_name,t.workspace_id
   FROM channel_account_identities i JOIN channel_accounts ca ON ca.channel_account_id=i.channel_account_id
-  JOIN team_channel_accounts ta ON ta.channel_account_id=ca.channel_account_id JOIN teams t ON t.team_id=ta.team_id JOIN workspaces w ON w.workspace_id=t.workspace_id
-  JOIN team_memberships tm ON tm.team_id=t.team_id AND tm.user_id=? AND tm.status='active'
+  JOIN team_channel_accounts ta ON ta.channel_account_id=ca.channel_account_id JOIN teams t ON t.team_id=ta.team_id
   LEFT JOIN sources s ON s.channel_account_id=ca.channel_account_id AND s.team_id=t.team_id AND s.status='active'
-  WHERE ca.organization_id=? AND ca.channel=? AND i.canonical_value=? AND ca.status='active'""",(a['user_id'],a['organization_id'],ch,identity))]
-  # organization admins also resolve accounts in their org
-  if not rows and 'account.bind' in permissions(db,a['user_id']):
-   rows=[dict(x) for x in c.execute("""SELECT DISTINCT ca.channel_account_id,ca.display_name,s.source_id,s.source_name,t.team_id,t.name team_name,t.workspace_id
-   FROM channel_account_identities i JOIN channel_accounts ca ON ca.channel_account_id=i.channel_account_id JOIN team_channel_accounts ta ON ta.channel_account_id=ca.channel_account_id JOIN teams t ON t.team_id=ta.team_id LEFT JOIN sources s ON s.channel_account_id=ca.channel_account_id AND s.team_id=t.team_id AND s.status='active' WHERE ca.organization_id=? AND ca.channel=? AND i.canonical_value=? AND ca.status='active'""",(a['organization_id'],ch,identity))]
+  WHERE ca.organization_id=? AND t.organization_id=ca.organization_id AND ca.channel=? AND i.canonical_value=? AND ca.status='active' AND t.status='active'""",(a['organization_id'],ch,identity))]
+ rows=[x for x in candidates if can(db,a,'account.read',x['workspace_id'],x['team_id'],organization_id=a['organization_id'])]
  if not rows:return err('ACCOUNT_NOT_BOUND',f'当前 {ch.title()} 账号尚未绑定企业账号来源，请联系管理员',409,channel=ch)
  valid=[x for x in rows if x.get('source_id')]
  if len(valid)!=1:return err('ACCOUNT_BINDING_CONFLICT','当前账号未形成唯一来源绑定，请联系管理员处理',409,channel=ch,matches=len(valid))

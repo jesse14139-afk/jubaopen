@@ -15,11 +15,11 @@ def _rows(c,sql,args=()):return [dict(x) for x in c.execute(sql,args)]
 def _ok(**x):return ({'ok':True,**x},200)
 def _err(code,msg,status=400,**x):return ({'ok':False,'code':code,'message':msg,**x},status)
 def _id(prefix):return prefix+'_'+uuid.uuid4().hex
-def _platform(a):return bool(a and a.get('user_id')=='usr_admin')
-def _read(db,a,org):return _platform(a) or (a.get('organization_id')==org and (can(db,a,'organization.structure.read') or can(db,a,'organization.read')))
-def _manage(db,a,org):return _platform(a) or (a.get('organization_id')==org and (can(db,a,'organization.structure.manage') or can(db,a,'organization.manage')))
-def _audit(c,a,op,typ,eid,before,after,wid='default',reason=None):
- c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id,request_id,ip_address,user_agent) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(wid or 'default',a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms(),a.get('organization_id'),None,None,None,None))
+def _read(db,a,org):return bool(a and a.get('organization_id')==org and (can(db,a,'organization.structure.read') or can(db,a,'organization.read')))
+def _manage(db,a,org):return bool(a and a.get('organization_id')==org and (can(db,a,'organization.structure.manage') or can(db,a,'organization.manage')))
+def _audit(c,a,op,typ,eid,before,after,wid=None,reason=None):
+ if not wid:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
+ c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id,request_id,ip_address,user_agent,scope_type,scope_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms(),a.get('organization_id'),None,None,None,None,'workspace',wid))
 def _cycle(c,table,key,node,parent,org):
  seen={node};cur=parent
  while cur:
@@ -56,7 +56,9 @@ def _entity(db,a,org,m,kind,ident,q,b):
      mt=str(b.get('marketType') or 'country');
      if mt not in MARKET_TYPES:return _err('INVALID_MARKET_TYPE','市场类型无效')
      c.execute('INSERT INTO markets(market_id,organization_id,parent_market_id,name,code,market_type,country_code,region_code,timezone,description,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(eid,org,parent,name,code,mt,str(b.get('countryCode') or '').upper(),str(b.get('regionCode') or ''),str(b.get('timezone') or ''),str(b.get('description') or ''),'active',n,n))
-    item=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(eid,));_audit(c,a,'create',kind,eid,{},item)
+    item=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(eid,));aw=c.execute('SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY workspace_id LIMIT 1',(org,)).fetchone();
+    if not aw:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
+    _audit(c,a,'create',kind,eid,{},item,aw[0])
    return ({'ok':True,'item':item},201)
   except sqlite3.IntegrityError:return _err('CONFLICT','编码、名称或 ID 已存在',409)
  if m=='PATCH' and ident:
@@ -76,7 +78,9 @@ def _entity(db,a,org,m,kind,ident,q,b):
      c.execute('UPDATE markets SET parent_market_id=?,name=?,code=?,market_type=?,country_code=?,region_code=?,timezone=?,description=?,status=?,updated_at=? WHERE market_id=?',(parent,name,code,mt,str(b.get('countryCode',old['country_code'])),str(b.get('regionCode',old['region_code'])),str(b.get('timezone',old['timezone'])),str(b.get('description',old['description'])),status,now_ms(),ident))
     else:
      c.execute(f'UPDATE {table} SET {parent_col}=?,name=?,code=?,description=?,status=?,updated_at=? WHERE {key}=?',(parent,name,code,str(b.get('description',old['description'])),status,now_ms(),ident))
-    new=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(ident,));_audit(c,a,'update',kind,ident,old,new,reason=b.get('reason'))
+    new=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(ident,));aw=c.execute('SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY workspace_id LIMIT 1',(org,)).fetchone();
+    if not aw:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
+    _audit(c,a,'update',kind,ident,old,new,aw[0],b.get('reason'))
    return _ok(item=new)
   except sqlite3.IntegrityError:return _err('CONFLICT','编码或名称已存在',409)
  return _err('METHOD_NOT_ALLOWED','不支持的操作',405)

@@ -20,15 +20,12 @@ from __future__ import annotations
 import hashlib,re,secrets,uuid,sqlite3
 from V207_shared_db import now_ms,dumps,loads
 
-VERSION="207.3.0-dev"
-SCHEMA_VERSION=207
+from V207_version import PRODUCT_VERSION as VERSION, SCHEMA_VERSION
 CHANNELS={"whatsapp","instagram","facebook","messenger","telegram","other"}
 OBS_KEYS={"displayName","observedPhone","avatarUrl","observed"}
 MANUAL={"manualName":"manual_name","manualPhone":"manual_phone","remark":"remark","status":"status","business":"business_json"}
 TRANSIENT={"capturedAt","scanAt","observedAt","requestId","sessionTimestamp","timestamp"}
 
-DEFAULT_ORG="org_default"
-DEFAULT_TEAM="team_default"
 
 def uid(p):return p+"_"+uuid.uuid4().hex
 def hash_obj(v):return hashlib.sha256(dumps(v).encode()).hexdigest()
@@ -41,8 +38,11 @@ def stable(v):
  return v
 
 def _org_team_for(c,workspace_id):
- r=c.execute("SELECT organization_id FROM workspaces WHERE workspace_id=?",(workspace_id,)).fetchone()
- return (r["organization_id"] if r else DEFAULT_ORG), DEFAULT_TEAM
+ r=c.execute("SELECT organization_id FROM workspaces WHERE workspace_id=? AND status='active'",(workspace_id,)).fetchone()
+ if not r or not r["organization_id"]:raise ValueError("WORKSPACE_SCOPE_INVALID")
+ teams=c.execute("SELECT team_id FROM workspace_teams WHERE workspace_id=? AND organization_id=? AND status='active' AND is_primary=1",(workspace_id,r["organization_id"])).fetchall()
+ if len(teams)!=1:raise ValueError("WORKSPACE_PRIMARY_TEAM_REQUIRED")
+ return r["organization_id"],teams[0]["team_id"]
 
 def workspace(c,wid):return c.execute("SELECT * FROM workspaces WHERE workspace_id=? AND status='active'",(wid,)).fetchone()
 
@@ -75,7 +75,7 @@ def public_contact(c,r):
  return d
 
 def register_device(db,p):
- wid=str(p.get("workspace_id") or "default")
+ wid=str(p.get("workspace_id") or "").strip()
  did=str(p.get("device_id") or "").strip()
  iid=str(p.get("installation_id") or "").strip()
  name=str(p.get("device_name") or "").strip()[:120]
@@ -85,11 +85,12 @@ def register_device(db,p):
  user_alias=(str(p.get("user_device_alias")).strip()[:120] if p.get("user_device_alias") else None)
  user_comp=(str(p.get("user_computer_alias")).strip()[:120] if p.get("user_computer_alias") else None)
  metadata=p.get("metadata") or {}
+ if not wid:return err("WORKSPACE_REQUIRED","workspace_id 必填")
  if not did or not iid or not name:return err("INVALID_DEVICE","device_id、installation_id 和 device_name 必填")
  with db.tx() as c:
   wsrow=workspace(c,wid)
   if not wsrow:return err("WORKSPACE_NOT_FOUND","工作区不存在",404)
-  org_id=wsrow["organization_id"] or DEFAULT_ORG
+  org_id,team_id=_org_team_for(c,wid)
   by_i=c.execute("SELECT * FROM devices WHERE workspace_id=? AND installation_id=?",(wid,iid)).fetchone()
   by_d=c.execute("SELECT * FROM devices WHERE device_id=?",(did,)).fetchone()
   if by_i and by_i["device_id"]!=did:return err("INSTALLATION_CONFLICT","安装实例已绑定其他设备",409)
@@ -100,7 +101,7 @@ def register_device(db,p):
    "VALUES(?,?,?,?,?,'active',?,?,?,?,?,?,?,?,?,NULL) "
    "ON CONFLICT(device_id) DO UPDATE SET device_name=excluded.device_name,computer_name=excluded.computer_name,last_seen_at=excluded.last_seen_at,metadata_json=excluded.metadata_json,"
    "system_device_name=excluded.system_device_name,system_computer_name=excluded.system_computer_name,user_device_alias=COALESCE(excluded.user_device_alias,devices.user_device_alias),user_computer_alias=COALESCE(excluded.user_computer_alias,devices.user_computer_alias)",
-   (did,wid,iid,name,computer,t,t,dumps(metadata),org_id,DEFAULT_TEAM,sys_alias,sys_comp,user_alias,user_comp))
+   (did,wid,iid,name,computer,t,t,dumps(metadata),org_id,team_id,sys_alias,sys_comp,user_alias,user_comp))
   r=c.execute("SELECT * FROM devices WHERE device_id=?",(did,)).fetchone()
   if r["status"]!='active':return err("DEVICE_DISABLED","设备已禁用",403)
   return ok(device=public_device(r))
@@ -110,11 +111,12 @@ def touch_relation(c,wid,sid,did,op,observe=False):
  c.execute("INSERT INTO source_devices(workspace_id,source_id,device_id,first_seen_at,last_seen_at,event_count,contact_observe_count,last_operation) VALUES(?,?,?,?,?,1,?,?) ON CONFLICT(workspace_id,source_id,device_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,event_count=source_devices.event_count+1,contact_observe_count=source_devices.contact_observe_count+excluded.contact_observe_count,last_operation=excluded.last_operation",(wid,sid,did,t,t,1 if observe else 0,op))
 
 def register_source(db,p):
- wid=str(p.get("workspace_id") or "default")
+ wid=str(p.get("workspace_id") or "").strip()
  did=str(p.get("device_id") or "")
  ch=str(p.get("channel") or "").lower().strip()
  ai=str(p.get("account_identity") or "").strip()[:240]
  name=str(p.get("source_name") or ai).strip()[:120]
+ if not wid:return err("WORKSPACE_REQUIRED","workspace_id 必填")
  if ch not in CHANNELS:return err("INVALID_CHANNEL","渠道不在 V205 支持列表中")
  if not ai:return err("INVALID_ACCOUNT_IDENTITY","账号身份不能为空")
  with db.tx() as c:
@@ -122,7 +124,7 @@ def register_source(db,p):
   if not dev:return err("DEVICE_NOT_FOUND","设备不存在或已禁用",404)
   wsrow=workspace(c,wid)
   if not wsrow:return err("WORKSPACE_NOT_FOUND","工作区不存在",404)
-  org_id=wsrow["organization_id"] or DEFAULT_ORG
+  org_id,team_id=_org_team_for(c,wid)
   old=c.execute("SELECT * FROM sources WHERE workspace_id=? AND channel=? AND account_identity=?",(wid,ch,ai)).fetchone()
   sid=old["source_id"] if old else uid("src")
   t=now_ms()
@@ -130,7 +132,7 @@ def register_source(db,p):
    "INSERT INTO sources(source_id,workspace_id,channel,account_identity,source_name,status,first_seen_at,last_seen_at,last_device_id,metadata_json,organization_id,team_id,channel_account_id,platform_id,source_type,direction,initiated_by,updated_at) "
    "VALUES(?,?,?,?,?,'active',?,?,?,?,?,?,NULL,'plt_'||?, 'direct','inbound','unknown',?) "
    "ON CONFLICT(workspace_id,channel,account_identity) DO UPDATE SET source_name=excluded.source_name,last_seen_at=excluded.last_seen_at,last_device_id=excluded.last_device_id,metadata_json=excluded.metadata_json,updated_at=excluded.updated_at",
-   (sid,wid,ch,ai,name,t,t,did,dumps(p.get("metadata") or {}),org_id,DEFAULT_TEAM,ch,t))
+   (sid,wid,ch,ai,name,t,t,did,dumps(p.get("metadata") or {}),org_id,dev["team_id"],ch,t))
   touch_relation(c,wid,sid,did,"source.register")
   src=c.execute("SELECT * FROM sources WHERE source_id=?",(sid,)).fetchone()
   ws=c.execute("SELECT * FROM workspaces WHERE workspace_id=?",(wid,)).fetchone()
@@ -167,7 +169,7 @@ def apply_event(db,e):
   src=c.execute("SELECT * FROM sources WHERE source_id=? AND workspace_id=? AND status='active'",(sid,wid)).fetchone() if sid else None
   if sid and not src:return err("SOURCE_NOT_FOUND","来源不存在或已禁用",404)
   wsrow=workspace(c,wid)
-  org_id=wsrow["organization_id"] if wsrow else DEFAULT_ORG
+  org_id,team_id=_org_team_for(c,wid)
   t=now_ms()
   c.execute("INSERT INTO events(event_id,workspace_id,device_id,installation_id,source_id,session_id,request_id,entity_type,entity_id,operation,base_version,payload_json,payload_hash,status,created_at,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'processing',?,?)",(eid,wid,did,e.get("installationId"),sid or None,e.get("sessionId"),e.get("requestId"),e["entityType"],e.get("entityId"),e["operation"],e.get("baseVersion"),dumps(p),ph,t,e.get("user_id") or e.get("userId")))
   if e["entityType"]!="contact":result,status=err("UNSUPPORTED_ENTITY","V205.0 仅支持 contact 事件")
@@ -193,7 +195,7 @@ def _contact(c,e,dev,src,org_id):
    c.execute(
     "INSERT INTO contacts(contact_id,workspace_id,source_id,channel,external_contact_id,display_name,observed_phone,avatar_url,observed_json,observation_hash,last_observed_device_id,last_observed_at,created_at,updated_at,last_seen_at,organization_id,team_id) "
     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    (cid,wid,sid,ch,ext,str(p.get("displayName") or ""),str(p.get("observedPhone") or ""),str(p.get("avatarUrl") or ""),dumps(stable(p.get("observed") or {})),oh,did,t,t,t,t,org_id,DEFAULT_TEAM))
+    (cid,wid,sid,ch,ext,str(p.get("displayName") or ""),str(p.get("observedPhone") or ""),str(p.get("avatarUrl") or ""),dumps(stable(p.get("observed") or {})),oh,did,t,t,t,t,org_id,src["team_id"]))
    ver=1;action="create"
   else:
    cid=row["contact_id"]
@@ -247,7 +249,7 @@ def _contact(c,e,dev,src,org_id):
  touch_relation(c,wid,sid or row["source_id"],did,op)
  after=public_contact(c,c.execute("SELECT * FROM contacts WHERE contact_id=?",(cid,)).fetchone())
  add_change(c,wid,"contact",cid,action,ver,row["source_id"],did,after,eid)
- c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,did,did,action,"contact",cid,dumps(before),dumps(after),str(p.get("reason") or ""),t,org_id,DEFAULT_TEAM))
+ c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,did,did,action,"contact",cid,dumps(before),dumps(after),str(p.get("reason") or ""),t,org_id,row["team_id"]))
  return dict(ok=True,eventId=eid,entityId=cid,version=ver,contact=after),200
 
 def delete_preview(db,wid,did,cid,version):
@@ -261,7 +263,7 @@ def delete_preview(db,wid,did,cid,version):
   return ok(confirmationId=x,expectedVersion=int(version),impact={"contactId":cid,"softDelete":True},expiresAt=exp)
 
 def list_contacts(db,qs):
- wid=str(qs.get("workspace_id") or "default");limit=min(max(int(qs.get("limit") or 200),1),1000);after=max(int(qs.get("cursor") or qs.get("after_id") or 0),0)
+ wid=str(qs.get("workspace_id") or "").strip();limit=min(max(int(qs.get("limit") or 200),1),1000);after=max(int(qs.get("cursor") or qs.get("after_id") or 0),0)
  where=["c.workspace_id=?","c.rowid>?"];args=[wid,after]
  if not str(qs.get("include_deleted") or "").lower() in ("1","true"):where.append("c.deleted_at IS NULL")
  for key,col in (("source_id","c.source_id"),("channel","c.channel"),("device_id","c.last_observed_device_id")):
@@ -280,7 +282,7 @@ def changes(db,wid,after=0,limit=500):
   for r in rows:d=dict(r);d["payload"]=loads(d.pop("payload_json"),{});items.append(d)
   return ok(items=items,nextCursor=items[-1]["change_id"] if items else int(after),hasMore=len(items)==limit)
 
-def get_workspace(db,wid="default"):
+def get_workspace(db,wid):
  with db.tx(False) as c:
   r=c.execute("SELECT * FROM workspaces WHERE workspace_id=?",(wid,)).fetchone()
   return ok(workspace=dict(r)) if r else err("WORKSPACE_NOT_FOUND","工作区不存在",404)
@@ -293,10 +295,10 @@ def update_workspace(db,wid,p):
   c.execute("UPDATE workspaces SET name=?,updated_at=? WHERE workspace_id=?",(name,now_ms(),wid))
   return ok(workspace=dict(c.execute("SELECT * FROM workspaces WHERE workspace_id=?",(wid,)).fetchone()))
 
-def list_sources(db,wid="default"):
+def list_sources(db,wid):
  with db.tx(False) as c:return ok(items=[public_source(x) for x in c.execute("SELECT * FROM sources WHERE workspace_id=? ORDER BY source_name,channel",(wid,))])
 
-def list_source_devices(db,wid="default",sid=None):
+def list_source_devices(db,wid,sid=None):
  q="SELECT sd.*,s.source_name,s.channel,s.account_identity,d.device_name,d.computer_name,d.installation_id,d.status AS device_status FROM source_devices sd JOIN sources s ON s.source_id=sd.source_id JOIN devices d ON d.device_id=sd.device_id WHERE sd.workspace_id=?";a=[wid]
  if sid:q+=" AND sd.source_id=?";a.append(sid)
  q+=" ORDER BY sd.last_seen_at DESC"
@@ -307,7 +309,7 @@ def get_contact(db,wid,cid):
   r=c.execute("SELECT * FROM contacts WHERE workspace_id=? AND contact_id=?",(wid,cid)).fetchone()
   return ok(contact=public_contact(c,r)) if r else err("CONTACT_NOT_FOUND","联系人不存在",404)
 
-def list_devices(db,wid="default"):
+def list_devices(db,wid):
  with db.tx(False) as c:return ok(items=[public_device(x) for x in c.execute("SELECT * FROM devices WHERE workspace_id=? ORDER BY status,device_name",(wid,))])
 
 def set_device_status(db,wid,did,status):
@@ -328,7 +330,7 @@ def set_source_status(db,wid,sid,status):
   c.execute("UPDATE sources SET status=?,last_seen_at=?,updated_at=? WHERE workspace_id=? AND source_id=?",(status,now_ms(),now_ms(),wid,sid))
   return ok(source=public_source(c.execute("SELECT * FROM sources WHERE source_id=?",(sid,)).fetchone()))
 
-def list_tags(db,wid='default'):
+def list_tags(db,wid):
  with db.tx(False) as c:return ok(items=[dict(x) for x in c.execute("SELECT * FROM tags WHERE workspace_id=? ORDER BY sort_order,name",(wid,))])
 
 def save_tag(db,wid,p):
@@ -349,7 +351,7 @@ def delete_tag(db,wid,tid):
   if used:return err('TAG_IN_USE','标签仍被联系人使用，请先解除联系人标签关系',409,contactCount=used)
   c.execute("DELETE FROM tags WHERE tag_id=? AND workspace_id=?",(tid,wid));return ok(deleted=True)
 
-def list_field_definitions(db,wid='default'):
+def list_field_definitions(db,wid):
  with db.tx(False) as c:return ok(items=[dict(x) for x in c.execute("SELECT * FROM custom_field_definitions WHERE workspace_id=? ORDER BY sort_order,field_key",(wid,))])
 
 def save_field_definition(db,wid,p):
@@ -396,8 +398,8 @@ def set_contact_tags(db,wid,cid,tag_ids,did,base_version):
   c.execute("UPDATE contacts SET version=?,updated_at=? WHERE workspace_id=? AND contact_id=?",(ver,t,wid,cid))
   current=c.execute("SELECT * FROM contacts WHERE workspace_id=? AND contact_id=?",(wid,cid)).fetchone();after=public_contact(c,current);event='tags_'+uuid.uuid4().hex
   add_change(c,wid,'contact',cid,'tags',ver,row['source_id'],did,after,event)
-  wsrow=workspace(c,wid);org_id=wsrow['organization_id'] if wsrow else DEFAULT_ORG
-  c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,did,did,'tags','contact',cid,dumps(before),dumps(after),'联系人标签调整',t,org_id,DEFAULT_TEAM))
+  wsrow=workspace(c,wid);org_id,team_id=_org_team_for(c,wid)
+  c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,did,did,'tags','contact',cid,dumps(before),dumps(after),'联系人标签调整',t,org_id,row["team_id"]))
   return ok(changed=True,version=ver,contact=after,tagIds=ids)
 
 def admin_patch_contact(db,wid,cid,p):
@@ -424,8 +426,8 @@ def admin_patch_contact(db,wid,cid,p):
   c.execute("UPDATE contacts SET "+','.join(sets)+" WHERE contact_id=?",vals)
   after=public_contact(c,c.execute("SELECT * FROM contacts WHERE contact_id=?",(cid,)).fetchone());event='admin_'+uuid.uuid4().hex
   add_change(c,wid,'contact',cid,'admin-patch',ver,row['source_id'],None,after,event)
-  wsrow=workspace(c,wid);org_id=wsrow['organization_id'] if wsrow else DEFAULT_ORG
-  c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,actor,None,'admin-patch','contact',cid,dumps(before),dumps(after),str(p.get('reason') or '管理后台修改'),t,org_id,DEFAULT_TEAM))
+  wsrow=workspace(c,wid);org_id,team_id=_org_team_for(c,wid)
+  c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,actor,None,'admin-patch','contact',cid,dumps(before),dumps(after),str(p.get('reason') or '管理后台修改'),t,org_id,row["team_id"]))
   return ok(contact=after,version=ver)
 
 def admin_set_contact_tags(db,wid,cid,p):
@@ -447,8 +449,8 @@ def admin_set_contact_tags(db,wid,cid,p):
   for tid in clean:c.execute("INSERT INTO contact_tags(contact_id,tag_id,created_at) VALUES(?,?,?)",(cid,tid,t))
   c.execute("UPDATE contacts SET version=?,updated_at=? WHERE contact_id=?",(ver,t,cid));after=public_contact(c,c.execute("SELECT * FROM contacts WHERE contact_id=?",(cid,)).fetchone());event='admin_tags_'+uuid.uuid4().hex
   add_change(c,wid,'contact',cid,'admin-tags',ver,row['source_id'],None,after,event)
-  wsrow=workspace(c,wid);org_id=wsrow['organization_id'] if wsrow else DEFAULT_ORG
-  c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,actor,None,'admin-tags','contact',cid,dumps(before),dumps(after),'管理后台调整标签',t,org_id,DEFAULT_TEAM))
+  wsrow=workspace(c,wid);org_id,team_id=_org_team_for(c,wid)
+  c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,actor,None,'admin-tags','contact',cid,dumps(before),dumps(after),'管理后台调整标签',t,org_id,row["team_id"]))
   return ok(contact=after,version=ver)
 
 def admin_contact_lifecycle(db,wid,cid,action,p):
@@ -466,11 +468,11 @@ def admin_contact_lifecycle(db,wid,cid,action,p):
   else:c.execute("UPDATE contacts SET deleted_at=NULL,deleted_by=NULL,delete_reason=NULL,version=?,updated_at=? WHERE contact_id=?",(ver,t,cid))
   after=public_contact(c,c.execute("SELECT * FROM contacts WHERE contact_id=?",(cid,)).fetchone());event='admin_'+action+'_'+uuid.uuid4().hex
   add_change(c,wid,'contact',cid,'admin-'+action,ver,row['source_id'],None,after,event)
-  wsrow=workspace(c,wid);org_id=wsrow['organization_id'] if wsrow else DEFAULT_ORG
-  c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,actor,None,'admin-'+action,'contact',cid,dumps(before),dumps(after),str(p.get('reason') or ''),t,org_id,DEFAULT_TEAM))
+  wsrow=workspace(c,wid);org_id,team_id=_org_team_for(c,wid)
+  c.execute("INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(wid,actor,None,'admin-'+action,'contact',cid,dumps(before),dumps(after),str(p.get('reason') or ''),t,org_id,row["team_id"]))
   return ok(contact=after,version=ver)
 
-def admin_overview(db,wid='default'):
+def admin_overview(db,wid):
  with db.tx(False) as c:
   tables=['devices','sources','source_devices','contacts','tags','custom_field_definitions','events','changes','audit_logs']
   counts={x:int(c.execute('SELECT COUNT(*) FROM '+x+" WHERE workspace_id=?",(wid,)).fetchone()[0]) for x in tables}

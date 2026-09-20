@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import json,sqlite3,uuid
 from V207_shared_db import now_ms,dumps
-from V207_security import can
+from V207_security import can,is_platform_admin
 def one(c,s,a=()):
  r=c.execute(s,a).fetchone();return dict(r) if r else None
 def rows(c,s,a=()):return [dict(r) for r in c.execute(s,a)]
 def err(code,msg,status=400,**extra):return ({'ok':False,'code':code,'message':msg,**extra},status)
-def allowed(db,a,org,perm):return bool(org) and (a.get('user_id')=='usr_admin' or (a.get('organization_id')==org and can(db,a,perm)))
+def allowed(db,a,org,perm):return bool(org) and (is_platform_admin(db,a) or (a.get('organization_id')==org and can(db,a,perm)))
 def audit(c,a,op,typ,eid,before,after,wid,reason=None):c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
 def obj(v):
  if v is None:return {}

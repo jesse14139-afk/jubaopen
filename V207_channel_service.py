@@ -2,18 +2,18 @@
 """V207 企业渠道账号领域服务。"""
 import json, re, sqlite3, uuid
 from V207_shared_db import now_ms, dumps
-from V207_security import can
+from V207_security import can, is_platform_admin
 
-ADMIN='usr_admin'; STATUSES={'active','disabled'}
+STATUSES={'active','disabled'}
 IDENTITY_TYPES={'external_id','email','login','username','handle','phone','mobile','whatsapp','telegram','instagram','facebook','messenger','line','wechat','tiktok'}
 def _one(c,s,a=()):
  x=c.execute(s,a).fetchone();return dict(x) if x else None
 def _rows(c,s,a=()):return [dict(x) for x in c.execute(s,a)]
 def _err(code,msg,status=400,**x):return ({'ok':False,'code':code,'message':msg,**x},status)
-def _admin(a):return bool(a and a.get('user_id')==ADMIN)
-def _allowed(db,a,perm,org):return bool(a and org and (_admin(a) or (a.get('organization_id')==org and can(db,a,perm))))
+def _allowed(db,a,perm,org):return bool(a and org and (is_platform_admin(db,a) or (a.get('organization_id')==org and can(db,a,perm))))
 def _audit(c,a,op,typ,eid,before,after,reason=None,wid=None):
- c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid or 'default',a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
+ if not wid:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
+ c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
 def _canonical(typ,value):
  typ=str(typ or 'external_id').strip().lower();v=str(value or '').strip()
  if typ in ('email','login','username','handle'):cv=''.join(v.lower().split())
