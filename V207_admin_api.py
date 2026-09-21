@@ -158,7 +158,18 @@ def dispatch(h,m,p,q,a,db):
     c.execute('UPDATE organizations SET name=?,status=?,updated_at=? WHERE organization_id=?',(str(b.get('name') or old['name']).strip(),st or old['status'],now_ms(),ident));new=one(c,'SELECT * FROM organizations WHERE organization_id=?',(ident,))
     audit_in_tx(c,a,'update','organization',ident,old,new, b.get('reason'))
    return h.sendj({'ok':True,'item':new}) or True
- # common organization scope
+  if ident and m=='DELETE':
+   if not platform(db,a):return bad(h,'FORBIDDEN','仅平台超级管理员可删除企业',403)
+   with db.tx() as c:
+    old=one(c,'SELECT * FROM organizations WHERE organization_id=?',(ident,))
+    if not old:return bad(h,'NOT_FOUND','企业不存在',404)
+    refs={'users':c.execute('SELECT count(*) FROM users WHERE organization_id=?',(ident,)).fetchone()[0],'workspaces':c.execute('SELECT count(*) FROM workspaces WHERE organization_id=?',(ident,)).fetchone()[0],'teams':c.execute('SELECT count(*) FROM teams WHERE organization_id=?',(ident,)).fetchone()[0],'channels':c.execute('SELECT count(*) FROM channel_accounts WHERE organization_id=?',(ident,)).fetchone()[0],'contacts':c.execute('SELECT count(*) FROM contacts WHERE organization_id=?',(ident,)).fetchone()[0]}
+    refs={k:v for k,v in refs.items() if v}
+    if refs:return bad(h,'ORG_IN_USE','企业仍被业务对象引用，无法删除',409,references=refs)
+    c.execute('DELETE FROM organizations WHERE organization_id=?',(ident,))
+    audit_in_tx(c,a,'delete','organization',ident,old,{})
+   return h.sendj({'ok':True}) or True
+# common organization scope
  org=target(q,a)
  if not org_ok(db,a,org):return bad(h,'FORBIDDEN','无权访问目标企业',403)
  if root=='rbac' and ident=='confirmations' and m=='POST':
@@ -192,7 +203,11 @@ def dispatch(h,m,p,q,a,db):
    channel=rows(c,'SELECT channel name,count(*) value FROM channel_accounts WHERE organization_id=? GROUP BY channel',(org,));status=rows(c,'SELECT status name,count(*) value FROM devices WHERE organization_id=? GROUP BY status',(org,))
    recent=rows(c,'SELECT l.*,u.display_name actor_name FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE u.organization_id=? ORDER BY audit_id DESC LIMIT 8',(org,))
    trend=rows(c,"SELECT date(l.created_at/1000,'unixepoch','localtime') day,count(*) value FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE u.organization_id=? AND l.created_at>=? GROUP BY day ORDER BY day",(org,now_ms()-7*86400*1000))
-  return h.sendj({'auditTrend':trend,'ok':True,'counts':counts,'channelDistribution':channel,'deviceStatus':status,'recentAudit':recent,'database':db.quick_check(),'schemaVersion':SCHEMA_VERSION,'version':PRODUCT_VERSION}) or True
+   contact_trend=rows(c,"SELECT date(created_at/1000,'unixepoch','localtime') day,count(*) value FROM contacts WHERE organization_id=? AND deleted_at IS NULL AND created_at>=? GROUP BY day ORDER BY day",(org,now_ms()-14*86400*1000))
+   source_trend=rows(c,"SELECT date(last_seen_at/1000,'unixepoch','localtime') day,count(DISTINCT source_id) value FROM sources WHERE organization_id=? AND last_seen_at>=? GROUP BY day ORDER BY day",(org,now_ms()-14*86400*1000))
+   source_dist=rows(c,"SELECT source_type name,count(*) value FROM sources WHERE organization_id=? AND status='active' GROUP BY source_type",(org,))
+   team_dist=rows(c,"SELECT t.name,count(DISTINCT u.user_id) value FROM teams t LEFT JOIN role_bindings b ON b.scope_type='team' AND b.scope_id=t.team_id AND b.status='active' LEFT JOIN users u ON u.user_id=b.user_id WHERE t.organization_id=? GROUP BY t.team_id ORDER BY value DESC LIMIT 8",(org,))
+  return h.sendj({'auditTrend':trend,'ok':True,'counts':counts,'channelDistribution':channel,'deviceStatus':status,'recentAudit':recent,'database':db.quick_check(),'schemaVersion':SCHEMA_VERSION,'version':PRODUCT_VERSION,'contactTrend':contact_trend,'sourceTrend':source_trend,'sourceDistribution':source_dist,'teamDistribution':team_dist}) or True
  # teams
  if root=='teams':
   if m=='GET':
@@ -200,11 +215,14 @@ def dispatch(h,m,p,q,a,db):
    return h.sendj({'ok':True,'items':its}) or True
   if m=='POST':
    if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队管理权限',403)
-   b=h.body();name=str(b.get('name') or '').strip()
+   b=h.body();name=str(b.get('name') or '').strip();wid=str(b.get('workspaceId') or '').strip()
    if not name:return bad(h,'NAME_REQUIRED','团队名称不能为空')
-   n=now_ms();tid='team_'+uuid.uuid4().hex;wid='ws_'+uuid.uuid4().hex
+   if not wid:return bad(h,'WORKSPACE_REQUIRED','必须选择所属工作区')
+   n=now_ms();tid='team_'+uuid.uuid4().hex
    with db.tx() as c:
-    c.execute('INSERT INTO workspaces(workspace_id,name,status,created_at,updated_at,organization_id) VALUES(?,?,\'active\',?,?,?)',(wid,str(b.get('workspaceName') or name),n,n,org));c.execute('INSERT INTO workspace_configs(workspace_id,revision,items_json,updated_at,updated_by) VALUES(?,0,\'[]\',?,?)',(wid,n,a['user_id']));c.execute('INSERT INTO teams(team_id,organization_id,workspace_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(tid,org,wid,name,'active',n,n));c.execute("INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,'primary',1,'manage','active',?,?)",(wid,tid,org,n,n))
+    if not c.execute("SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=? AND status='active'",(wid,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在或已停用',404)
+    c.execute('INSERT INTO teams(team_id,organization_id,workspace_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(tid,org,wid,name,'active',n,n))
+    c.execute("INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,'primary',1,'manage','active',?,?)",(wid,tid,org,n,n))
     audit_in_tx(c,a,'create','team',tid,{},b,wid=wid)
    return h.sendj({'ok':True,'teamId':tid,'workspaceId':wid},201) or True
   if ident and not action and m=='PATCH':
@@ -216,6 +234,18 @@ def dispatch(h,m,p,q,a,db):
     c.execute('UPDATE teams SET name=?,status=?,updated_at=? WHERE team_id=?',(str(b.get('name') or old['name']),clean_status(b.get('status')) or old['status'],now_ms(),ident));new=one(c,'SELECT * FROM teams WHERE team_id=?',(ident,))
     audit_in_tx(c,a,'update','team',ident,old,new,b.get('reason'),old['workspace_id'])
    return h.sendj({'ok':True,'item':new}) or True
+  if ident and not action and m=='DELETE':
+   if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队删除权限',403)
+   with db.tx() as c:
+    old=one(c,'SELECT * FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
+    if not old:return bad(h,'NOT_FOUND','团队不存在',404)
+    refs={'bindings':c.execute('SELECT count(*) FROM role_bindings WHERE organization_id=? AND scope_type=\'team\' AND scope_id=? AND status=\'active\'',(org,ident)).fetchone()[0],'channelGrants':c.execute('SELECT count(*) FROM team_channel_accounts WHERE team_id=?',(ident,)).fetchone()[0],'positions':c.execute('SELECT count(*) FROM positions WHERE team_id=?',(ident,)).fetchone()[0],'sources':c.execute('SELECT count(*) FROM sources WHERE team_id=? AND status=\'active\'',(ident,)).fetchone()[0]}
+    refs={k:v for k,v in refs.items() if v}
+    if refs:return bad(h,'TEAM_IN_USE','团队仍被业务对象引用，无法删除',409,references=refs)
+    c.execute('DELETE FROM workspace_teams WHERE team_id=?',(ident,))
+    c.execute('DELETE FROM teams WHERE team_id=?',(ident,))
+    audit_in_tx(c,a,'delete','team',ident,old,{},old['workspace_id'])
+   return h.sendj({'ok':True}) or True
   if ident and action=='members':
    if m=='GET':
     with db.tx(False) as c:its=rows(c,"SELECT b.binding_id,b.user_id,b.role_id,b.status,b.created_at,b.updated_at,u.login_name,u.display_name,u.status user_status,r.name role_name FROM role_bindings b JOIN users u ON u.user_id=b.user_id JOIN roles r ON r.role_id=b.role_id WHERE b.scope_type='team' AND b.scope_id=? AND b.organization_id=? AND u.organization_id=b.organization_id",(ident,org))
@@ -277,6 +307,22 @@ def dispatch(h,m,p,q,a,db):
    with db.tx() as c:
     revoke_sessions_in_tx(c,ident,a['user_id'],'admin_revocation')
     audit_in_tx(c,a,'revoke_sessions','user',ident,{},{})
+   return h.sendj({'ok':True}) or True
+  if ident and not action and m=='DELETE':
+   if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无用户删除权限',403)
+   with db.tx() as c:
+    old=one(c,'SELECT * FROM users WHERE user_id=? AND organization_id=?',(ident,org))
+    if not old:return bad(h,'NOT_FOUND','用户不存在',404)
+    refs={'activeBindings':c.execute('SELECT count(*) FROM role_bindings WHERE user_id=? AND organization_id=? AND status=\'active\'',(ident,org)).fetchone()[0],'teamMemberships':c.execute('SELECT count(*) FROM team_memberships WHERE user_id=?',(ident,)).fetchone()[0],'channelGrants':c.execute('SELECT count(*) FROM user_channel_account_grants WHERE user_id=? AND status=\'active\'',(ident,)).fetchone()[0],'ownedContacts':c.execute('SELECT count(*) FROM contacts WHERE assigned_user_id=?',(ident,)).fetchone()[0],'ownedDevices':c.execute('SELECT count(*) FROM devices WHERE assigned_user_id=?',(ident,)).fetchone()[0]}
+    refs={k:v for k,v in refs.items() if v}
+    if refs:return bad(h,'USER_IN_USE','用户仍被业务对象引用，无法删除',409,references=refs)
+    revoke_sessions_in_tx(c,ident,a['user_id'],'user_deleted')
+    c.execute("UPDATE role_bindings SET status='archived',updated_at=? WHERE user_id=? AND organization_id=? AND status='active'",(now_ms(),ident,org))
+    c.execute('DELETE FROM team_memberships WHERE user_id=?',(ident,))
+    c.execute('DELETE FROM user_credentials WHERE user_id=?',(ident,))
+    c.execute('DELETE FROM organization_memberships WHERE user_id=?',(ident,))
+    c.execute('DELETE FROM users WHERE user_id=?',(ident,))
+    audit_in_tx(c,a,'delete','user',ident,old,{})
    return h.sendj({'ok':True}) or True
  # positions
  if root=='positions':
@@ -481,6 +527,21 @@ def dispatch(h,m,p,q,a,db):
     c.execute('UPDATE workspaces SET name=?,status=?,updated_at=? WHERE workspace_id=?',(str(b.get('name') or old['name']),clean_status(b.get('status')) or old['status'],now_ms(),ident));new=one(c,'SELECT * FROM workspaces WHERE workspace_id=?',(ident,))
     audit_in_tx(c,a,'update','workspace',ident,old,new,b.get('reason'),ident)
    return h.sendj({'ok':True,'item':new}) or True
+  if ident and m=='DELETE':
+   if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无工作区删除权限',403)
+   with db.tx() as c:
+    old=one(c,'SELECT * FROM workspaces WHERE workspace_id=? AND organization_id=?',(ident,org))
+    if not old:return bad(h,'NOT_FOUND','工作区不存在',404)
+    refs={'sources':c.execute('SELECT count(*) FROM sources WHERE workspace_id=? AND status=\'active\'',(ident,)).fetchone()[0],'devices':c.execute('SELECT count(*) FROM devices WHERE workspace_id=? AND status=\'active\'',(ident,)).fetchone()[0],'contacts':c.execute('SELECT count(*) FROM contacts WHERE workspace_id=?',(ident,)).fetchone()[0],'campaigns':c.execute('SELECT count(*) FROM campaigns WHERE workspace_id=? AND status IN (\'draft\',\'active\',\'paused\')',(ident,)).fetchone()[0],'tags':c.execute('SELECT count(*) FROM tags WHERE workspace_id=?',(ident,)).fetchone()[0],'fields':c.execute('SELECT count(*) FROM custom_field_definitions WHERE workspace_id=?',(ident,)).fetchone()[0]}
+    refs={k:v for k,v in refs.items() if v}
+    if refs:return bad(h,'WORKSPACE_IN_USE','工作区仍被业务对象引用，无法删除',409,references=refs)
+    c.execute('DELETE FROM workspace_configs WHERE workspace_id=?',(ident,))
+    c.execute('DELETE FROM workspace_teams WHERE workspace_id=?',(ident,))
+    c.execute('DELETE FROM workspace_business_lines WHERE workspace_id=?',(ident,))
+    c.execute('DELETE FROM workspace_markets WHERE workspace_id=?',(ident,))
+    c.execute('DELETE FROM workspaces WHERE workspace_id=?',(ident,))
+    audit_in_tx(c,a,'delete','workspace',ident,old,{},ident)
+   return h.sendj({'ok':True}) or True
  # accounts
  if root=='accounts':
   body=h.body() if m in ('POST','PUT','PATCH','DELETE') else {}
@@ -496,6 +557,17 @@ def dispatch(h,m,p,q,a,db):
   body=h.body() if m in ('POST','PUT','PATCH','DELETE') else {}
   payload,status=handle_campaign(db,a,org,m,ident,q,body)
   return h.sendj(payload,status) or True
+ # campaign aggregation (stats, funnel)
+ if root=='campaign-stats' and m=='GET':
+  if not (platform(db,a) or can(db,a,'campaign.read')):return bad(h,'FORBIDDEN','无权限',403)
+  with db.tx(False) as c:
+   status_dist=rows(c,'SELECT status name,count(*) value FROM campaigns WHERE organization_id=? GROUP BY status',(org,))
+   type_dist=rows(c,'SELECT campaign_type name,count(*) value FROM campaigns WHERE organization_id=? GROUP BY campaign_type',(org,))
+   recent=rows(c,'SELECT campaign_id,campaign_name,status,campaign_type,start_at,end_at FROM campaigns WHERE organization_id=? ORDER BY created_at DESC LIMIT 5',(org,))
+   total=c.execute('SELECT count(*) FROM campaigns WHERE organization_id=?',(org,)).fetchone()[0]
+   active=c.execute("SELECT count(*) FROM campaigns WHERE organization_id=? AND status='active'",(org,)).fetchone()[0]
+  return h.sendj({'ok':True,'total':total,'active':active,'statusDistribution':status_dist,'typeDistribution':type_dist,'recentCampaigns':recent}) or True
+ # touchpoints delegation
  if root=='touchpoints':
   b=h.body() if m in ('POST','PATCH','DELETE') else {}
   payload,status=handle_touchpoint(db,a,org,m,seg[1] if len(seg)>1 else None,q,b)
@@ -505,6 +577,16 @@ def dispatch(h,m,p,q,a,db):
   ident=seg[1] if len(seg)>1 else None
   payload,status=handle_attribution(db,a,org,m,ident,q,b)
   return h.sendj(payload,status) or True
+ # attribution aggregation: source contribution + funnel summary
+ if root=='attribution-summary' and m=='GET':
+  if not (platform(db,a) or can(db,a,'attribution.read')):return bad(h,'FORBIDDEN','无权限',403)
+  with db.tx(False) as c:
+   src_attr=rows(c,'SELECT s.source_name,s.channel,a.attribution_type,count(*) touchpoint_count FROM contact_attributions a JOIN sources s ON s.source_id=a.source_id WHERE a.organization_id=? GROUP BY s.source_id,a.attribution_type ORDER BY touchpoint_count DESC LIMIT 20',(org,))
+   type_dist=rows(c,'SELECT attribution_type name,count(*) value FROM contact_attributions WHERE organization_id=? GROUP BY attribution_type',(org,))
+   funnel=rows(c,"SELECT s.source_name,COALESCE(c.campaign_name,'未关联活动') campaign_name,a.is_primary,count(*) cnt FROM contact_attributions a JOIN sources s ON s.source_id=a.source_id LEFT JOIN campaigns c ON c.campaign_id=s.campaign_id WHERE a.organization_id=? GROUP BY s.source_id,COALESCE(c.campaign_name,'未关联活动'),a.is_primary ORDER BY cnt DESC LIMIT 10",(org,))
+   total_attr=c.execute('SELECT count(*) FROM contact_attributions WHERE organization_id=?',(org,)).fetchone()[0]
+   total_tp=c.execute('SELECT count(*) FROM source_touchpoints WHERE organization_id=?',(org,)).fetchone()[0]
+  return h.sendj({'ok':True,'totalAttributions':total_attr,'totalTouchpoints':total_tp,'sourceContribution':src_attr,'typeDistribution':type_dist,'topSources':funnel}) or True
  if root in ('source-links','source_paths','source-paths'):
   b=h.body() if m in ('POST','PATCH','DELETE') else {}
   payload,status=handle_source_link(db,a,org,m,seg[1] if len(seg)>1 else None,q,b)
@@ -542,7 +624,27 @@ def dispatch(h,m,p,q,a,db):
     c.execute('UPDATE devices SET binding_code=?,binding_code_expires_at=? WHERE device_id=?',(code,exp,ident));new=one(c,'SELECT * FROM devices WHERE device_id=?',(ident,))
     audit_in_tx(c,a,'generate_binding_code','device',ident,old,{'binding_code':code,'binding_code_expires_at':exp},'生成设备绑定码',old.get('workspace_id'))
    return h.sendj({'ok':True,'bindingCode':code,'expiresAt':exp}) or True
+  if ident and not action and m=='DELETE':
+   if not (platform(db,a) or manage(db,a,'device.disable',org)):return bad(h,'FORBIDDEN','无设备删除权限',403)
+   with db.tx() as c:
+    old=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
+    if not old:return bad(h,'NOT_FOUND','资源不存在',404)
+    refs={'sources':c.execute('SELECT count(*) FROM source_devices WHERE device_id=? AND source_id IN (SELECT source_id FROM sources WHERE status=\'active\')',(ident,)).fetchone()[0],'contacts':c.execute('SELECT count(*) FROM contacts WHERE last_observed_device_id=?',(ident,)).fetchone()[0]}
+    refs={k:v for k,v in refs.items() if v}
+    if refs:return bad(h,'DEVICE_IN_USE','设备仍被业务对象引用，无法删除',409,references=refs)
+    c.execute('DELETE FROM source_devices WHERE device_id=?',(ident,))
+    c.execute('DELETE FROM device_assignments WHERE device_id=?',(ident,))
+    c.execute('DELETE FROM devices WHERE device_id=?',(ident,))
+    audit_in_tx(c,a,'delete','device',ident,old,{},old.get('workspace_id'))
+   return h.sendj({'ok':True}) or True
 # contacts (admin table + direct business edit, lifecycle remains old guarded endpoints)
+ if root=='contact-identities' and m=='GET':
+  if not (platform(db,a) or can(db,a,'contact.read')):return bad(h,'FORBIDDEN','无联系人读取权限',403)
+  pno,size,off=page(q)
+  with db.tx(False) as c:
+   total=c.execute('SELECT count(*) FROM contact_identities WHERE organization_id=?',(org,)).fetchone()[0]
+   its=rows(c,'SELECT i.*,p.platform_name,p.platform_code,c.manual_name,c.display_name FROM contact_identities i LEFT JOIN platforms p ON p.platform_id=i.platform_id JOIN contacts c ON c.contact_id=i.contact_id WHERE i.organization_id=? ORDER BY i.last_seen_at DESC LIMIT ? OFFSET ?',(org,size,off))
+  return h.sendj(pack(its,total,pno,size)) or True
  if root=='contacts':
   # Parse locally because earlier route branches reuse contact_id/action.
   contact_id=seg[1] if len(seg)>1 else None
@@ -551,6 +653,18 @@ def dispatch(h,m,p,q,a,db):
   # Contact identities are isolated in their domain service; keep the legacy route contract.
   handled=handle_contact_identity(h,m,seg,q,a,db,org)
   if handled:return handled
+  if len(seg)==1 and m=='POST':
+   if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无联系人创建权限',403)
+   b=h.body();name=str(b.get('manualName') or b.get('displayName') or '').strip();phone=str(b.get('manualPhone') or '').strip();wid=str(b.get('workspaceId') or '').strip();sid=str(b.get('sourceId') or '').strip()
+   if not name or not wid or not sid:return bad(h,'INVALID_CONTACT','姓名、工作区和来源均为必填')
+   n=now_ms();cid='ct_'+uuid.uuid4().hex;external='manual_'+uuid.uuid4().hex;typ=str(b.get('identityType') or 'external_id');value=str(b.get('identityValue') or phone or external).strip();canonical=value.lower();iid='cid_'+uuid.uuid4().hex
+   with db.tx() as c:
+    src=one(c,"SELECT source_id,workspace_id,team_id,channel FROM sources WHERE source_id=? AND organization_id=? AND status='active'",(sid,org))
+    if not src or src['workspace_id']!=wid:return bad(h,'SOURCE_SCOPE_MISMATCH','来源不存在或不属于所选工作区',400)
+    c.execute('INSERT INTO contacts(contact_id,workspace_id,source_id,channel,external_contact_id,display_name,manual_name,manual_phone,status,created_at,updated_at,last_seen_at,organization_id,team_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(cid,wid,sid,src['channel'] or 'manual',external,name,name,phone,'active',n,n,n,org,src['team_id']))
+    c.execute('INSERT INTO contact_identities(contact_identity_id,organization_id,workspace_id,contact_id,platform_id,identity_type,identity_value,canonical_value,verification_status,is_primary,first_seen_at,last_seen_at,metadata_json) VALUES(?,?,?,?,NULL,?,?,?,?,1,?,?,?)',(iid,org,wid,cid,typ,value,canonical,'unverified',n,n,dumps({'source':'admin_manual'})))
+    audit_in_tx(c,a,'create','contact',cid,{},b,wid=wid)
+   return h.sendj({'ok':True,'contactId':cid,'identityId':iid},201) or True
   if len(seg)==1 and m=='GET':
    pno,size,off=page(q);search='%'+str(q.get('q') or '')+'%';deleted=q.get('deleted','all')
    cond="c.organization_id=? AND (?='all' OR (?='yes' AND c.deleted_at IS NOT NULL) OR (?='no' AND c.deleted_at IS NULL)) AND (c.display_name LIKE ? OR c.manual_name LIKE ? OR c.observed_phone LIKE ? OR c.manual_phone LIKE ?)";args=(org,deleted,deleted,deleted,search,search,search,search)
@@ -590,8 +704,18 @@ def dispatch(h,m,p,q,a,db):
   if uid:cond+=' AND l.actor_id=?';args.append(uid)
   if eid:cond+=' AND l.entity_id=?';args.append(eid)
   if q.get('days'):cond+=' AND l.created_at>=?';args.append(now_ms()-int(q['days'])*86400*1000)
-  with db.tx(False) as c:total=c.execute(f'SELECT count(*) FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE {cond}',tuple(args)).fetchone()[0];its=rows(c,f'SELECT l.*,u.display_name actor_name FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE {cond} ORDER BY audit_id DESC LIMIT ? OFFSET ?',tuple(args+[size,off]))
-  return h.sendj(pack(its,total,pno,size)) or True
+  with db.tx(False) as c:
+   total=c.execute(f'SELECT count(*) FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE {cond}',tuple(args)).fetchone()[0]
+   its=rows(c,f'SELECT l.*,u.display_name actor_name FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE {cond} ORDER BY audit_id DESC LIMIT ? OFFSET ?',tuple(args+[size,off]))
+   since_ms=now_ms()-30*86400*1000
+   heat=rows(c,f"SELECT cast(strftime('%w',l.created_at/1000,'unixepoch','localtime') as int) weekday,cast(strftime('%H',l.created_at/1000,'unixepoch','localtime') as int) hour,count(*) cnt FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE l.created_at>=? AND u.organization_id=? GROUP BY weekday,hour",(since_ms,org))
+   op_dist=rows(c,f"SELECT operation name,count(*) value FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE l.created_at>=? AND u.organization_id=? GROUP BY operation ORDER BY value DESC",(since_ms,org))
+   type_dist=rows(c,f"SELECT entity_type name,count(*) value FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE l.created_at>=? AND u.organization_id=? GROUP BY entity_type ORDER BY value DESC",(since_ms,org))
+   top_actors=rows(c,f"SELECT u.display_name name,count(*) value FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE l.created_at>=? AND u.organization_id=? GROUP BY l.actor_id ORDER BY value DESC LIMIT 10",(since_ms,org))
+   daily=rows(c,f"SELECT date(l.created_at/1000,'unixepoch','localtime') day,count(*) value FROM audit_logs l JOIN users u ON u.user_id=l.actor_id WHERE l.created_at>=? AND u.organization_id=? GROUP BY day ORDER BY day",(since_ms,org))
+   pack_dict=pack(its,total,pno,size)
+   pack_dict.update({'heatMap':heat,'operationDistribution':op_dist,'entityTypeDistribution':type_dist,'topActors':top_actors,'dailyTrend':daily})
+  return h.sendj(pack_dict) or True
  # recycle bin (deleted contacts)
  if root=='recycle' and m=='GET':
   if not (platform(db,a) or can(db,a,'contact.read')):return bad(h,'FORBIDDEN','无联系人读取权限',403)
@@ -689,8 +813,29 @@ def dispatch(h,m,p,q,a,db):
  if root=='diagnostics' and m=='GET':
   if not (platform(db,a) or can(db,a,'audit.read')):return bad(h,'FORBIDDEN','无诊断权限',403)
   with db.tx(False) as c:
-   tables=[x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")];counts={t:c.execute('SELECT count(*) FROM '+t).fetchone()[0] for t in tables};fk=[dict(x) for x in c.execute('PRAGMA foreign_key_check')]
-  path=str(db.path);return h.sendj({'ok':True,'version':PRODUCT_VERSION,'schemaVersion':SCHEMA_VERSION,'quickCheck':db.quick_check(),'databasePath':path,'databaseBytes':os.path.getsize(path) if os.path.exists(path) else 0,'walExists':os.path.exists(path+'-wal'),'shmExists':os.path.exists(path+'-shm'),'foreignKeyIssues':fk,'tableCounts':counts}) or True
+   tables=[x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+   counts={t:c.execute('SELECT count(*) FROM '+t).fetchone()[0] for t in tables}
+   fk=[dict(x) for x in c.execute('PRAGMA foreign_key_check')]
+   idx_map={}
+   for t in tables:
+    idx_map[t]=c.execute("SELECT count(*) FROM sqlite_master WHERE type='index' AND tbl_name=? AND name NOT LIKE 'sqlite_%'",(t,)).fetchone()[0]
+   page_count=c.execute('PRAGMA page_count').fetchone()[0]
+   page_size=c.execute('PRAGMA page_size').fetchone()[0]
+   freelist=c.execute('PRAGMA freelist_count').fetchone()[0]
+   integrity=c.execute('PRAGMA integrity_check').fetchone()
+   table_meta=[]
+   for t in tables:
+    rows_count=counts[t]
+    try:
+     r=c.execute(f'SELECT SUM(pgsize) FROM dbstat WHERE name=?',(t,)).fetchone()
+     size_bytes=(r[0] if r and r[0] else 0)
+    except Exception:
+     size_bytes=0
+    table_meta.append({'name':t,'rows':rows_count,'indexes':idx_map[t],'size':size_bytes})
+   table_meta.sort(key=lambda x:-x['rows'])
+   t0=now_ms();c.execute('SELECT 1');read_ms=(now_ms()-t0)*1000
+  path=str(db.path)
+  return h.sendj({'ok':True,'version':PRODUCT_VERSION,'schemaVersion':SCHEMA_VERSION,'quickCheck':db.quick_check(),'databasePath':path,'databaseBytes':os.path.getsize(path) if os.path.exists(path) else 0,'walExists':os.path.exists(path+'-wal'),'shmExists':os.path.exists(path+'-shm'),'foreignKeyIssues':fk,'tableCounts':counts,'tableMeta':table_meta,'pageCount':page_count,'pageSize':page_size,'freelistCount':freelist,'integrityCheck':integrity[0] if integrity else '','readLatencyMs':round(read_ms,3),'databaseUsageBytes':(page_count-freelist)*page_size,'databaseFreeBytes':freelist*page_size}) or True
  return bad(h,'NOT_FOUND','管理接口不存在',404)
 
 # V207.2.0-dev 更新说明（2026-09-18）：新增平台、营销活动、触点与客户归因管理 API；写入操作执行组织/工作区隔离、RBAC 与审计。

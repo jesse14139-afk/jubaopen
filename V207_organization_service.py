@@ -83,6 +83,31 @@ def _entity(db,a,org,m,kind,ident,q,b):
     _audit(c,a,'update',kind,ident,old,new,aw[0],b.get('reason'))
    return _ok(item=new)
   except sqlite3.IntegrityError:return _err('CONFLICT','编码或名称已存在',409)
+ if m=='DELETE' and ident:
+  if not _manage(db,a,org):return _err('FORBIDDEN','无组织结构删除权限',403)
+  with db.tx() as c:
+   old=_one(c,f'SELECT * FROM {table} WHERE {key}=? AND organization_id=?',(ident,org))
+   if not old:return _err('NOT_FOUND','对象不存在',404)
+   if kind=='departments':
+    child_count=c.execute(f'SELECT count(*) FROM {table} WHERE {parent_col}=? AND organization_id=?',(ident,org)).fetchone()[0]
+    pos_count=c.execute('SELECT count(*) FROM positions WHERE department_id=?',(ident,)).fetchone()[0]
+    if child_count:return _err('IN_USE','部门仍有下级，无法删除',409,references={'children':child_count})
+    if pos_count:return _err('IN_USE','部门仍被职位引用，无法删除',409,references={'positions':pos_count})
+   elif kind=='business-lines':
+    child_count=c.execute(f'SELECT count(*) FROM {table} WHERE {parent_col}=? AND organization_id=?',(ident,org)).fetchone()[0]
+    rel_count=c.execute('SELECT count(*) FROM workspace_business_lines WHERE business_line_id=?',(ident,)).fetchone()[0]
+    if child_count:return _err('IN_USE','业务线仍有下级，无法删除',409,references={'children':child_count})
+    if rel_count:return _err('IN_USE','业务线仍被工作区关联，无法删除',409,references={'workspaces':rel_count})
+   else:
+    child_count=c.execute(f'SELECT count(*) FROM {table} WHERE {parent_col}=? AND organization_id=?',(ident,org)).fetchone()[0]
+    rel_count=c.execute('SELECT count(*) FROM workspace_markets WHERE market_id=?',(ident,)).fetchone()[0]
+    if child_count:return _err('IN_USE','市场仍有下级，无法删除',409,references={'children':child_count})
+    if rel_count:return _err('IN_USE','市场仍被工作区关联，无法删除',409,references={'workspaces':rel_count})
+   aw=c.execute('SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY workspace_id LIMIT 1',(org,)).fetchone();
+   if not aw:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
+   c.execute(f'DELETE FROM {table} WHERE {key}=?',(ident,))
+   _audit(c,a,'delete',kind,ident,old,{},aw[0],b.get('reason'))
+  return _ok()
  return _err('METHOD_NOT_ALLOWED','不支持的操作',405)
 
 def _workspace_rel(db,a,org,m,wid,kind,q,b):

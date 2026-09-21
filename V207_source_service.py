@@ -103,4 +103,15 @@ def handle(db,a,org,m,ident,q,b):
     new=one(c,'SELECT * FROM sources WHERE source_id=?',(ident,));audit(c,a,'update',ident,old,new,old['workspace_id'],b.get('reason'))
    return {'ok':True,'item':new},200
   except sqlite3.IntegrityError:return err('SOURCE_CONFLICT','来源数据冲突',409)
+ if m=='DELETE' and ident:
+  if not allowed(db,a,org,'source.manage'):return err('FORBIDDEN','无来源删除权限',403)
+  with db.tx() as c:
+   old=one(c,'SELECT * FROM sources WHERE source_id=? AND organization_id=?',(ident,org))
+   if not old:return err('SOURCE_NOT_FOUND','来源不存在',404)
+   rr=refs(c,ident)
+   if any(rr.values()):return err('SOURCE_IN_USE','来源仍被业务对象引用，无法删除',409,references=rr)
+   c.execute('DELETE FROM source_devices WHERE source_id=?',(ident,))
+   c.execute('DELETE FROM sources WHERE source_id=?',(ident,))
+   audit(c,a,'delete',ident,old,{},old['workspace_id'],b.get('reason'))
+  return {'ok':True},200
  return err('METHOD_NOT_ALLOWED','来源接口不支持该方法',405)

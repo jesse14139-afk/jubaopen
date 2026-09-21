@@ -52,7 +52,7 @@ def handle(h,m,seg,q,a,db,org):
    except LookupError:return bad(h,'CONTACT_NOT_FOUND','联系人不存在',404)
    its=rows(c,'SELECT i.*,p.platform_name,p.platform_code FROM contact_identities i LEFT JOIN platforms p ON p.platform_id=i.platform_id WHERE i.organization_id=? AND i.workspace_id=? AND i.contact_id=? ORDER BY i.is_primary DESC,i.first_seen_at,i.contact_identity_id',(org,scope['workspace_id'],contact_id))
   return h.sendj({'ok':True,'items':its}) or True
- if m=='POST':
+ if m=='POST' and identity_id!='merge':
   if identity_id:return bad(h,'METHOD_NOT_ALLOWED','身份详情不支持 POST',405)
   if not allowed(db,a,'contact.identity.manage',org):return bad(h,'FORBIDDEN','无联系人身份管理权限',403)
   b=h.body();value=str(b.get('identityValue') or b.get('identity') or '').strip();status=str(b.get('verificationStatus') or 'unverified');metadata=b.get('metadata') if 'metadata' in b else {}

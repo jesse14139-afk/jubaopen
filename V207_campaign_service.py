@@ -87,4 +87,14 @@ def handle(db,a,org,m,ident,q,b):
    return {'ok':True,'item':new},200
   except ValueError:return err('INVALID_CAMPAIGN_JSON','metadata 必须是 JSON 对象，且时间必须合法')
   except (TypeError,sqlite3.IntegrityError):return err('CAMPAIGN_CONFLICT','活动数据冲突',409)
+ if m=='DELETE' and ident:
+  if not allowed(db,a,org,'campaign.manage'):return err('FORBIDDEN','无活动删除权限',403)
+  with db.tx() as c:
+   old=one(c,'SELECT * FROM campaigns WHERE campaign_id=? AND organization_id=?',(ident,org))
+   if not old:return err('CAMPAIGN_NOT_FOUND','活动不存在',404)
+   rr=refs(c,ident)
+   if any(rr.values()):return err('CAMPAIGN_IN_USE','活动仍被业务对象引用，无法删除',409,references=rr)
+   c.execute('DELETE FROM campaigns WHERE campaign_id=?',(ident,))
+   audit(c,a,'delete',ident,old,{},old['workspace_id'],b.get('reason'))
+  return {'ok':True},200
  return err('METHOD_NOT_ALLOWED','活动接口不支持该方法',405)

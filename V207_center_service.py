@@ -11,7 +11,7 @@ from V207_security import login,actor_from_token,can,canonical,password_strong,g
 from V207_admin_api import dispatch as admin_dispatch
 from V207_core import session_context,resolve_account,register_device,rename_device,graph,ok,err
 from V206_core_compat import (list_contacts,get_contact,changes,apply_event,delete_preview,get_workspace,update_workspace,list_sources,list_tags,save_tag,delete_tag,list_field_definitions,save_field_definition,delete_field_definition,admin_contact_lifecycle,admin_logs,admin_schema)
-VERSION=PRODUCT_VERSION;DB=None;ADMIN=open(os.path.join(ROOT,'admin_v207.html'),'rb').read()
+VERSION=PRODUCT_VERSION;DB=None;ADMIN=open(os.path.join(ROOT,'admin_v207.html'),'rb').read();ECHARTS=open(os.path.join(ROOT,'echarts.min.js'),'rb').read()
 READ_PERM={'/api/v207/contacts':'contact.read','/api/v207/changes':'contact.read','/api/v207/admin/graph':'organization.read'}
 class H(BaseHTTPRequestHandler):
  server_version='Jubaopen/'+PRODUCT_VERSION
@@ -60,6 +60,10 @@ class H(BaseHTTPRequestHandler):
  def route(self,m):
   u=urlparse(self.path);p=u.path;q={k:v[-1] for k,v in parse_qs(u.query).items()};wid=str(q.get('workspace_id') or '').strip()
   if p in ('/health','/api/health'):return self.sendj({'ok':True,'version':VERSION,'schemaVersion':SCHEMA_VERSION,'database':DB.quick_check()})
+  if p in ('/favicon.ico','/.well-known/appspecific/com.chrome.devtools.json') and m=='GET':
+   self.send_response(204);self.send_header('Cache-Control','public, max-age=86400');self.security_headers();self.end_headers();return
+  if p in ('/echarts.min.js','/admin/echarts.min.js') and m=='GET':
+   self.send_response(200);self.send_header('Content-Type','application/javascript; charset=utf-8');self.send_header('Content-Length',str(len(ECHARTS)));self.send_header('X-Content-Type-Options','nosniff');self.security_headers();self.end_headers();return self.wfile.write(ECHARTS)
   if p in ('/admin','/admin/'):
    self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(ADMIN)));self.security_headers();self.end_headers();return self.wfile.write(ADMIN)
   if p=='/api/v207/auth/login' and m=='POST':

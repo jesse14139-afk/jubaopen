@@ -14,17 +14,17 @@
 .mtx .mtx-head{cursor:pointer;background:var(--hover,rgba(0,0,0,.05))}
 .mtx-group.fold tr:not(.mtx-head){display:none}
 .mtx-bar{position:sticky;bottom:12px;display:flex;align-items:center;gap:10px;background:var(--panel,#1e2430);border:1px solid var(--border);border-radius:10px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,.25);margin-top:12px}
-</style><script src="echarts.min.js"></script></script>
+</style><script src="echarts.min.js"></script>
 </head><body>
 <section id="login" class="login"><form class="login-card" id="loginForm"><div class="brand"><div class="logo">聚</div><div><h2>聚宝盆企业管理中心</h2><div class="sub">V207.7.0-dev · Schema 210</div></div></div><div class="field"><label>企业 ID</label><input id="loginOrg" value="jubaopen" placeholder="请输入企业 ID" autocomplete="organization"></div><div class="field"><label>登录名</label><input id="loginName" value="admin" autocomplete="username"></div><div class="field"><label>密码</label><input id="loginPass" type="password" autocomplete="current-password"></div><div id="loginError" class="error"></div><button class="btn" type="submit">安全登录</button><p class="sub" style="text-align:center">服务端 RBAC · 企业隔离 · 操作审计</p></form></section>
 <section id="app" class="app hide"><aside class="sidebar" id="side"><div class="brand"><div class="logo">聚</div><div><b>聚宝盆</b><small style="display:block;color:var(--muted)">企业管理中心</small></div></div><nav class="nav"><div class="nav-title">总览</div><button data-page="dashboard">◈ 业务总览</button><button data-page="graph">⌘ 全景关系图</button><div class="nav-title">组织与权限</div><button data-page="organizations">▣ 企业管理</button><button data-page="structure">▦ 组织架构</button><button data-page="positions">♜ 职位管理</button><button data-page="teams">♚ 团队管理</button><button data-page="users">♙ 用户管理</button><button data-page="roles">⚿ 角色与权限</button><button data-page="workspaces">▤ 工作区</button>
-<button data-page="rbac-matrix">⊞ 权限矩阵</button><div class="nav-title">渠道中心</div><button data-page="platforms">◎ 平台</button><button data-page="accounts">◉ 渠道账号授权</button><div class="nav-title">来源与营销</div><button data-page="sources">◆ 来源节点</button><button data-page="campaigns">◇ 营销活动</button><button data-page="journey">⚡ 客户旅程</button><div class="nav-title">客户中心</div><button data-page="contacts">♧ 联系人</button><button data-page="contact-identities">♙ 外部身份</button><button data-page="recycle">♻ 回收站</button><button data-page="config">⚙ 标签与字段</button><div class="nav-title">系统运维</div><button data-page="devices">▧ 设备管理</button><button data-page="sessions">◐ 用户会话</button><button data-page="audit">☷ 审计日志</button><button data-page="diagnostics">♡ 系统诊断</button><button data-page="database">▦ 数据库结构</button><button data-page="migrations">⇧ 迁移记录</button></nav></aside><main class="main"><header class="top"><button class="btn secondary mobile" id="menu">☰</button><select id="orgSelect" class="select"></select><span id="health" class="badge">检查服务…</span><span class="grow"></span><button class="btn secondary" id="theme">◐ 主题</button><div class="avatar" id="avatar">管</div><div class="usertext"><b id="who"></b><small id="scope" style="display:block;color:var(--muted)"></small></div><button class="btn secondary" id="logout">退出</button></header><div class="content" id="content"></div></main></section>
+<button data-page="rbac-matrix">⊞ 权限矩阵</button><div class="nav-title">渠道中心</div><button data-page="platforms">◎ 平台</button><button data-page="accounts">◉ 渠道账号授权</button><div class="nav-title">来源与营销</div><button data-page="sources">◆ 来源节点</button><button data-page="campaigns">◇ 营销活动</button><button data-page="source-paths">⚙ 来源拓扑</button><button data-page="journey">⚡ 客户旅程</button><div class="nav-title">客户中心</div><button data-page="contacts">♧ 联系人</button><button data-page="contact-identities">♙ 外部身份</button><button data-page="touchpoints">⚡ 触点事件</button><button data-page="attributions">∑ 归因贡献</button><button data-page="recycle">♻ 回收站</button><button data-page="config">⚙ 标签与字段</button><div class="nav-title">系统运维</div><button data-page="devices">▧ 设备管理</button><button data-page="sessions">◐ 用户会话</button><button data-page="audit">☷ 审计日志</button><button data-page="diagnostics">♡ 系统诊断</button><button data-page="database">▦ 数据库结构</button><button data-page="migrations">⇧ 迁移记录</button></nav></aside><main class="main"><header class="top"><button class="btn secondary mobile" id="menu">☰</button><select id="orgSelect" class="select"></select><span id="health" class="badge">检查服务…</span><span class="grow"></span><button class="btn secondary" id="theme">◐ 主题</button><div class="avatar" id="avatar">管</div><div class="usertext"><b id="who"></b><small id="scope" style="display:block;color:var(--muted)"></small></div><button class="btn secondary" id="logout">退出</button></header><div class="content" id="content"></div></main></section>
 
 <div id="passwordModal" class="password-modal hide"><div class="password-card"><div class="brand"><div class="logo">聚</div><div><h2>首次登录，请修改密码</h2><div class="sub">为了保护企业数据，请先设置新的管理员密码</div></div></div><form id="passwordForm"><div class="field"><label>当前密码</label><input id="oldPassword" type="password" autocomplete="current-password" required></div><div class="field"><label>新密码</label><input id="newPassword" type="password" autocomplete="new-password" minlength="12" required></div><div class="field"><label>确认新密码</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" required></div><div id="passwordError" class="error"></div><button class="btn" type="submit">保存新密码</button></form></div></div>
 <div id="onboardingModal" class="password-modal hide"><div class="password-card"><div class="brand"><div class="logo">聚</div><div><h2>完成首次设置</h2><div class="sub">请设置企业与组织的显示名称，完成后即可进入管理中心</div></div></div><form id="onboardingForm"><div class="field"><label>企业名称</label><input id="onboardingOrganization" required maxlength="100"></div><div class="field"><label>业务空间名称</label><input id="onboardingWorkspace" required maxlength="100"></div><div class="field"><label>默认团队名称</label><input id="onboardingTeam" required maxlength="100"></div><div class="field"><label>管理员显示名称</label><input id="onboardingDisplayName" required maxlength="100"></div><div id="onboardingError" class="error"></div><button class="btn" type="submit">完成设置并进入系统</button></form></div></div>
 <div id="modal" class="modal-bg hide"><div class="modal"><div class="modal-head"><h3 id="modalTitle"></h3><span class="grow"></span><button class="btn secondary small" onclick="closeModal()">✕</button></div><form id="modalForm"><div id="modalBody"></div><div class="modal-actions"><button type="button" class="btn secondary" onclick="closeModal()">取消</button><button class="btn" type="submit">确认保存</button></div></form></div></div><div id="toast" class="toast hide"></div>
 <script>
-const S={token:sessionStorage.getItem('v207_token')||'',profile:null,org:'',page:'dashboard',cache:{},loadVersion:0};
+const S={token:sessionStorage.getItem('v207_token')||'',profile:null,org:'',page:'dashboard',cache:{},loadVersion:0,tableState:{},tableRefresh:{}};
 function staleContextError(){let e=Error('页面上下文已变化');e.code='STALE_CONTEXT';return e}const $=s=>document.querySelector(s), esc=v=>String(v??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 async function api(path,opt={}){let method=opt.method||'GET',requestVersion=S.loadVersion,guard=method==='GET'&&opt.contextGuard!==false,r=await fetch(path,{method,headers:{'Content-Type':'application/json',...(S.token?{Authorization:'Bearer '+S.token}:{}),...(opt.headers||{})},body:opt.body?JSON.stringify(opt.body):undefined});let d=await r.json().catch(()=>({ok:false,message:'响应格式错误'}));if(r.status===401&&S.token){sessionStorage.removeItem('v207_token');location.reload()}if(guard&&requestVersion!==S.loadVersion)throw staleContextError();if(!r.ok||d.ok===false)throw Error(d.message||d.code||('HTTP '+r.status));return d}
 function toast(x,bad=false){let e=$('#toast');e.textContent=x;e.style.border='1px solid '+(bad?'var(--bad)':'var(--ok)');e.classList.remove('hide');setTimeout(()=>e.classList.add('hide'),2800)}function fmt(t){return t?new Date(Number(t)).toLocaleString():'—'}function status(v){return `<span class="status ${esc(v)}">${v==='active'?'正常':v==='disabled'?'已停用':esc(v||'未知')}</span>`}function qp(){return '?organization_id='+encodeURIComponent(S.org)}
@@ -35,12 +35,12 @@ function hidePasswordModal(){$('#passwordModal').classList.add('hide')}
 function showOnboardingModal(pd){$('#login').classList.add('hide');$('#app').classList.add('hide');$('#passwordModal').classList.add('hide');$('#onboardingError').textContent='';$('#onboardingOrganization').value=pd?.organization?.name||'';$('#onboardingWorkspace').value=pd?.workspace?.name||'';$('#onboardingTeam').value=pd?.team?.name||'';$('#onboardingDisplayName').value=pd?.user?.display_name||'';$('#onboardingModal').classList.remove('hide');$('#onboardingOrganization').focus()}
 function hideOnboardingModal(){$('#onboardingModal').classList.add('hide')}
 async function boot(){if(!S.token)return;try{const pd=await api('/api/v207/admin/profile');S.profile=pd;if(passwordChangeRequired(pd)){showPasswordModal();return}if(pd.onboardingRequired){showOnboardingModal(pd);return}hideOnboardingModal();$('#who').textContent=pd.user.display_name;$('#avatar').textContent=pd.user.display_name.slice(0,1);$('#scope').textContent=pd.platformAdmin?'平台超级管理员':'企业成员';const od=await api('/api/v207/admin/organizations');S.cache.organizations=od.items||[];$('#orgSelect').innerHTML=S.cache.organizations.map(o=>`<option value="${esc(o.organization_id)}">${esc(o.name)} · ${esc(o.organization_id)}</option>`).join('');S.org=pd.user.organization_id;$('#orgSelect').value=S.org;$('#login').classList.add('hide');$('#app').classList.remove('hide');await api('/health');$('#health').textContent='● 服务正常';navigate('dashboard')}catch(e){console.error('boot failed:',e);if(e.message&&(e.message.includes('403')||e.message.includes('Forbidden')||e.message.includes('首次登录'))){showPasswordModal();$('#passwordError').textContent='请先完成首次登录密码修改';return}sessionStorage.removeItem('v207_token');S.token='';$('#loginError').textContent=e.message||'登录失败'}}
-$('#loginForm').onsubmit=async e=>{e.preventDefault();$('#loginError').textContent='';try{const d=await api('/api/v207/auth/login',{method:'POST',body:{organizationId:$('#loginOrg').value.trim(),loginName:$('#loginName').value.trim(),password:$('#loginPass').value}});if(!d.accessToken)throw Error('登录响应缺少访问令牌');S.token=d.accessToken;sessionStorage.setItem('v207_token',S.token);if(passwordChangeRequired(d)){showPasswordModal();return}await boot()}catch(x){$('#loginError').textContent=x.message||'登录失败'}};
+$('#loginForm').onsubmit=async e=>{e.preventDefault();const error=$('#loginError'),button=e.currentTarget.querySelector('button[type=submit]');error.textContent='';const organizationId=$('#loginOrg').value.trim(),loginName=$('#loginName').value.trim(),password=$('#loginPass').value;if(!organizationId||!loginName||!password){error.textContent='请输入企业 ID、登录名和密码';return}const oldText=button?.textContent;if(button){button.disabled=true;button.textContent='正在安全登录…'}try{const d=await api('/api/v207/auth/login',{method:'POST',body:{organizationId,loginName,password}});S.token=d.accessToken;sessionStorage.setItem('v207_token',S.token);await boot()}catch(x){const messages={INVALID_CREDENTIALS:'企业 ID、登录名或密码错误',ACCOUNT_LOCKED:'登录失败次数过多，账号已临时锁定',ORGANIZATION_NOT_FOUND:'企业不存在',INTERNAL_ERROR:'服务器内部错误，请查看服务日志'};error.textContent=messages[x.code]||x.message||'登录失败，请检查服务是否正常运行'}finally{if(button){button.disabled=false;button.textContent=oldText||'安全登录'}}};
 $('#passwordForm').onsubmit=async e=>{e.preventDefault();const error=$('#passwordError'),oldPassword=$('#oldPassword').value,newPassword=$('#newPassword').value,confirmPassword=$('#confirmPassword').value;error.textContent='';if(newPassword!==confirmPassword){error.textContent='两次输入的新密码不一致';return}if(newPassword.length<12||!/[A-Za-z]/.test(newPassword)||!/[0-9]/.test(newPassword)){error.textContent='新密码至少 12 位，并且必须包含字母和数字';return}if(oldPassword===newPassword){error.textContent='新密码不能与当前密码相同';return}try{await api('/api/v207/admin/change-password',{method:'POST',body:{oldPassword,currentPassword:oldPassword,newPassword,confirmPassword}});hidePasswordModal();$('#passwordForm').reset();await boot()}catch(x){error.textContent=x.message||'密码修改失败'}};
 $('#onboardingForm').onsubmit=async e=>{e.preventDefault();const error=$('#onboardingError');error.textContent='';const body={organizationName:$('#onboardingOrganization').value.trim(),workspaceName:$('#onboardingWorkspace').value.trim(),teamName:$('#onboardingTeam').value.trim(),displayName:$('#onboardingDisplayName').value.trim()};if(Object.values(body).some(x=>!x)){error.textContent='所有名称均不能为空';return}try{await api('/api/v207/admin/onboarding',{method:'POST',body});hideOnboardingModal();S.cache={};await boot()}catch(x){error.textContent=x.message||'首次设置失败'}};
 $('#logout').onclick=async()=>{try{await api('/api/v207/auth/logout',{method:'POST'})}catch{}sessionStorage.clear();location.reload()};$('#theme').onclick=()=>{let t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;localStorage.v207_theme=t};document.documentElement.dataset.theme=localStorage.v207_theme||'dark';$('#menu').onclick=()=>$('#side').classList.toggle('open');$('#orgSelect').onchange=e=>{S.org=e.target.value;let organizations=S.cache.organizations;S.cache=organizations?{organizations}:{};navigate(S.page)};document.querySelectorAll('[data-page]').forEach(x=>x.onclick=()=>navigate(x.dataset.page));
 function navigate(p){S.page=p;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$('#side').classList.remove('open');loadPage()}
-const PAGE_ALIAS={'rbac-matrix':'rbacMatrix','contact-identities':'contactIdentities'};
+const PAGE_ALIAS={'rbac-matrix':'rbacMatrix','contact-identities':'contactIdentities','source-paths':'sourcePaths','campaign-kanban':'campaignKanban'};
 async function loadPage(){let version=++S.loadVersion,page=PAGE_ALIAS[S.page]||S.page,org=S.org,c=$('#content');c.innerHTML='<div class="panel empty">正在安全加载…</div>';try{await pages[page]();if(version!==S.loadVersion||page!==S.page||org!==S.org)return}catch(e){if(e.code==='STALE_CONTEXT'||version!==S.loadVersion||page!==S.page||org!==S.org)return;c.innerHTML=head('加载失败','接口拒绝或数据异常')+`<div class="panel error">${esc(e.message)}</div>`}}
 const editBtn=(kind,r,id,name)=>`<button class="btn secondary small" onclick='editResource(${JSON.stringify(kind)},${JSON.stringify(r)},${JSON.stringify(id)},${JSON.stringify(name)})'>编辑</button>`;
 async function editResource(kind,r,id,name){openModal('编辑'+name,[{name:'name',label:'显示名称',value:r.name||r.display_name||r.source_name||r.admin_device_name||r.manual_name},{name:'status',label:'状态',type:'select',value:r.status,options:[{value:'active',label:'正常'},{value:'disabled',label:'停用'}]},{name:'reason',label:'操作原因'}],async o=>{let body={status:o.status,reason:o.reason};if(kind==='users')body.displayName=o.name;else if(kind==='accounts')body.displayName=o.name;else if(kind==='devices')body.deviceName=o.name;else body.name=o.name;await api(`/api/v207/admin/${kind}/${encodeURIComponent(id)}${qp()}`,{method:'PATCH',body})})}
@@ -68,7 +68,7 @@ function copyToClipboard(text){
  }
 }
 function srcRender(items){
- let rows=items.map(r=>`<tr><td><a href="javascript:void(0)" onclick="srcDetail('${esc(r.source_id)}')">${esc(r.source_name)}</a></td><td>${esc(r.channel)}</td><td>${esc(r.account_identity||'—')}</td><td>${esc(r.team_name||'—')}</td><td>${esc(r.workspace_name||'—')}</td><td><select class="select" style="width:auto" onchange="srcStatus('${esc(r.source_id)}',this.value)"><option value="active" ${r.status==='active'?'selected':''}>active</option><option value="disabled" ${r.status==='disabled'?'selected':''}>disabled</option></select></td><td>${fmt(r.last_seen_at)}</td><td><button class="btn secondary small" onclick="srcDisable('${esc(r.source_id)}','${esc(r.source_name)}')">停用</button></td></tr>`).join('');
+ let rows=items.map(r=>`<tr><td><a href="javascript:void(0)" onclick="srcDetail('${esc(r.source_id)}')">${esc(r.source_name)}</a></td><td>${esc(r.channel)}</td><td>${esc(r.account_identity||'—')}</td><td>${esc(r.team_name||'—')}</td><td>${esc(r.workspace_name||'—')}</td><td><select class="select" style="width:auto" onchange="srcStatus('${esc(r.source_id)}',this.value)"><option value="active" ${r.status==='active'?'selected':''}>active</option><option value="disabled" ${r.status==='disabled'?'selected':''}>disabled</option></select></td><td>${fmt(r.last_seen_at)}</td><td><button class="btn secondary small" onclick="editSource('${esc(r.source_id)}')">编辑</button> <button class="btn danger small" onclick="deleteSource('${esc(r.source_id)}','${esc(r.source_name)}')">删除</button></td></tr>`).join('');
  $('#srcTable').innerHTML=`<div class="panel"><div class="table-wrap"><table><thead><tr><th>来源</th><th>渠道</th><th>账号身份</th><th>团队</th><th>工作区</th><th>状态</th><th>最后活动</th><th>操作</th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="sub">无匹配数据</td></tr>'}</tbody></table></div></div>`;
 }
 function srcFilter(){
@@ -83,6 +83,36 @@ async function srcDisable(sid,name){
  if(!confirm(`确认停用来源「${name}」？停用后不再接收新数据，可随时重新启用。`))return;
  try{await api('/api/v207/admin/sources/'+encodeURIComponent(sid)+qp(),{method:'PATCH',body:{status:'disabled'}});toast('已停用，审计已记录');loadPage()}
  catch(e){let m=String(e.message||'');if(m.includes('SOURCE_IN_USE')||m.includes('引用'))toast('停用失败：来源仍被业务对象引用（触点/归因/联系人/链接/子来源），请先处理相关对象',1);else toast('停用失败：'+m,1)}
+}
+function createSource(){
+ let accs=S.cache.srcAccounts||[],ws=(S.cache.workspaces||[]);
+ let chanOpts=(S.cache.sources||[]).reduce((m,r)=>{if(r.channel&&!m[r.channel])m[r.channel]=r.channel;return m},{});
+ let wsOpts=ws.length?ws.map(w=>({value:w.workspace_id,label:w.name})):[];
+ let accOpts=accs.map(a=>({value:a.channel_account_id,label:a.display_name+' · '+esc(a.channel)}));
+ openModal('新建来源节点',[
+  {name:'sourceName',label:'来源名称',required:true,placeholder:'例：华东WhatsApp客服号'},
+  {name:'channel',label:'渠道代码',required:true,placeholder:'例：whatsapp / instagram'},
+  {name:'accountIdentity',label:'账号身份（必填）',required:true,placeholder:'例：8613800138000'},
+  {name:'workspaceId',label:'所属工作区',type:'select',options:wsOpts.length?wsOpts:[{value:'',label:'无可用工作区，请先创建'}]},
+  {name:'channelAccountId',label:'关联渠道账号（可选）',type:'select',options:[{value:'',label:'不关联'},...accOpts]},
+  {name:'sourceType',label:'来源类型',type:'select',value:'unknown',options:[
+   {value:'unknown',label:'未知'},{value:'organic',label:'自然流量'},{value:'paid',label:'付费流量'},
+   {value:'referral',label:'推荐来源'},{value:'direct',label:'直接访问'},{value:'social',label:'社交媒体'},
+   {value:'messaging',label:'即时通讯'},{value:'campaign',label:'营销活动'},{value:'website',label:'网站'},{value:'offline',label:'线下'}]},
+  {name:'direction',label:'流量方向',type:'select',value:'inbound',options:[
+   {value:'inbound',label:'Inbound（入站）'},{value:'outbound',label:'Outbound（出站）'},
+   {value:'bidirectional',label:'双向'},{value:'unknown',label:'未知'}]},
+  {name:'status',label:'状态',type:'select',value:'active',options:[
+   {value:'active',label:'活跃'},{value:'disabled',label:'停用'}]}
+ ],o=>api('/api/v207/admin/sources'+qp(),{method:'POST',body:o}))
+}
+function editSource(id){
+ let r=(S.cache.sources||[]).find(x=>x.source_id===id);if(!r)return;
+ openModal('编辑来源节点',[
+  {name:'sourceName',label:'来源名称',value:r.source_name,required:true},
+  {name:'status',label:'状态',type:'select',value:r.status,options:[{value:'active',label:'活跃'},{value:'disabled',label:'停用'}]},
+  {name:'reason',label:'操作原因',placeholder:'请说明修改原因'}
+ ],o=>api('/api/v207/admin/sources/'+encodeURIComponent(id)+qp(),{method:'PATCH',body:{name:o.sourceName,status:o.status,reason:o.reason}}))
 }
 async function srcDetail(sid){
  let r=(S.cache.sources||[]).find(x=>x.source_id===sid);if(!r)return;
@@ -128,17 +158,105 @@ async function chHealthLoad(){
  }catch(e){const el=document.getElementById('chHealth');if(el)el.innerHTML='<div class="empty">加载失败</div>';}
 }
 const pages={
-async dashboard(){let d=await api('/api/v207/admin/dashboard'+qp()),cs=d.counts;const health=d.health||{};const quickActions=`<div class="panel"><div class="panel-head"><h3>快捷操作</h3></div><div class="grid2" style="grid-template-columns:repeat(4,1fr);gap:10px"><button class="btn secondary" onclick="navigate('teams');setTimeout(()=>createTeam(),200)">新建团队</button><button class="btn secondary" onclick="navigate('users');setTimeout(()=>createUser(),200)">新建用户</button><button class="btn secondary" onclick="navigate('accounts');setTimeout(()=>createAccount(),200)">绑定账号</button><button class="btn secondary" onclick="navigate('config')">管理标签</button></div></div>`;const healthCard=`<div class="panel"><div class="panel-head"><h3>系统健康</h3><span class="grow"></span><button class="btn secondary small" onclick="loadPage()">刷新</button></div><div class="kv"><span>数据库状态</span><b style="color:var(--ok)">${esc(health.dbCheck||'ok')}</b></div><div class="kv"><span>外键完整性</span><b>${health.fkIssues||0} 个异常</b></div><div class="kv"><span>服务版本</span><b>${esc(health.version||'207.7.0-dev')}</b></div><div class="kv"><span>最后检查时间</span><b>${fmt(Date.now())}</b></div></div>`;$('#content').innerHTML=head('企业仪表盘','业务、安全与资源运行总览')+`<div class="cards">${Object.entries({teams:'团队',users:'用户',workspaces:'工作区',accounts:'渠道账号',sources:'来源',devices:'设备',contacts:'联系人',activeSessions:'活跃会话'}).map(([k,n])=>`<div class="card"><span>${n}</span><b>${cs[k]||0}</b></div>`).join('')}</div><div class="panel"><div class="panel-head"><h3>7日操作趋势</h3></div><div id="trendChart" style="width:100%;height:300px"></div></div>${quickActions}<div class="grid2">${healthCard}<div class="panel"><div class="panel-head"><h3>渠道账号分布</h3></div>${bars(d.channelDistribution)}</div></div></div><div class="panel"><div class="panel-head"><h3>渠道健康度总览</h3><span class="grow"></span><button class="btn secondary small" onclick="chHealthLoad()">刷新</button></div><div id="chHealth"><div class="empty">加载中…</div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>设备状态</h3></div>${bars(d.deviceStatus)}</div><div class="panel"><div class="panel-head"><h3>联系人趋势</h3><span class="grow">最近 7 天</span></div><div class="empty">图表开发中</div></div></div><div class="panel"><div class="panel-head"><h3>最近审计操作</h3><span class="grow"></span><button class="btn secondary small" onclick="navigate('audit')">查看全部</button></div>${table([['时间',r=>fmt(r.created_at)],['操作者','actor_name'],['操作','operation'],['对象','entity_type'],['ID','entity_id']],d.recentAudit)}</div>`;chHealthLoad()},
-async organizations(){let d=await api('/api/v207/admin/organizations');$('#content').innerHTML=head('企业管理','平台超级管理员可跨企业管理',S.profile.platformAdmin?'<button class="btn" onclick="createOrg()">＋ 新建企业</button>':'')+table([['企业名称','name'],['企业 ID','organization_id'],['状态','status',r=>status(r.status)],['创建时间',r=>fmt(r.created_at)]],d.items,S.profile.platformAdmin?r=>editBtn('organizations',r,r.organization_id,'企业'):'')},
-async teams(){let d=await api('/api/v207/admin/teams'+qp());S.cache.teams=d.items;$('#content').innerHTML=head('团队管理','团队、工作区和成员资源边界','<button class="btn" onclick="createTeam()">＋ 新建团队</button>')+table([['团队','name'],['团队 ID','team_id'],['工作区','workspace_name'],['成员','member_count'],['账号','account_count'],['状态','status',r=>status(r.status)]],d.items,r=>editBtn('teams',r,r.team_id,'团队')+` <button class="btn secondary small" onclick="members('${r.team_id}','${esc(r.name)}')">成员</button>`)},
-async users(){let d=await api('/api/v207/admin/users'+qp());S.cache.users=d.items;if(!S.cache.teams)S.cache.teams=(await api('/api/v207/admin/teams'+qp())).items;$('#content').innerHTML=head('用户管理','用户状态、角色、团队和会话安全','<button class="btn" onclick="createUser()">＋ 新建用户</button>')+table([['显示名','display_name'],['登录名','login_name'],['团队','teams'],['角色','roles'],['状态','status',r=>status(r.status)],['创建时间',r=>fmt(r.created_at)]],d.items,r=>editBtn('users',r,r.user_id,'用户')+` <button class="btn secondary small" onclick="permSources('${r.user_id}','${esc(r.display_name||r.login_name||'')}')">权限来源</button> <button class="btn secondary small" onclick="resetPwd('${r.user_id}')">重置密码</button>`)},
-async positions(){let [d,deps]=await Promise.all([api('/api/v207/admin/positions'+qp()),api('/api/v207/admin/departments'+qp())]);S.cache.positions=d.items||[];S.cache.departments=deps.items||[];$('#content').innerHTML=head('职位管理','企业职位、所属部门、任职人数与状态管理','<button class="btn" onclick="createPosition()">＋ 新建职位</button>')+table([['职位名称','name'],['职位代码','code'],['所属部门','department_name',r=>r.department_name||'—'],['任职人数','user_count'],['排序','sort_order'],['状态','status',r=>status(r.status)]],d.items||[],r=>`<button class="btn secondary small" onclick='editPosition(${JSON.stringify(r)})'>编辑</button>`)},
+async dashboard(){let d=await api('/api/v207/admin/dashboard'+qp());S.cache.dashboardData=d;let cs=d.counts||{};let health=d.health||{};let quickActions=`<div class="panel"><div class="panel-head"><h3>快捷操作</h3></div><div class="grid2" style="grid-template-columns:repeat(4,1fr);gap:10px"><button class="btn secondary" onclick="navigate('teams');setTimeout(()=>createTeam(),200)">新建团队</button><button class="btn secondary" onclick="navigate('users');setTimeout(()=>createUser(),200)">新建用户</button><button class="btn secondary" onclick="navigate('accounts');setTimeout(()=>createAccount(),200)">绑定账号</button><button class="btn secondary" onclick="navigate('config')">管理标签</button></div></div>`;let healthCard=`<div class="panel"><div class="panel-head"><h3>系统健康</h3><span class="grow"></span><button class="btn secondary small" onclick="loadPage()">刷新</button></div><div class="kv"><span>数据库状态</span><b style="color:var(--ok)">${esc(health.dbCheck||'ok')}</b></div><div class="kv"><span>外键完整性</span><b>${health.fkIssues||0} 个异常</b></div><div class="kv"><span>服务版本</span><b>${esc(health.version||'207.7.0-dev')}</b></div><div class="kv"><span>最后检查时间</span><b>${fmt(Date.now())}</b></div></div>`;$('#content').innerHTML=head('企业仪表盘','业务、安全与资源运行总览 · 多维度可视化','<button class="btn secondary" onclick="renderDashboardCharts()">📊 刷新图表</button>')+`<div class="cards">${Object.entries({teams:'团队',users:'用户',workspaces:'工作区',accounts:'渠道账号',sources:'来源',devices:'设备',contacts:'联系人',activeSessions:'活跃会话'}).map(([k,n])=>`<div class="card"><span>${n}</span><b>${cs[k]||0}</b></div>`).join('')}</div><div class="grid2"><div class="panel"><div class="panel-head"><h3>7 日操作趋势</h3><span class="grow">审计日志</span></div><div id="trendChart" style="width:100%;height:260px"></div></div><div class="panel"><div class="panel-head"><h3>14 日联系人增长</h3><span class="grow">新增</span></div><div id="contactTrendChart" style="width:100%;height:260px"></div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>渠道账号分布</h3></div><div id="channelPieChart" style="width:100%;height:280px"></div></div><div class="panel"><div class="panel-head"><h3>团队成员 Top 8</h3></div><div id="teamDistChart" style="width:100%;height:280px"></div></div></div><div class="panel"><div class="panel-head"><h3>活跃来源类型分布</h3></div><div id="sourceTypeChart" style="width:100%;height:260px"></div></div>${quickActions}<div class="grid2">${healthCard}<div class="panel"><div class="panel-head"><h3>渠道健康度总览</h3><span class="grow"></span><button class="btn secondary small" onclick="chHealthLoad()">刷新</button></div><div id="chHealth"><div class="empty">加载中…</div></div></div></div><div class="panel"><div class="panel-head"><h3>设备状态</h3></div>${bars(d.deviceStatus)}</div><div class="panel"><div class="panel-head"><h3>最近审计操作</h3><span class="grow"></span><button class="btn secondary small" onclick="navigate('audit')">查看全部</button></div>${table([['时间',r=>fmt(r.created_at)],['操作者','actor_name'],['操作','operation'],['对象','entity_type'],['ID','entity_id']],d.recentAudit)}</div>`;chHealthLoad();renderDashboardCharts()},
+async organizations(){let d=await api('/api/v207/admin/organizations');$('#content').innerHTML=head('企业管理','平台超级管理员可跨企业管理',S.profile.platformAdmin?'<button class="btn" onclick="createOrg()">＋ 新建企业</button>':'')+table([['企业名称','name'],['企业 ID','organization_id'],['状态','status',r=>status(r.status)],['创建时间',r=>fmt(r.created_at)]],d.items,S.profile.platformAdmin?r=>editBtn('organizations',r,r.organization_id,'企业')+` <button class="btn danger small" onclick="deleteOrg('${r.organization_id}','${esc(r.name)}')">删除</button>`:'')},
+async teams(){let [d,wd]=await Promise.all([api('/api/v207/admin/teams'+qp()),api('/api/v207/admin/workspaces'+qp())]);S.cache.teams=d.items;S.cache.workspaces=wd.items||[];
+ let statuses=[...new Set((d.items||[]).map(r=>r.status).filter(Boolean))].map(s=>({value:s,label:s==='active'?'活跃':'停用'}));
+ let ws=[...new Set((d.items||[]).map(r=>r.workspace_name).filter(Boolean))].map(t=>({value:t,label:t}));
+ S.tableRefresh.teams=()=>{$('#tt').innerHTML=smartTable('teams',[['团队','name'],['团队 ID','team_id'],['工作区','workspace_name'],['成员','member_count'],['账号','account_count'],['状态','status',r=>status(r.status)]],S.cache.teams,r=>editBtn('teams',r,r.team_id,'团队')+` <button class="btn secondary small" onclick="members('${r.team_id}','${esc(r.name)}')">成员</button>`+` <button class="btn danger small" onclick="deleteTeam('${r.team_id}','${esc(r.name)}')">删除</button>`,[{field:'status',label:'状态',options:statuses},{field:'workspace_name',label:'工作区',options:ws}],{searchHint:'团队名/ID'})}
+ $('#content').innerHTML=head('团队管理','团队、工作区和成员资源边界','<button class="btn" onclick="createTeam()">＋ 新建团队</button>')+`<div id="tt"></div>`;S.tableRefresh.teams();},
+async users(){let d=await api('/api/v207/admin/users'+qp());S.cache.users=d.items;if(!S.cache.teams)S.cache.teams=(await api('/api/v207/admin/teams'+qp())).items;
+ let statuses=[...new Set((d.items||[]).map(r=>r.status).filter(Boolean))].map(s=>({value:s,label:s==='active'?'活跃':s==='disabled'?'停用':s}));
+ let teams=[...new Set((d.items||[]).flatMap(r=>r.teams||(r.team_name?[r.team_name]:[])).filter(Boolean))].map(t=>({value:t,label:t}));
+ S.tableRefresh.users=()=>{$('#ut').innerHTML=smartTable('users',[['显示名','display_name'],['登录名','login_name'],['团队','teams'],['角色','roles'],['状态','status',r=>status(r.status)],['创建时间',r=>fmt(r.created_at)]],S.cache.users,r=>editBtn('users',r,r.user_id,'用户')+` <button class="btn secondary small" onclick="permSources('${r.user_id}','${esc(r.display_name||r.login_name||'')}')">权限来源</button> <button class="btn secondary small" onclick="resetPwd('${r.user_id}')">重置密码</button>`+` <button class="btn danger small" onclick="deleteUser('${r.user_id}','${esc(r.display_name||r.login_name||'')}')">删除</button>`,[{field:'status',label:'状态',options:statuses},{field:'team_name',label:'团队',options:teams}],{searchHint:'姓名/登录名/电话'})}
+ $('#content').innerHTML=head('用户管理','用户状态、角色、团队和会话安全','<button class="btn" onclick="createUser()">＋ 新建用户</button>')+`<div id="ut"></div>`;S.tableRefresh.users();},
+async positions(){let [d,deps]=await Promise.all([api('/api/v207/admin/positions'+qp()),api('/api/v207/admin/departments'+qp())]);S.cache.positions=d.items||[];S.cache.departments=deps.items||[];let activePos=(d.items||[]).filter(r=>r.status==='active').length;let totalUsers=(d.items||[]).reduce((a,r)=>a+(r.user_count||0),0);let deptsWithPos=new Set((d.items||[]).map(r=>r.department_name).filter(Boolean)).size;$('#content').innerHTML=head('职位管理','企业职位、所属部门、任职人数与状态管理 · 多维度可视化','<button class="btn" onclick="createPosition()">＋ 新建职位</button> <button class="btn secondary" onclick="renderPositionCharts(S.cache.positions,S.cache.departments)">📊 刷新图表</button>')+`<div class="cards"><div class="card"><span>职位总数</span><b style="color:var(--blue)">${(d.items||[]).length}</b></div><div class="card"><span>启用职位</span><b style="color:var(--ok)">${activePos}</b></div><div class="card"><span>任职总人数</span><b style="color:var(--pink)">${totalUsers}</b></div><div class="card"><span>覆盖部门</span><b>${deptsWithPos}</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>部门职位数 Top 10</h3></div><div id="posByDeptChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>部门-状态热力图</h3></div><div id="posStatusChart" style="width:100%;height:240px"></div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>任职人数 Top 10 职位</h3></div><div id="posHeadcountChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>部门任职人数堆叠对比</h3></div><div id="posStackChart" style="width:100%;height:240px"></div></div></div>`+table([['职位名称','name'],['职位代码','code'],['所属部门','department_name',r=>r.department_name||'—'],['任职人数','user_count'],['排序','sort_order'],['状态','status',r=>status(r.status)]],d.items||[],r=>`<button class="btn secondary small" onclick='editPosition(${JSON.stringify(r)})'>编辑</button> <button class="btn danger small" onclick="deletePosition('${r.position_id}','${esc(r.name)}')">删除</button>`);renderPositionCharts(S.cache.positions,S.cache.departments);},
 async roles(){let [rd,pd]=await Promise.all([api('/api/v207/admin/roles'+qp()),api('/api/v207/admin/permissions'+qp())]);S.cache.roles=rd.items||[];S.cache.permissions=pd.items||[];let scope={platform:'平台',organization:'企业',workspace:'工作区',department:'部门',team:'团队',self:'本人'};let rows=S.cache.roles.map(r=>{let builtin=r.organization_id==null||Number(r.is_system)===1,pc=String(r.permissions||'').split(',').filter(Boolean).length;return `<tr><td><b>${esc(r.name)}</b>${builtin?' <span class="risk normal">内置只读</span>':''}<div class="sub">${esc(r.role_code||r.role_id)}</div></td><td>${esc(scope[r.scope_level]||r.scope_level)}</td><td>${Number(r.member_count||0)}</td><td>${roleStatus(r.status)}</td><td>${pc} 项</td><td class="role-actions"><button class="btn secondary small" onclick="viewRoleMembers('${esc(r.role_id)}','${esc(r.name)}')">成员</button> <button class="btn secondary small" onclick="copyRole('${esc(r.role_id)}','${esc(r.name)}')">复制</button>${builtin?'':` <button class="btn secondary small" onclick="editRole('${esc(r.role_id)}')">编辑</button> <button class="btn danger small" onclick="deleteRole('${esc(r.role_id)}','${esc(r.name)}')">删除</button>`}</td></tr>`}).join('');$('#content').innerHTML=head('角色与权限','Schema 210 · 内置角色只读 · 权限变更将撤销受影响用户会话','<button class="btn secondary" onclick="openBindingCenter()">授权中心</button> <button class="btn" onclick="createRole()">＋ 新建角色</button>')+`<div class="risk-legend"><span class="risk normal">普通</span><span class="risk sensitive">敏感</span><span class="risk high">高风险</span><span class="sub">写操作需要一次性安全确认</span></div><div class="table-wrap"><table><thead><tr><th>角色</th><th>最大范围</th><th>成员</th><th>状态</th><th>权限</th><th>操作</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="empty">暂无角色</td></tr>'}</tbody></table></div>`},
-async workspaces(){let d=await api('/api/v207/admin/workspaces'+qp());S.cache.workspaces=d.items;$('#content').innerHTML=head('工作区管理','工作区资源、来源、设备和联系人统计')+table([['名称','name'],['工作区 ID','workspace_id'],['来源','sources'],['设备','devices'],['联系人','contacts'],['状态','status',r=>status(r.status)]],d.items,r=>editBtn('workspaces',r,r.workspace_id,'工作区'))},
+async workspaces(){let d=await api('/api/v207/admin/workspaces'+qp());S.cache.workspaces=d.items;$('#content').innerHTML=head('工作区管理','工作区资源、来源、设备和联系人统计','<button class="btn" onclick="createWorkspace()">＋ 新建工作区</button>')+table([['名称','name'],['工作区 ID','workspace_id'],['来源','sources'],['设备','devices'],['联系人','contacts'],['状态','status',r=>status(r.status)]],d.items,r=>editBtn('workspaces',r,r.workspace_id,'工作区')+` <button class="btn danger small" onclick="deleteWorkspace('${r.workspace_id}','${esc(r.name)}')">删除</button>`)},
 async accounts(){let d=await api('/api/v207/admin/accounts'+qp());if(!S.cache.teams)S.cache.teams=(await api('/api/v207/admin/teams'+qp())).items;$('#content').innerHTML=head('渠道账号与授权','受控渠道、身份、团队授权和来源关系','<button class="btn" onclick="createAccount()">＋ 绑定账号</button>')+table([['名称','display_name'],['渠道','channel'],['身份','identities'],['授权团队','teams'],['来源','source_count'],['状态','status',r=>status(r.status)]],d.items,r=>editBtn('accounts',r,r.channel_account_id,'账号')+` <button class="btn secondary small" onclick="manageGrants('${r.channel_account_id}','${esc(r.display_name)}')">授权管理</button> <button class="btn secondary small" onclick="accToggle('${r.channel_account_id}','${r.status}')">${r.status==='active'?'停用':'启用'}</button>`)},
+async sourcePaths(){
+ let [sd,pd]=await Promise.all([api('/api/v207/admin/sources'+qp()+'&pageSize=500'),api('/api/v207/admin/source-links'+qp())]);
+ let srcs=sd.items||[];let links=pd.items||[];
+ S.cache.pathSources=srcs;S.cache.pathLinks=links;
+ let srcOpts=srcs.map(s=>`<option value="${esc(s.source_id)}">${esc(s.source_name)} · ${esc(s.channel||'')}</option>`).join('');
+ let linkTypeOpts=[{v:'redirects_to',l:'跳转至（redirects_to）'},{v:'lands_on',l:'落地到（lands_on）'},{v:'converts_to',l:'转化到（converts_to）'},{v:'routes_to',l:'路由到（routes_to）'},{v:'belongs_to',l:'归属到（belongs_to）'},{v:'derived_from',l:'衍生自（derived_from）'},{v:'referred_by',l:'被推荐（referred_by）'}].map(x=>`<option value="${x.v}">${x.l}</option>`).join('');
+ $('#content').innerHTML=head('来源拓扑管理','来源节点之间的父子、跳转、转化和归属关系','<button class="btn" onclick="togglePathGraph()">⚡ 拓扑图</button>')+
+ `<div id="pathGraphPanel" class="panel" style="display:none"><div style="margin-bottom:8px"><button class="btn secondary" onclick="renderSourceGraph()">重新布局</button> <button class="btn secondary" onclick="togglePathGraph()">收起</button></div><div id="sourceGraphBox" style="width:100%;height:520px;background:var(--panel-2,#f8fafc);border-radius:8px"></div></div>`+
+ `<div class="panel"><div class="panel-head"><h3>新建来源链接</h3></div><div style="display:grid;grid-template-columns:1fr 1fr 180px auto;gap:8px;align-items:end;margin-bottom:12px">
+  <div class="field" style="margin:0"><label>起点来源</label><select id="lpFrom" class="select">${srcOpts}</select></div>
+  <div class="field" style="margin:0"><label>关系类型</label><select id="lpType" class="select">${linkTypeOpts}</select></div>
+  <div class="field" style="margin:0"><label>终点来源</label><select id="lpTo" class="select">${srcOpts}</select></div>
+  <button class="btn" onclick="createPathLink()">＋ 添加链接</button>
+ </div></div>`+
+ table([['起点','from_source_name'],['关系类型','link_type',r=>`<span class="status active">${esc(r.link_type)}</span>`],['终点','to_source_name'],['排序','sort_order',r=>r.sort_order||'—'],['创建时间',r=>fmt(r.created_at)]],links,r=>`<button class="btn danger small" onclick="deletePathLink('${esc(r.source_link_id)}','${esc(r.from_source_name+' → '+r.link_type+' → '+r.to_source_name)}')">删除</button>`);
+},
+async sourcePathGraph(){
+ let [sd,pd]=await Promise.all([api('/api/v207/admin/sources'+qp()+'&pageSize=500'),api('/api/v207/admin/source-links'+qp())]);
+ let srcs=sd.items||[];let links=pd.items||[];
+ S.cache.pathSources=srcs;S.cache.pathLinks=links;
+ $('#content').innerHTML=head('来源拓扑图','来源节点之间的父子、跳转、转化和归属关系','<button class="btn secondary" onclick="navigate(\'source-paths\')">← 返回列表</button>')+`<div id="sourceGraphBox" style="width:100%;height:600px;background:var(--panel-2,#f8fafc);border-radius:8px"></div>`;
+ renderSourceGraph();
+},
+togglePathGraph(){
+ let p=document.getElementById('pathGraphPanel');if(!p)return;
+ let show=p.style.display==='none';
+ p.style.display=show?'block':'none';
+ if(show)renderSourceGraph();
+},
+renderSourceGraph(){
+ let el=document.getElementById('sourceGraphBox');if(!el)return;
+ if(!window.echarts){el.innerHTML='<p style="color:#888;padding:20px">ECharts 未加载，无法渲染拓扑图。</p>';return;}
+ el.innerHTML='';
+ let srcs=S.cache.pathSources||[],links=S.cache.pathLinks||[];
+ if(!srcs.length){el.innerHTML='<p style="color:#888;padding:20px">暂无来源数据</p>';return;}
+ let typeColor={'redirects_to':'#6366f1','lands_on':'#10b981','converts_to':'#f59e0b','routes_to':'#06b6d4','belongs_to':'#ec4899','derived_from':'#8b5cf6','referred_by':'#64748b'};
+ let srcMap={};srcs.forEach(s=>{srcMap[s.source_id]={id:s.source_id,name:s.source_name||s.source_id,channel:s.channel||'unknown',status:s.status}});
+ let nodes=[],nodeIds=new Set();
+ srcs.forEach(s=>{nodes.push({id:s.source_id,name:s.source_name||s.source_id,category:s.channel||'unknown',symbolSize:48,value:[s.source_id],itemStyle:{color:s.status==='active'?'#6366f1':'#94a3b8'}});nodeIds.add(s.source_id);});
+ let edgeData=[];
+ links.forEach(l=>{
+  if(nodeIds.has(l.from_source_id)&&nodeIds.has(l.to_source_id)){
+   edgeData.push({source:l.from_source_id,target:l.to_source_id,lineStyle:{color:typeColor[l.link_type]||'#64748b',type:'dashed',width:2},label:{formatter:l.link_type,fontSize:10,color:'#64748b'}});
+  }
+ });
+ if(window._srcGraphChart){try{window._srcGraphChart.dispose();}catch(e){}}
+ let chart=echarts.init(el);window._srcGraphChart=chart;
+ let categories=[...new Set(srcs.map(s=>s.channel||'unknown'))].map(c=>({name:c}));
+ chart.setOption({
+  backgroundColor:'transparent',
+  tooltip:{formatter:p=>{if(p.dataType==='edge')return `${p.data.sourceName} → ${p.data.targetName}<br><b style="color:${typeColor[p.data.linkType]||'#64748b'}">${p.data.linkType}</b>`;return`<b>${p.data.name}</b><br>渠道：${p.data.category}<br>状态：${p.data.value[1]||'—'}`}},
+  legend:[{data:categories.map(c=>c.name),top:10}],
+  series:[{
+   type:'graph',layout:'force',draggable:false,
+   categories:categories,
+   data:nodes.map(n=>{let s=srcs.find(x=>x.source_id===n.id);return{...n,name:n.name,symbolSize:40,category:n.category,value:[n.id,s?s.status:'unknown']}}),
+   links:edgeData.map(e=>{let fs=srcs.find(x=>x.source_id===e.source),ts=srcs.find(x=>x.source_id===e.target);return{...e,sourceName:fs?fs.source_name:'?',targetName:ts?ts.source_name:'?',linkType:e.label?e.label.formatter:'unknown'}}),
+   lineStyle:{curveness:0.2,opacity:0.7},
+   label:{show:true,formatter:'{b}',fontSize:11,color:'var(--text,#334155)'},
+   roam:false,
+   force:{repulsion:200,edgeLength:140,layoutAnimation:true}
+  }]
+ });
+ window.addEventListener('resize',()=>chart.resize());
+},
+async createPathLink(){
+ let from=$('#lpFrom')?.value,to=$('#lpTo')?.value,typ=$('#lpType')?.value;
+ if(!from||!to){toast('请选择起点和终点来源',1);return}
+ if(from===to){toast('起点和终点不能相同',1);return}
+ try{
+  await api('/api/v207/admin/source-links'+qp(),{method:'POST',body:{fromSourceId:from,toSourceId:to,type:typ}});
+  toast('链接已添加');loadPage();
+ }catch(e){toast(e.message||'添加失败',1)}
+},
+async deletePathLink(id,name){
+ const ok=await confirmModal({title:'删除来源链接',message:`确认删除链接「${name}」？`});
+ if(!ok)return;
+ try{await api('/api/v207/admin/source-links/'+encodeURIComponent(id)+qp(),{method:'DELETE'});toast('链接已删除');loadPage()}
+ catch(e){toast(e.message||'删除失败',1)}
+},
 async sources(){
- let [sd,ad]=await Promise.all([api('/api/v207/admin/sources'+qp()+'&pageSize=500'),api('/api/v207/admin/accounts'+qp()+'&pageSize=500')]);
- let items=sd.items||[];S.cache.sources=items;S.cache.srcAccounts=ad.items||[];
+ let [sd,ad,wd]=await Promise.all([api('/api/v207/admin/sources'+qp()+'&pageSize=500'),api('/api/v207/admin/accounts'+qp()+'&pageSize=500'),api('/api/v207/admin/workspaces'+qp()+'&pageSize=200')]);
+ let items=sd.items||[];S.cache.sources=items;S.cache.srcAccounts=ad.items||[];S.cache.workspaces=wd.items||[];
  let chans={};items.forEach(r=>{let c=r.channel||'其他';(chans[c]=chans[c]||{total:0,active:0,last:0});chans[c].total++;if(r.status==='active')chans[c].active++;if((r.last_seen_at||0)>chans[c].last)chans[c].last=r.last_seen_at||0});
  let stale=Date.now()-30*864e5;
  let cards=Object.keys(chans).sort().map(c=>{let x=chans[c],warn=x.active===0||x.last<stale;
@@ -146,26 +264,74 @@ async sources(){
  let teams=[...new Set(items.map(r=>r.team_name).filter(Boolean))];
  let ws=[...new Set(items.map(r=>r.workspace_name).filter(Boolean))];
  let filter=`<div class="toolbar"><input class="select" id="sfQ" placeholder="搜索名称/身份" oninput="srcFilter()"><select class="select" id="sfCh" onchange="srcFilter()"><option value="">全部渠道</option>${Object.keys(chans).sort().map(c=>`<option>${esc(c)}</option>`).join('')}</select><select class="select" id="sfSt" onchange="srcFilter()"><option value="">全部状态</option><option value="active">active</option><option value="disabled">disabled</option></select><select class="select" id="sfTeam" onchange="srcFilter()"><option value="">全部团队</option>${teams.map(t=>`<option>${esc(t)}</option>`).join('')}</select><select class="select" id="sfWs" onchange="srcFilter()"><option value="">全部工作区</option>${ws.map(w=>`<option>${esc(w)}</option>`).join('')}</select><span class="badge" id="sfCount">${items.length} 条</span></div>`;
- $('#content').innerHTML=head('来源管理','健康度总览 · 多维筛选 · 状态切换（停用含引用保护）','<button class="btn secondary" onclick="navigate(\'accounts\')">前往账号绑定</button>')
+ $('#content').innerHTML=head('来源管理','健康度总览 · 多维筛选 · 状态切换（停用含引用保护）','<button class="btn" onclick="createSource()">＋ 新建来源</button> <button class="btn secondary" onclick="navigate(\'source-paths\')">⚙ 来源拓扑</button> <button class="btn secondary" onclick="navigate(\'accounts\')">前往账号绑定</button>')
   +(cards?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">${cards}</div>`:'')
   +filter+`<div id="srcTable"></div>`;
  srcRender(items);
 },
-async devices(){let d=await api('/api/v207/admin/devices'+qp());$('#content').innerHTML=head('设备管理','系统名称、用户别名、管理员名称与资源关系')+table([['管理员名称',r=>r.admin_device_name||'—'],['系统名称','system_device_name'],['用户别名','user_device_alias'],['安装实例','installation_id'],['团队','team_name'],['来源','source_count'],['状态','status',r=>status(r.status)],['最后在线',r=>fmt(r.last_seen_at)]],d.items,r=>editBtn('devices',r,r.device_id,'设备')+`<button class="btn secondary small" onclick='generateBindCode(${JSON.stringify(r.device_id)})'>绑定码</button>`)},
-async contacts(){let d=await api('/api/v207/admin/contacts'+qp()+'&deleted=all&pageSize=100');$('#content').innerHTML=head('联系人管理','人工资料、来源、团队、版本和软删除状态','<button class="btn secondary" onclick="searchContacts()">搜索</button>')+`<div class="toolbar"><input class="select" id="cq" placeholder="姓名或电话"><span class="badge">共 ${d.pagination.total} 条</span></div>`+table([['显示名',r=>r.manual_name||r.display_name],['电话',r=>r.manual_phone||r.observed_phone],['来源','source_name'],['团队','team_name'],['状态',r=>r.deleted_at?'已删除':r.status||'正常',r=>r.deleted_at?'<span class="status disabled">已删除</span>':status('active')],['版本','version'],['更新时间',r=>fmt(r.updated_at)]],d.items,r=>`<button class="btn secondary small" onclick='editContact(${JSON.stringify(r)})'>编辑</button>`)},
-async platforms(){let d=await api('/api/v207/admin/platforms?pageSize=200');const canManage=S.profile?.platformAdmin;$('#content').innerHTML=head('平台管理','全局平台目录、类型、能力和启停状态',canManage?'<button class="btn" onclick="createPlatform()">＋ 新建平台</button>':'<span class="status active">只读</span>')+table([['平台','platform_name'],['代码','platform_code'],['类型','platform_kind'],['状态','status',r=>status(r.status)],['平台 ID','platform_id'],['更新时间',r=>fmt(r.updated_at)]],d.items,canManage?r=>editBtn('platforms',r,r.platform_id,'平台'):'')},
-async campaigns(){let d=await api('/api/v207/admin/campaigns'+qp());$('#content').innerHTML=head('营销活动','企业活动、平台、承接账号与工作区关联','<button class="btn" onclick="createCampaign()">＋ 新建活动</button>')+table([['活动','campaign_name'],['代码','campaign_code'],['类型','campaign_type'],['平台','platform_name'],['渠道账号','account_name'],['工作区','workspace_name'],['状态','status',r=>status(r.status)],['开始时间',r=>fmt(r.start_at)],['结束时间',r=>fmt(r.end_at)]],d.items,r=>editBtn('campaigns',r,r.campaign_id,'活动'))},
-async structure(){let [deps,lines,mkts]=await Promise.all([api('/api/v207/admin/departments'+qp()),api('/api/v207/admin/business-lines'+qp()),api('/api/v207/admin/markets'+qp())]);window._orgData={deps:deps.items||[],lines:lines.items||[],mkts:mkts.items||[]};$('#content').innerHTML=head('组织架构','部门、业务线与市场的树形管理','<button class="btn" onclick="createDepartment()">＋ 新建部门</button> <button class="btn secondary" onclick="createBusinessLine()">＋ 新建业务线</button> <button class="btn secondary" onclick="createMarket()">＋ 新建市场</button> <button class="btn secondary" onclick="toggleOrgTree()">▦ 树状图</button>')+`<div class="panel" id="orgTreePanel" style="display:none"><h3>组织架构树状图</h3><div style="margin-bottom:8px"><button class="btn secondary" onclick="renderOrgTree(&apos;deps&apos;)">部门</button> <button class="btn secondary" onclick="renderOrgTree(&apos;lines&apos;)">业务线</button> <button class="btn secondary" onclick="renderOrgTree(&apos;mkts&apos;)">市场</button></div><div id="orgTreeChart" style="width:100%;height:420px"></div></div><div class="grid2"><div class="panel"><h3>部门</h3>${table([['名称','name'],['代码','code'],['父部门','parent_name'],['状态','status',r=>status(r.status)]],deps.items||[],r=>`<button class="btn secondary small" onclick="editDepartment('${r.department_id}')">编辑</button>`)}</div><div class="panel"><h3>业务线</h3>${table([['名称','name'],['代码','code'],['父业务线','parent_name'],['状态','status',r=>status(r.status)]],lines.items||[],r=>`<button class="btn secondary small" onclick="editBusinessLine('${r.business_line_id}')">编辑</button>`)}</div></div><div class="panel"><h3>市场</h3>${table([['名称','name'],['代码','code'],['市场类型','market_type'],['国家代码','country_code'],['时区','timezone'],['状态','status',r=>status(r.status)]],mkts.items||[],r=>`<button class="btn secondary small" onclick="editMarket('${r.market_id}')">编辑</button>`)}</div>`},
-async journey(){let d=await api('/api/v207/admin/touchpoints'+qp()+'&pageSize=100');$('#content').innerHTML=head('客户旅程','触点事件、归因路径与转化分析','<button class="btn secondary" onclick="recomputeAttribution()">重算归因</button>')+`<div class="cards"><div class="card"><span>触点总数</span><b>${d.pagination?.total||0}</b></div><div class="card"><span>有归因触点</span><b>${d.attributedCount||0}</b></div><div class="card"><span>平均路径长度</span><b>${(d.avgPathLength||0).toFixed(1)}</b></div><div class="card"><span>最后更新</span><b>${fmt(d.lastComputed)}</b></div></div><div class="panel"><div class="panel-head"><h3>最近触点</h3></div>${table([['联系人','contact_name'],['触点类型','touchpoint_type'],['来源','source_name'],['发生时间',r=>fmt(r.occurred_at)],['归因权重','attribution_weight'],['路径位置','path_position']],d.items||[])}</div>`},
+async devices(){let d=await api('/api/v207/admin/devices'+qp());S.cache.devices=d.items||[];
+ let statuses=[...new Set((d.items||[]).map(r=>r.status).filter(Boolean))].map(s=>({value:s,label:s==='active'?'活跃':'停用'}));
+ let teams=[...new Set((d.items||[]).map(r=>r.team_name).filter(Boolean))].map(t=>({value:t,label:t}));
+ S.tableRefresh.devices=()=>{$('#dt').innerHTML=smartTable('devices',[['管理员名称','admin_device_name'],['系统名称','system_device_name'],['用户别名','user_device_alias'],['安装实例','installation_id'],['团队','team_name'],['来源','source_count'],['状态','status',r=>status(r.status)],['最后在线',r=>fmt(r.last_seen_at)]],S.cache.devices,r=>editBtn('devices',r,r.device_id,'设备')+`<button class="btn secondary small" onclick='generateBindCode(${JSON.stringify(r.device_id)})'>绑定码</button>`+` <button class="btn danger small" onclick="deleteDevice('${r.device_id}','${esc(r.admin_device_name||r.user_device_alias||r.system_device_name||r.device_id)}')">删除</button>`,[{field:'status',label:'状态',options:statuses},{field:'team_name',label:'团队',options:teams}],{searchHint:'设备名称/安装实例'})}
+ $('#content').innerHTML=head('设备管理','系统名称、用户别名、管理员名称与资源关系')+`<div id="dt"></div>`;S.tableRefresh.devices();},
+async contacts(){let d=await api('/api/v207/admin/contacts'+qp()+'&deleted=all&pageSize=200');S.cache.contacts=d.items||[];
+ let teams=[...new Set((d.items||[]).map(r=>r.team_name).filter(Boolean))].map(t=>({value:t,label:t}));
+ let sources=[...new Set((d.items||[]).map(r=>r.source_name).filter(Boolean))].map(t=>({value:t,label:t}));
+ S.tableRefresh.contacts=()=>{$('#ct').innerHTML=smartTable('contacts',[['显示名','manual_name'],['电话','manual_phone'],['来源','source_name'],['团队','team_name'],['状态',r=>r.deleted_at?'<span class="status disabled">已删除</span>':status(r.status)],['版本','version'],['更新时间',r=>fmt(r.updated_at)]],S.cache.contacts,r=>`<button class="btn secondary small" onclick="openContact('${r.contact_id}')">详情</button> <button class="btn secondary small" onclick='editContact(${JSON.stringify(r)})'>编辑</button>`,[{field:'team_name',label:'团队',options:teams},{field:'source_name',label:'来源',options:sources},{field:'__deleted',label:'删除',options:[{value:'1',label:'仅已删除'},{value:'0',label:'仅未删除'}]}],{searchHint:'姓名/电话'})}
+ $('#content').innerHTML=head('联系人管理','人工资料、来源、团队、版本和软删除状态','<button class="btn" onclick="createContact()">＋ 新建联系人</button> <button class="btn secondary" onclick="searchContacts()">搜索</button>')+`<div id="ct"></div>`;S.tableRefresh.contacts();},
+async platforms(){let d=await api('/api/v207/admin/platforms?pageSize=200');const canManage=S.profile?.platformAdmin;$('#content').innerHTML=head('平台管理','全局平台目录、类型、能力和启停状态',canManage?'<button class="btn" onclick="createPlatform()">＋ 新建平台</button>':'<span class="status active">只读</span>')+table([['平台','platform_name'],['代码','platform_code'],['类型','platform_kind'],['状态','status',r=>status(r.status)],['平台 ID','platform_id'],['更新时间',r=>fmt(r.updated_at)]],d.items,canManage?r=>editBtn('platforms',r,r.platform_id,'平台')+` <button class="btn danger small" onclick="deletePlatform('${r.platform_id}','${esc(r.platform_name)}','${esc(r.platform_code||'')}')">删除</button>`:'')},
+async campaigns(){let [d,st]=await Promise.all([api('/api/v207/admin/campaigns'+qp()),api('/api/v207/admin/campaign-stats'+qp())]);S.cache.campaigns=d.items||[];S.cache.campaignStats=st;let stat=st||{};$('#content').innerHTML=head('营销活动','企业活动、平台、承接账号与工作区关联','<button class="btn" onclick="createCampaign()">＋ 新建活动</button> <button class="btn secondary" onclick="navigate(\'campaign-kanban\')">▦ 看板视图</button>')+`<div class="cards"><div class="card"><span>活动总数</span><b>${stat.total||0}</b></div><div class="card"><span>进行中</span><b>${stat.active||0}</b></div>${(stat.statusDistribution||[]).map(s=>`<div class="card"><span>${esc(s.name)}</span><b>${s.value}</b></div>`).join('')}</div>`+table([['活动','campaign_name'],['代码','campaign_code'],['类型','campaign_type'],['平台','platform_name'],['渠道账号','account_name'],['工作区','workspace_name'],['状态','status',r=>status(r.status)],['开始时间',r=>fmt(r.start_at)],['结束时间',r=>fmt(r.end_at)]],d.items,r=>`<button class="btn secondary small" onclick='editCampaign("${r.campaign_id}")'>编辑</button> <button class="btn danger small" onclick="deleteCampaign('${r.campaign_id}','${esc(r.campaign_name)}')">删除</button>`)},
+async campaignKanban(){
+ let [d,wd]=await Promise.all([api('/api/v207/admin/campaigns'+qp()+'&pageSize=500'),api('/api/v207/admin/workspaces'+qp()+'&pageSize=100')]);
+ S.cache.campaigns=d.items||[];S.cache.cmpWorkspaces=wd.items||[];
+ let cols={draft:'草稿',planned:'排期',active:'执行中',paused:'已暂停',completed:'已完成',disabled:'已停用'};
+ let colOrder=['draft','planned','active','paused','completed','disabled'];
+ let colStyle={draft:'#64748b',planned:'#f59e0b',active:'#6366f1',paused:'#8b5cf6',completed:'#10b981',disabled:'#94a3b8'};
+ let buckets={};colOrder.forEach(c=>{buckets[c]=[]});(d.items||[]).forEach(r=>{let s=r.status||'draft';if(!buckets[s])buckets[s]={length:0};buckets[s].push(r);buckets[s].length++});
+ $('#content').innerHTML=head('营销活动看板','拖拽调整请使用编辑功能','<button class="btn secondary" onclick="navigate(\'campaigns\')">← 返回列表</button> <button class="btn" onclick="createCampaign()">＋ 新建活动</button>')+`<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px">${colOrder.map(s=>`<div style="min-width:220px;flex:1"><div style="font-weight:700;padding:8px 10px;background:${colStyle[s]};color:#fff;border-radius:8px 8px 0 0;font-size:13px">${cols[s]||s} <span style="float:right;font-weight:400">${buckets[s].length||0}</span></div><div style="background:var(--panel,#f8fafc);border:1px solid var(--line,#e2e8f0);border-top:none;border-radius:0 0 8px 8px;min-height:300px;padding:8px;display:flex;flex-direction:column;gap:8px">${(buckets[s]||[]).filter(Boolean).map(r=>`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12px;cursor:default" onclick="editCampaign('${r.campaign_id}')" title="点击编辑">
+  <div style="font-weight:600;margin-bottom:4px;color:#1e293b">${esc(r.campaign_name||'—')}</div>
+  <div class="sub" style="font-size:11px">${esc(r.campaign_code||'—')}</div>
+  <div style="margin-top:4px"><span class="status ${r.status}">${esc(r.campaign_type||'—')}</span></div>
+  <div class="sub" style="font-size:11px;margin-top:4px">${r.workspace_name?'📁 '+esc(r.workspace_name):'—'}</div>
+  <div class="sub" style="font-size:10px;margin-top:4px">${r.start_at?'开始：'+fmt(r.start_at):'未排期'}</div>
+  <div style="margin-top:6px;display:flex;gap:4px"><button class="btn secondary small" onclick="event.stopPropagation();editCampaign('${r.campaign_id}')">编辑</button><button class="btn danger small" onclick="event.stopPropagation();deleteCampaign('${r.campaign_id}','${esc(r.campaign_name)}')">删除</button></div>
+</div>`).join('')||'<div class="sub" style="text-align:center;padding:20px 0;color:#94a3b8;font-size:12px">暂无</div>'}</div></div>`).join('')}`},
+editCampaign(id){
+ let r=(S.cache.campaigns||[]).find(x=>x.campaign_id===id);if(!r){toast('活动不存在',1);return}
+ let wsOpts=(S.cache.cmpWorkspaces||[]).map(w=>({value:w.workspace_id,label:w.name}));
+ openModal('编辑营销活动',[
+  {name:'name',label:'活动名称',value:r.campaign_name||r.campaign_name||'',required:true},
+  {name:'code',label:'活动代码',value:r.campaign_code||''},
+  {name:'campaign_type',label:'活动类型',type:'select',value:r.campaign_type||'awareness',options:[{value:'awareness',label:'品牌认知'},{value:'consideration',label:'兴趣考虑'},{value:'conversion',label:'转化促进'},{value:'retention',label:'客户留存'},{value:'launch',label:'新品发布'},{value:'seasonal',label:'季节性促销'}]},
+  {name:'status',label:'活动状态',type:'select',value:r.status||'draft',options:[{value:'draft',label:'草稿'},{value:'planned',label:'排期'},{value:'active',label:'执行中'},{value:'paused',label:'已暂停'},{value:'completed',label:'已完成'},{value:'disabled',label:'已停用'}]},
+  {name:'start_at',label:'开始时间（Unix 秒）',type:'number',value:r.start_at||'',placeholder:'例：1750000000'},
+  {name:'end_at',label:'结束时间（Unix 秒）',type:'number',value:r.end_at||'',placeholder:'例：1752600000'},
+  {name:'reason',label:'操作原因'}
+ ],o=>api('/api/v207/admin/campaigns/'+encodeURIComponent(id)+qp(),{method:'PATCH',body:{name:o.name||r.campaign_name,code:o.code||r.campaign_code,campaignType:o.campaign_type,status:o.status,startAt:o.start_at?Number(o.start_at):r.start_at,endAt:o.end_at?Number(o.end_at):r.end_at,reason:o.reason}}))
+},
+async structure(){let [deps,lines,mkts]=await Promise.all([api('/api/v207/admin/departments'+qp()),api('/api/v207/admin/business-lines'+qp()),api('/api/v207/admin/markets'+qp())]);window._orgData={deps:deps.items||[],lines:lines.items||[],mkts:mkts.items||[]};let activeDeps=(deps.items||[]).filter(r=>r.status==='active').length;let activeLines=(lines.items||[]).filter(r=>r.status==='active').length;let activeMkts=(mkts.items||[]).filter(r=>r.status==='active').length;let rootDeps=(deps.items||[]).filter(r=>!r.parent_id).length;let totalPositions=(deps.items||[]).length+(lines.items||[]).length+(mkts.items||[]).length;let countryCount=new Set((mkts.items||[]).map(r=>r.country_code).filter(Boolean)).size;$('#content').innerHTML=head('组织架构','部门、业务线与市场的树形管理 · 多维度可视化','<button class="btn" onclick="createDepartment()">＋ 新建部门</button> <button class="btn secondary" onclick="createBusinessLine()">＋ 新建业务线</button> <button class="btn secondary" onclick="createMarket()">＋ 新建市场</button> <button class="btn secondary" onclick="toggleOrgTree()">▦ 树状图</button> <button class="btn secondary" onclick="renderStructureCharts(window._orgData.deps,window._orgData.lines,window._orgData.mkts)">📊 刷新图表</button>')+`<div class="cards"><div class="card"><span>部门总数</span><b style="color:var(--blue)">${(deps.items||[]).length}</b></div><div class="card"><span>活跃部门</span><b style="color:var(--ok)">${activeDeps}</b></div><div class="card"><span>根部门</span><b>${rootDeps}</b></div><div class="card"><span>业务线</span><b style="color:var(--pink)">${(lines.items||[]).length}</b></div><div class="card"><span>活跃业务线</span><b>${activeLines}</b></div><div class="card"><span>市场</span><b style="color:var(--warn)">${(mkts.items||[]).length}</b></div><div class="card"><span>活跃市场</span><b>${activeMkts}</b></div><div class="card"><span>国家/地区</span><b>${countryCount}</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>部门层级深度分布</h3></div><div id="struDeptChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>业务线状态分布</h3></div><div id="struLineChart" style="width:100%;height:240px"></div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>市场类型分布</h3></div><div id="struTypeChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>国家/地区分布 Top 10</h3></div><div id="struCountryChart" style="width:100%;height:240px"></div></div></div><div class="panel" id="orgTreePanel" style="display:none"><h3>组织架构树状图</h3><div style="margin-bottom:8px"><button class="btn secondary" onclick="renderOrgTree(&apos;deps&apos;)">部门</button> <button class="btn secondary" onclick="renderOrgTree(&apos;lines&apos;)">业务线</button> <button class="btn secondary" onclick="renderOrgTree(&apos;mkts&apos;)">市场</button></div><div id="orgTreeChart" style="width:100%;height:420px"></div></div><div class="grid2"><div class="panel"><h3>部门</h3>${table([['名称','name'],['代码','code'],['父部门','parent_name'],['状态','status',r=>status(r.status)]],deps.items||[],r=>`<button class="btn secondary small" onclick="editDepartment('${r.department_id}')">编辑</button> <button class="btn danger small" onclick="deleteDepartment('${r.department_id}','${esc(r.name)}')">删除</button>`)}</div><div class="panel"><h3>业务线</h3>${table([['名称','name'],['代码','code'],['父业务线','parent_name'],['状态','status',r=>status(r.status)]],lines.items||[],r=>`<button class="btn secondary small" onclick="editBusinessLine('${r.business_line_id}')">编辑</button> <button class="btn danger small" onclick="deleteBusinessLine('${r.business_line_id}','${esc(r.name)}')">删除</button>`)}</div></div><div class="panel"><h3>市场</h3>${table([['名称','name'],['代码','code'],['市场类型','market_type'],['国家代码','country_code'],['时区','timezone'],['状态','status',r=>status(r.status)]],mkts.items||[],r=>`<button class="btn secondary small" onclick="editMarket('${r.market_id}')">编辑</button> <button class="btn danger small" onclick="deleteMarket('${r.market_id}','${esc(r.name)}')">删除</button>`)}</div>`;renderStructureCharts(window._orgData.deps,window._orgData.lines,window._orgData.mkts);},
+async journey(){let settled=await Promise.allSettled([api('/api/v207/admin/touchpoints'+qp()+'&pageSize=100'),api('/api/v207/admin/attributions'+qp()+'&pageSize=200'),api('/api/v207/admin/attribution-summary'+qp())]);let tp=settled[0].status==='fulfilled'?settled[0].value:{items:[]},attr=settled[1].status==='fulfilled'?settled[1].value:{items:[]},stats=settled[2].status==='fulfilled'?settled[2].value:{};let ast=stats||{},tpa=attr.items||[],tpi=tp.items||[];$('#content').innerHTML=head('客户旅程','触点事件、归因路径与转化分析','<button class="btn secondary" onclick="renderAttrCharts()">📊 刷新图表</button> <button class="btn secondary" onclick="recomputeAttribution()">重算归因</button>')+`<div class="cards"><div class="card"><span>触点总数</span><b>${tpi.length}</b></div><div class="card"><span>归因记录</span><b>${ast.totalAttributions||0}</b></div><div class="card"><span>触点-归因比</span><b>${ast.totalTouchpoints?((ast.totalAttributions||0)/(ast.totalTouchpoints||1)).toFixed(2):'—'}</b></div><div class="card"><span>归因类型分布</span><b>${(ast.typeDistribution||[]).length||0} 种</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>归因类型分布（饼图）</h3></div><div id="attrPieChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>来源贡献排行（Top 10）</h3></div><div id="attrBarChart" style="width:100%;height:240px"></div></div></div><div class="panel"><div class="panel-head"><h3>触点 → 归因 漏斗</h3></div><div id="attrFunnelChart" style="width:100%;height:280px"></div></div><div class="panel"><div class="panel-head"><h3>最近触点</h3></div>${table([['联系人','contact_name'],['触点类型','touchpoint_type'],['来源','source_name'],['发生时间',r=>fmt(r.occurred_at)],['方向','direction',r=>`<span class="status ${r.direction==='inbound'?'active':r.direction==='outbound'?'disabled':''}">${esc(r.direction||'—')}</span>`]],tpi)}`;S.cache.touchpoints=tpi;S.cache.attributions=tpa;S.cache.attrStats=ast;renderAttrCharts()},
 async recycle(){let d=await api('/api/v207/admin/contacts'+qp()+'&deleted=only&pageSize=100');$('#content').innerHTML=head('联系人回收站','已删除联系人的恢复与永久清理','<button class="btn secondary" onclick="loadPage()">刷新</button>')+`<div class="panel"><div class="toolbar"><span class="badge">共 ${d.pagination?.total||0} 条已删除记录</span></div>${table([['显示名',r=>r.manual_name||r.display_name],['电话',r=>r.manual_phone||r.observed_phone],['删除时间',r=>fmt(r.deleted_at)],['团队','team_name'],['版本','version']],d.items||[],r=>`<button class="btn secondary small" onclick="restoreContact('${r.contact_id}')">恢复</button> <button class="btn danger small" onclick="purgeContact('${r.contact_id}')">永久删除</button>`)}</div>`},
-async sessions(){let d=await api('/api/v207/admin/sessions'+qp());$('#content').innerHTML=head('用户会话','当前活跃会话与操作历史','<button class="btn secondary" onclick="loadPage()">刷新</button>')+table([['用户',r=>`${r.user_name||'—'} · ${r.login_name||'—'}`],['登录时间',r=>fmt(r.created_at)],['最后活动',r=>fmt(r.last_seen_at)],['过期时间',r=>fmt(r.expires_at)],['IP 地址','ip'],['User-Agent','user_agent'],['状态',r=>sessionStatus(r)],['撤销原因',r=>r.revoked_reason||'—']],d.items||[],r=>!r.revoked_at&&Number(r.expires_at)>Date.now()?`<button class="btn danger small" onclick="revokeSession('${r.session_id}')">撤销</button>`:'')},
+async sessions(){let d=await api('/api/v207/admin/sessions'+qp());let items=d.items||[];let sStatus=r=>r.revoked_at?'revoked':(Number(r.expires_at)<=Date.now()?'expired':'active');items.forEach(r=>{r.__session_status=sStatus(r)});S.cache.sessions=items;
+ let statOpts=[{value:'active',label:'活跃'},{value:'expired',label:'已过期'},{value:'revoked',label:'已撤销'}];
+ S.tableRefresh.sessions=()=>{$('#st').innerHTML=smartTable('sessions',[['用户','user_name'],['登录名','login_name'],['登录时间',r=>fmt(r.created_at)],['最后活动',r=>fmt(r.last_seen_at)],['过期时间',r=>fmt(r.expires_at)],['IP','ip'],['状态',r=>sessionStatus(r)],['撤销原因','revoked_reason']],S.cache.sessions,r=>!r.revoked_at&&Number(r.expires_at)>Date.now()?`<button class="btn danger small" onclick="revokeSession('${r.session_id}')">撤销</button>`:'',[{field:'__session_status',label:'状态',options:statOpts}],{searchHint:'用户名/登录名/IP'})}
+ $('#content').innerHTML=head('用户会话','当前活跃会话与操作历史','<button class="btn secondary" onclick="loadPage()">刷新</button>')+`<div id="st"></div>`;S.tableRefresh.sessions();},
 async ['contact-identities'](){let d=await api('/api/v207/admin/contacts'+qp()+'&deleted=no&pageSize=200');S.cache.identityContacts=d.items;let options=d.items.map(x=>`<option value="${esc(x.contact_id)}">${esc(x.manual_name||x.display_name||x.contact_id)} · ${esc(x.contact_id)}</option>`).join('');$('#content').innerHTML=head('联系人外部身份','选择联系人后按企业与工作区边界读取外部身份','<button class="btn" onclick="createIdentity()">＋ 新建身份</button>')+`<div class="panel"><div class="toolbar"><select id="identityContact" class="select" onchange="loadContactIdentities(this.value)"><option value="">请选择联系人</option>${options}</select><button class="btn secondary" onclick="loadContactIdentities($('#identityContact').value)">查询身份</button></div><div id="identityResult" class="empty">尚未选择联系人</div></div>`},
 async migrations(){let d=await api('/api/v207/admin/migrations'+qp());$('#content').innerHTML=head('数据库迁移记录','迁移编号、校验值、执行人和执行结果 · 只读审计视图','<span class="status active">只读</span>')+table([['迁移编号','migration_id'],['名称','migration_name'],['校验值','checksum'],['执行时间',r=>fmt(r.applied_at)],['执行人','applied_by'],['结果','result_json']],d.items)},
-async config(){let w=(await api('/api/v207/admin/workspaces'+qp())).items[0];if(!w){$('#content').innerHTML=head('标签与字段','当前企业没有工作区')+'<div class="empty panel">暂无工作区</div>';return}let [t,f]=await Promise.all([api('/api/v207/admin/tags?workspace='+w.workspace_id),api('/api/v207/admin/field-definitions?workspace='+w.workspace_id)]);S.cache.currentWorkspace=w;$('#content').innerHTML=head('标签与自定义字段','当前展示首个工作区：'+esc(w.name))+`<div class="grid2"><div class="panel"><div class="panel-head"><h3>标签</h3><span class="grow"></span><button class="btn small" onclick="createTag()">＋ 新建</button></div>${table([['名称','name'],['颜色','color',r=>`<span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:${esc(r.color)}"></span>`],['类型','tag_kind',r=>r.tag_kind==='status'?'<span class="status">状态类</span>':'<span class="status active">画像类</span>'],['分类','category'],['排序','sort_order']],t.items||[],r=>`<button class="btn secondary small" onclick="editTag('${r.tag_id}')">编辑</button> <button class="btn danger small" onclick="deleteTag('${r.tag_id}','${esc(r.name)}')">删除</button>`)}</div><div class="panel"><div class="panel-head"><h3>字段定义</h3><span class="grow"></span><button class="btn small" onclick="createField()">＋ 新建</button></div>${table([['键','field_key'],['名称','label'],['类型','field_type'],['启用','enabled',r=>r.enabled?'<span class="status active">是</span>':'<span class="status disabled">否</span>']],f.items||[],r=>`<button class="btn secondary small" onclick="editField('${esc(r.field_key)}')">编辑</button> <button class="btn danger small" onclick="deleteField('${esc(r.field_key)}','${esc(r.label)}')">删除</button>`)}</div></div>`},
-async audit(){let d=await api('/api/v207/admin/audit'+qp()+'&pageSize=100');$('#content').innerHTML=head('审计日志','不可从网页删除的安全操作证据')+`<div class="panel"><div class="toolbar"><select id="auditEntityType" class="select"><option value="">全部实体类型</option><option value="user">用户</option><option value="team">团队</option><option value="contact">联系人</option><option value="device">设备</option><option value="source">来源</option><option value="workspace">工作区</option></select><select id="auditOperation" class="select"><option value="">全部操作</option><option value="create">创建</option><option value="update">更新</option><option value="delete">删除</option><option value="disable">停用</option><option value="enable">启用</option><option value="grant">授权</option><option value="revoke">撤销</option></select><button class="btn secondary" onclick="filterAudit()">筛选</button><button class="btn secondary" onclick="navigate('audit')">重置</button></div>${table([['时间',r=>fmt(r.created_at)],['操作者','actor_name'],['操作','operation'],['类型','entity_type'],['实体 ID','entity_id'],['原因','reason']],d.items,r=>`<button class="btn secondary small" onclick='showJson(${JSON.stringify(r)})'>详情</button>`)}</div>`},
-async diagnostics(){let d=await api('/api/v207/admin/diagnostics'+qp());$('#content').innerHTML=head('系统诊断','数据库完整性、旁文件、外键与数据表统计','<button class="btn secondary" onclick="loadPage()">重新检查</button>')+`<div class="cards"><div class="card"><span>服务版本</span><b>${d.version}</b></div><div class="card"><span>Schema</span><b>${d.schemaVersion}</b></div><div class="card"><span>数据库检查</span><b style="color:var(--ok)">${esc(d.quickCheck)}</b></div><div class="card"><span>数据库大小</span><b>${(d.databaseBytes/1024/1024).toFixed(2)} MB</b></div></div><div class="grid2"><div class="panel"><h3>运行文件状态</h3><div class="kv"><span>数据库路径</span><b>${esc(d.databasePath)}</b></div><div class="kv"><span>WAL</span><b>${d.walExists?'存在（运行中正常）':'不存在'}</b></div><div class="kv"><span>SHM</span><b>${d.shmExists?'存在（运行中正常）':'不存在'}</b></div><div class="kv"><span>外键异常</span><b>${d.foreignKeyIssues.length}</b></div></div><div class="panel"><h3>数据表记录数</h3>${Object.entries(d.tableCounts).map(([k,v])=>`<div class="kv"><span>${esc(k)}</span><b>${v}</b></div>`).join('')}</div></div>`},
+async config(){let w=(await api('/api/v207/admin/workspaces'+qp())).items[0];if(!w){$('#content').innerHTML=head('标签与字段','当前企业没有工作区')+'<div class="empty panel">暂无工作区</div>';return}let [t,f]=await Promise.all([api('/api/v207/admin/tags?workspace='+w.workspace_id),api('/api/v207/admin/field-definitions?workspace='+w.workspace_id)]);S.cache.currentWorkspace=w;S.cache.tagsItems=t.items||[];S.cache.fieldsItems=f.items||[];let enabledFields=(f.items||[]).filter(r=>r.enabled).length;$('#content').innerHTML=head('标签与自定义字段','当前展示首个工作区：'+esc(w.name),'<button class="btn secondary" onclick="renderConfigCharts(S.cache.tagsItems,S.cache.fieldsItems)">📊 刷新图表</button>')+`<div class="cards"><div class="card"><span>标签总数</span><b style="color:var(--blue)">${(t.items||[]).length}</b></div><div class="card"><span>画像类标签</span><b>${(t.items||[]).filter(r=>r.tag_kind!=='status').length}</b></div><div class="card"><span>状态类标签</span><b>${(t.items||[]).filter(r=>r.tag_kind==='status').length}</b></div><div class="card"><span>字段总数</span><b style="color:var(--pink)">${(f.items||[]).length}</b></div><div class="card"><span>已启用字段</span><b style="color:var(--ok)">${enabledFields}</b></div><div class="card"><span>字段类型</span><b>${new Set((f.items||[]).map(r=>r.field_type)).size} 种</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>标签类型分布</h3></div><div id="cfgTagTypeChart" style="width:100%;height:280px"></div></div><div class="panel"><div class="panel-head"><h3>标签分类 Top 10</h3></div><div id="cfgTagCatChart" style="width:100%;height:280px"></div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>字段类型分布</h3></div><div id="cfgFieldTypeChart" style="width:100%;height:280px"></div></div><div class="panel"><div class="panel-head"><h3>标签与字段数量对比</h3></div><div id="cfgCompareChart" style="width:100%;height:280px"></div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>标签</h3><span class="grow"></span><button class="btn small" onclick="createTag()">＋ 新建</button></div>${table([['名称','name'],['颜色','color',r=>`<span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:${esc(r.color)}"></span>`],['类型','tag_kind',r=>r.tag_kind==='status'?'<span class="status">状态类</span>':'<span class="status active">画像类</span>'],['分类','category'],['排序','sort_order']],t.items||[],r=>`<button class="btn secondary small" onclick="editTag('${r.tag_id}')">编辑</button> <button class="btn danger small" onclick="deleteTag('${r.tag_id}','${esc(r.name)}')">删除</button>`)}</div><div class="panel"><div class="panel-head"><h3>字段定义</h3><span class="grow"></span><button class="btn small" onclick="createField()">＋ 新建</button></div>${table([['键','field_key'],['名称','label'],['类型','field_type'],['启用','enabled',r=>r.enabled?'<span class="status active">是</span>':'<span class="status disabled">否</span>']],f.items||[],r=>`<button class="btn secondary small" onclick="editField('${esc(r.field_key)}')">编辑</button> <button class="btn danger small" onclick="deleteField('${esc(r.field_key)}','${esc(r.label)}')">删除</button>`)}</div></div>`;renderConfigCharts(S.cache.tagsItems,S.cache.fieldsItems);},
+async audit(){let d=await api('/api/v207/admin/audit'+qp()+'&pageSize=200');S.cache.auditItems=d.items||[];S.cache.auditData=d;
+ let entityTypes=[...new Set((d.items||[]).map(r=>r.entity_type).filter(Boolean))].map(t=>({value:t,label:t}));
+ let operations=[...new Set((d.items||[]).map(r=>r.operation).filter(Boolean))].map(t=>({value:t,label:t}));
+ let actors=[...new Set((d.items||[]).map(r=>r.actor_name).filter(Boolean))].map(t=>({value:t,label:t}));
+ $('#content').innerHTML=head('审计日志','不可从网页删除的安全操作证据 · 时间/操作/类型可视化','<button class="btn secondary" onclick="renderAuditCharts()">📊 刷新图表</button>')+`<div class="cards"><div class="card"><span>日志总数</span><b>${d.pagination?.total||0}</b></div><div class="card"><span>操作者</span><b>${(d.topActors||[]).length} 位</b></div><div class="card"><span>操作类型</span><b>${(d.operationDistribution||[]).length} 种</b></div><div class="card"><span>实体类型</span><b>${(d.entityTypeDistribution||[]).length} 种</b></div></div><div class="panel"><div class="panel-head"><h3>30 日操作趋势</h3></div><div id="auditTrendChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>操作时间热力图（小时 × 星期）</h3><span class="grow">最近 30 天</span></div><div id="auditHeatChart" style="width:100%;height:280px"></div></div><div class="grid3"><div class="panel"><div class="panel-head"><h3>操作类型分布</h3></div><div id="auditOpChart" style="width:100%;height:260px"></div></div><div class="panel"><div class="panel-head"><h3>实体类型分布</h3></div><div id="auditTypeChart" style="width:100%;height:260px"></div></div><div class="panel"><div class="panel-head"><h3>操作者 Top 10</h3></div><div id="auditActorChart" style="width:100%;height:260px"></div></div></div><div class="panel"><div class="panel-head"><h3>日志明细</h3></div><div id="auditTable"></div></div>`;
+ S.tableRefresh.audit=()=>{$('#auditTable').innerHTML=smartTable('audit',[['时间','created_at'],['操作者','actor_name'],['操作','operation'],['类型','entity_type'],['实体 ID','entity_id'],['原因','reason']],S.cache.auditItems,r=>`<button class="btn secondary small" onclick='showAuditDetail(${JSON.stringify(r.audit_id)})'>详情</button>`,[{field:'operation',label:'操作',options:operations},{field:'entity_type',label:'实体类型',options:entityTypes},{field:'actor_name',label:'操作者',options:actors}],{searchHint:'实体ID/原因'})}
+ S.tableRefresh.audit();renderAuditCharts();},
+async diagnostics(){let d=await api('/api/v207/admin/diagnostics'+qp());S.cache.diagnosticsData=d;let meta=d.tableMeta||[];let fkIssues=d.foreignKeyIssues||[];let integrityOk=d.integrityCheck==='ok';let usedMb=(d.databaseUsageBytes||0)/1024/1024;let freeKb=(d.databaseFreeBytes||0)/1024;let sizeMb=(d.databaseBytes||0)/1024/1024;
+ $('#content').innerHTML=head('系统诊断','数据库完整性、旁文件、外键与数据表统计 · 多维度可视化','<button class="btn secondary" onclick="loadPage()">🔄 重新检查</button> <button class="btn secondary" onclick="renderDiagnosticsCharts()">📊 刷新图表</button>')+`<div class="cards"><div class="card"><span>服务版本</span><b>${esc(d.version)}</b></div><div class="card"><span>Schema 版本</span><b>${esc(d.schemaVersion)}</b></div><div class="card"><span>数据库检查</span><b style="color:var(--ok)">${esc(d.quickCheck)}</b></div><div class="card"><span>数据库大小</span><b>${sizeMb.toFixed(2)} MB</b></div><div class="card"><span>表数量</span><b style="color:var(--blue)">${meta.length}</b></div><div class="card"><span>外键异常</span><b style="color:${fkIssues.length?'var(--bad)':'var(--ok)'}">${fkIssues.length}</b></div><div class="card"><span>完整性检查</span><b style="color:${integrityOk?'var(--ok)':'var(--bad)'}">${esc(d.integrityCheck||'—')}</b></div><div class="card"><span>读延迟</span><b>${d.readLatencyMs||0} ms</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>数据表行数 Top 12</h3></div><div id="diagRowChart" style="width:100%;height:380px"></div></div><div class="panel"><div class="panel-head"><h3>数据库空间使用率</h3></div><div id="diagGauge" style="width:100%;height:380px"></div></div></div><div class="grid3"><div class="panel"><div class="panel-head"><h3>表空间占比</h3></div><div id="diagSizeChart" style="width:100%;height:280px"></div></div><div class="panel"><div class="panel-head"><h3>索引数 Top 12</h3></div><div id="diagIdxChart" style="width:100%;height:280px"></div></div><div class="panel"><div class="panel-head"><h3>外键异常分布</h3></div><div id="diagFkChart" style="width:100%;height:280px"></div></div></div><div class="panel"><div class="panel-head"><h3>表行数 vs 索引数（散点）</h3><span class="grow">对数刻度</span></div><div id="diagScatter" style="width:100%;height:280px"></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>运行文件状态</h3></div><div class="kv"><span>数据库路径</span><b>${esc(d.databasePath)}</b></div><div class="kv"><span>WAL 文件</span><b>${d.walExists?'<span style="color:var(--ok)">存在（运行中正常）</span>':'<span style="color:var(--muted)">不存在</span>'}</b></div><div class="kv"><span>SHM 文件</span><b>${d.shmExists?'<span style="color:var(--ok)">存在（运行中正常）</span>':'<span style="color:var(--muted)">不存在</span>'}</b></div><div class="kv"><span>Page 大小</span><b>${d.pageSize||0} B</b></div><div class="kv"><span>Page 数</span><b>${d.pageCount||0}</b></div><div class="kv"><span>空闲 Page</span><b>${d.freelistCount||0}</b></div><div class="kv"><span>已用空间</span><b>${usedMb.toFixed(2)} MB</b></div><div class="kv"><span>空闲空间</span><b>${freeKb.toFixed(1)} KB</b></div></div><div class="panel"><div class="panel-head"><h3>外键异常详情</h3><span class="grow"></span><span class="badge">${fkIssues.length} 条</span></div><div style="max-height:300px;overflow-y:auto">${fkIssues.length?`<table class="tbl"><thead><tr><th>表</th><th>行 ID</th><th>引用表</th><th>引用 ID</th></tr></thead><tbody>${fkIssues.map(r=>`<tr><td><code>${esc(r.table||'')}</code></td><td><code>${esc(r.rowid||'')}</code></td><td><code>${esc(r.fkid||'')}</code></td><td><code>${esc(r.parent||'')}</code></td></tr>`).join('')}</tbody></table>`:'<div class="empty">✓ 全部外键完整性检查通过</div>'}</div></div></div><div class="panel"><div class="panel-head"><h3>数据表记录数（完整）</h3><span class="grow">${meta.length} 张</span></div><div class="table-wrap" style="max-height:400px;overflow-y:auto"><table class="tbl"><thead><tr><th>表名</th><th>行数</th><th>索引</th><th>大小</th></tr></thead><tbody>${meta.map(r=>`<tr><td><code>${esc(r.name)}</code></td><td><b>${r.rows.toLocaleString()}</b></td><td>${r.indexes}</td><td>${r.size?(r.size/1024).toFixed(1)+' KB':'—'}</td></tr>`).join('')}</tbody></table></div></div>`;renderDiagnosticsCharts();},
 async database(){let d=await api('/api/v207/admin/database-schema');S.cache.databaseSchema=d;S.cache.schemaCategory='all';S.cache.schemaQuery='';renderDatabase()},
-async graph(){let d=await api('/api/v207/admin/graph'+qp());$('#content').innerHTML=head('全景关系图','企业、团队、用户、工作区、账号、来源和设备关系','<button class="btn secondary" onclick="loadPage()">重新布局</button>')+'<div class="panel"><div class="graphbox" id="graphbox"></div></div>';drawGraph(d.graph)},
+async graph(){let d=await api('/api/v207/admin/graph'+qp());S.cache.graphData=d.graph;$('#content').innerHTML=head('全景关系图','企业、团队、用户、工作区、账号、来源和设备关系 · ECharts 力导向图','<button class="btn secondary" onclick="loadPage()">重新布局</button> <button class="btn secondary" onclick="drawGraph(S.cache.graphData)">重置视图</button>')+`<div class="panel"><div class="toolbar"><select id="graphFilter" class="select" onchange="drawGraph(S.cache.graphData)" style="min-width:140px"><option value="">全部节点类型</option><option value="organization">仅企业</option><option value="team">仅团队</option><option value="workspace">仅工作区</option><option value="user">仅用户</option><option value="account">仅渠道账号</option><option value="source">仅来源</option><option value="device">仅设备</option></select><span class="grow"></span><span class="badge" id="graphNodeCount">— 节点</span></div><div class="graphbox" id="graphbox" style="height:680px"></div></div>`;drawGraph(d.graph)},
+async touchpoints(){await touchpointsPage()},
+async attributions(){await attributionsPage()},
 async contactIdentities(){let d=await api('/api/v207/admin/contact-identities'+qp());let items=d.items||[];
  $('#content').innerHTML=head('外部身份','跨平台身份与合并候选总览')+`<div class="panel"><div class="panel-head"><h3>身份列表</h3><span class="grow"></span><button class="btn secondary small" onclick="loadPage()">刷新</button></div><table class="tbl"><thead><tr><th>身份值</th><th>类型</th><th>平台</th><th>联系人</th><th>主身份</th><th>验证状态</th></tr></thead><tbody>${items.map(r=>`<tr><td>${esc(r.identity_value||'')}</td><td>${esc(r.identity_type||'')}</td><td>${esc(r.platform_name||r.platform_code||'-')}</td><td><a href="#" onclick="navigate('contacts');setTimeout(()=>openContact('${r.contact_id}'),300);return false">${(r.contact_id||'').slice(0,10)}</a></td><td>${r.is_primary?'★':''}</td><td>${esc(r.verification_status||'')}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">暂无身份</td></tr>'}</tbody></table></div>`},
 async rbacMatrix(){
@@ -173,26 +339,24 @@ async rbacMatrix(){
   let roles=rd.items||[],perms=pd.items||[];
   S.cache.rbacOrig={};roles.forEach(r=>S.cache.rbacOrig[r.role_id]=new Set(String(r.permissions||'').split(',').filter(Boolean)));
   S.cache.rbacCur={};for(let k in S.cache.rbacOrig)S.cache.rbacCur[k]=new Set(S.cache.rbacOrig[k]);
-  S.cache.rbacRoles=roles;
+  S.cache.rbacRoles=roles;S.cache.rbacPerms=perms;
   let builtin=r=>r.organization_id==null||Number(r.is_system)===1;
-  let groups={};perms.forEach(p=>{let key=p.permission_key||p.permission_code||p.id||'';let g=String(key).split('.')[0]||'其他';(groups[g]=groups[g]||[]).push({key,desc:p.description||p.name||key})});
-  let cells=roles.map(r=>`<th title="${esc(r.role_code||r.role_id)}" style="min-width:110px"><a href="javascript:void(0)" onclick="mtxRoleTrace('${esc(r.role_id)}','${esc(r.name)}')">${esc(r.name)}</a>${builtin(r)?' 🔒':` <span style="white-space:nowrap"><a href="javascript:void(0)" title="克隆" onclick="mtxCloneRole('${esc(r.role_id)}','${esc(r.name)}')">⧉</a> <a href="javascript:void(0)" title="导出该角色" onclick="mtxExportRoleOne('${esc(r.role_id)}')">⬇</a></span>`}</th>`).join('');
-  let body=Object.keys(groups).sort().map(g=>{
-    let rows=groups[g].map(p=>{
-      let tds=roles.map(r=>{
-        let on=S.cache.rbacCur[r.role_id].has(p.key),lock=builtin(r);
-        return `<td class="mtx-cell"><input type="checkbox" data-key="${esc(p.key)}" ${on?'checked':''} ${lock?'disabled':''} onchange="mtxToggle('${esc(r.role_id)}','${esc(p.key)}',this.checked)" title="${esc(p.desc)}"></td>`;
-      }).join('');
-      return `<tr><td class="mtx-key" title="${esc(p.desc)}"><span title="全选该权限" style="cursor:pointer" onclick="mtxRowAll('${esc(p.key)}',true)">✚</span> <span title="清空该权限" style="cursor:pointer" onclick="mtxRowAll('${esc(p.key)}',false)">－</span> ${esc(p.key)}</td>${tds}</tr>`;
-    }).join('');
-    return `<tbody class="mtx-group"><tr class="mtx-head"><td colspan="${roles.length+1}" onclick="this.parentNode.classList.toggle('fold')">▾ 📦 ${esc(g)} <span class="sub">(${groups[g].length})</span></td></tr>${rows}</tbody>`;
-  }).join('');
+  let permissionZh={account:'渠道账号',attribution:'归因',audit:'审计',campaign:'营销活动',contact:'联系人',device:'设备',organization:'企业',platform:'平台',source:'来源',team:'团队',user:'用户',workspace:'工作区',read:'查看',manage:'管理',create:'新建',update:'修改',delete:'删除',bind:'绑定',identity:'身份'};let pkey=p=>p.permission_key||p.key||'';let plabel=p=>p.name||p.label||p.description||pkey(p).split('.').map(x=>permissionZh[x]||x).join(' · ');let groups={};perms.forEach(p=>{let g=pkey(p).split('.')[0]||'other';(groups[g]||(groups[g]=[])).push(p)});let cells=roles.map(r=>`<th>${esc(r.name)}${builtin(r)?'<div class="sub">内置只读</div>':''}</th>`).join('');let body='<tbody>'+Object.entries(groups).map(([g,ps])=>ps.map(p=>{let k=pkey(p);return `<tr><td><b>${esc(plabel(p))}</b><div class="sub">${esc(k)}</div></td>${roles.map(r=>`<td style="text-align:center"><input type="checkbox" ${S.cache.rbacCur[r.role_id]?.has(k)?'checked':''} ${builtin(r)?'disabled':''} onchange="mtxToggle(\'${esc(r.role_id)}\',\'${esc(k)}\',this.checked)"></td>`).join('')}</tr>`}).join('')).join('')+'</tbody>';let totalPerms=perms.length;let groupKeys=Object.keys(groups);let activeRoles=roles.filter(r=>r.status==='active').length;let builtinCount=roles.filter(builtin).length;
   $('#content').innerHTML=head('权限矩阵','勾选即改 · 内置角色只读 · 变更写入审计日志',
-    `<button class="btn secondary" onclick="navigate('roles')">返回角色列表</button>`)
-    +`<div class="panel"><div class="table-wrap" style="max-height:60vh;overflow:auto"><table class="mtx"><thead><tr><th style="min-width:220px">权限 / 角色</th>${cells}</tr></thead>${body}</table></div></div>
+    `<button class="btn secondary" onclick="navigate('roles')">返回角色列表</button> <button class="btn secondary" onclick="renderRbacCharts(S.cache.rbacRoles,S.cache.rbacPerms)">📊 刷新图表</button>`)
+    +`<div class="cards"><div class="card"><span>角色总数</span><b style="color:var(--blue)">${roles.length}</b></div><div class="card"><span>内置角色</span><b>${builtinCount}</b></div><div class="card"><span>活跃角色</span><b style="color:var(--ok)">${activeRoles}</b></div><div class="card"><span>权限项</span><b style="color:var(--pink)">${totalPerms}</b></div><div class="card"><span>权限分组</span><b>${groupKeys.length}</b></div><div class="card"><span>角色成员总数</span><b>${roles.reduce((a,r)=>a+(r.member_count||0),0)}</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>角色 scope 等级分布</h3></div><div id="rbacScopeChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>权限组 Top 8</h3></div><div id="rbacGroupChart" style="width:100%;height:240px"></div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>角色成员数 Top 10</h3></div><div id="rbacMemberChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>成员数 vs 权限数（散点）</h3><span class="grow">气泡大小 = 权限数</span></div><div id="rbacScatter" style="width:100%;height:240px"></div></div></div>
+    <div class="panel"><div class="table-wrap" style="max-height:60vh;overflow:auto"><table class="mtx"><thead><tr><th style="min-width:220px">权限 / 角色</th>${cells}</tr></thead>${body}</table></div></div>
     <div id="mtxBar" class="mtx-bar" style="display:none"><span id="mtxMsg"></span><span style="flex:1"></span><button class="btn secondary small" onclick="navigate('rbac-matrix')">放弃</button> <button class="btn small" onclick="mtxSave()">保存变更</button></div>`;
+  renderRbacCharts(roles,perms);
 }
 };
+// 页面对象中的交互方法需要暴露给内联 onclick；保持实现集中且避免对象内非法 function 声明。
+function togglePathGraph(){return pages.togglePathGraph()}
+function renderSourceGraph(){return pages.renderSourceGraph()}
+function createPathLink(){return pages.createPathLink()}
+function deletePathLink(id,name){return pages.deletePathLink(id,name)}
+function editCampaign(id){return pages.editCampaign(id)}
+
 /* ===== Stage4-C1：克隆角色（方案乙：自动签发凭证，两段式） ===== */
 async function mtxCloneRole(rid,rname){
  let name=prompt(`以「${rname||rid}」为模板克隆新角色，请输入新角色名称：`,'');
@@ -296,7 +460,8 @@ function resetSchemaFilter(){S.cache.schemaCategory='all';S.cache.schemaQuery=''
 function renderDatabase(keepFocus=false){let d=S.cache.databaseSchema;if(!d)return;let q=S.cache.schemaQuery||'',cat=S.cache.schemaCategory||'all';let tables=d.tables.filter(t=>{if(cat!=='all'&&t.category!==cat)return false;if(!q)return true;let text=[t.name,t.label,t.purpose,...t.fields.flatMap(f=>[f.name,f.label,f.description,...f.tags])].join(' ').toLowerCase();return text.includes(q)});let sums=d.summary,issues=d.integrity.foreignKeyIssues||[];let cats=[{key:'all',label:'全部数据表',description:'展示运行数据库中的全部业务表',tableCount:sums.tableCount,fieldCount:sums.fieldCount},...d.categories];let cards=`<div class="cards"><div class="card"><span>Schema 版本</span><b>${esc(d.schemaVersion)}</b></div><div class="card"><span>业务表 / 字段</span><b>${sums.tableCount} / ${sums.fieldCount}</b></div><div class="card"><span>索引 / 物理外键</span><b>${sums.indexCount} / ${sums.physicalForeignKeyCount}</b></div><div class="card"><span>完整性检查</span><b style="color:${d.integrity.quickCheck==='ok'&&!issues.length?'var(--ok)':'var(--bad)'}">${esc(d.integrity.quickCheck)} · ${issues.length} 异常</b></div></div>`;;if(window.echarts&&d.auditTrend&&d.auditTrend.length){try{const tc=echarts.init(document.getElementById('trendChart'));tc.setOption({textStyle:{color:'#9aa4b2'},tooltip:{trigger:'axis'},grid:{left:40,right:20,top:20,bottom:30},xAxis:{type:'category',data:d.auditTrend.map(x=>x.day)},yAxis:{type:'value'},series:[{type:'line',smooth:true,areaStyle:{},data:d.auditTrend.map(x=>x.value)}]});window.addEventListener('resize',()=>tc.resize())}catch(e){console.warn('chart',e)}}else{const te=document.getElementById('trendChart');if(te)te.innerHTML='<p style="color:var(--muted);padding:20px">暂无近7日操作数据</p>'}let categoryHtml=`<div class="schema-cats">${cats.map(x=>`<button class="schema-cat ${cat===x.key?'active':''}" onclick="selectSchemaCategory('${esc(x.key)}')"><b>${esc(x.label)}</b><small>${esc(x.description)}</small><em>${x.tableCount} 张表 · ${x.fieldCount} 个字段</em></button>`).join('')}</div>`;let tools=`<div class="schema-tools"><input id="schemaQuery" class="select" value="${esc(q)}" placeholder="搜索表名、字段名或中文用途" oninput="filterSchema()"><span class="badge">当前 ${tables.length} 张表</span><button class="btn secondary small" onclick="resetSchemaFilter()">重置</button><button class="btn secondary small" onclick="loadPage()">刷新结构</button></div>`;let warning=!d.tables.some(t=>t.name==='custom_field_definitions'&&t.fields.some(f=>f.name==='options'))?'<div class="schema-note"><b class="schema-alert">结构提示</b><span><code>custom_field_definitions.options</code> 当前运行库不存在；如业务需要下拉或多选选项，应通过单独迁移补丁增加，不能由展示页面隐式修改。</span></div>':'';let list=tables.map(schemaTableHtml).join('')||'<div class="panel empty">没有符合条件的数据表或字段</div>';let relations=d.relations.filter(r=>cat==='all'||[r.fromTable,r.toTable].some(n=>d.tables.find(t=>t.name===n)?.category===cat));let relHtml=(()=>{let logic=relations.filter(r=>r.kind!=='physical'),phys=relations.filter(r=>r.kind==='physical');let card=r=>`<div class="schema-relation"><div>${schemaTag(r.kind==='physical'?'FK':'逻辑关联')} <code>${esc(r.fromTable)}.${esc(r.fromField)}</code> → <code>${esc(r.toTable)}.${esc(r.toField)}</code></div><p>${esc(r.description)}</p></div>`;return `<div class="panel"><div class="panel-head"><h3>逻辑关联</h3><span class="grow">由 API、RBAC 和组织隔离代码维护</span><span class="badge">${logic.length} 条</span></div><div class="schema-relations">${logic.map(card).join('')||'<div class="empty">无逻辑关联</div>'}</div></div><div class="panel"><div class="panel-head"><h3>物理外键</h3><span class="grow">由 SQLite 强制约束</span><span class="badge">${phys.length} 条</span></div><div class="schema-relations">${phys.map(card).join('')||'<div class="empty">无物理外键</div>'}</div></div>`})();$('#content').innerHTML=head('数据库结构中心','Schema 208 数据字典、字段释义、约束和实体关系 · 只读展示','<span class="status active">只读元数据</span>')+`<div class="schema-hero">${cards}${categoryHtml}${(d.notes||[]).map(n=>`<div class="schema-note"><b>说明</b><span>${esc(n)}</span></div>`).join('')}${warning}</div>${tools}<div class="schema-section-title"><h3>数据表与字段字典</h3><span class="badge">点击表卡片展开</span></div>${list}<div class="schema-section-title"><h3>关系与约束</h3><span class="badge">${relations.length} 条</span></div>${relHtml}`;if(keepFocus){let e=$('#schemaQuery');e?.focus();e?.setSelectionRange(q.length,q.length)}}
 function schemaTableHtml(t){let fields=`<div class="table-wrap"><table class="schema-fields"><thead><tr><th>字段 / 中文名</th><th>类型</th><th>约束</th><th>默认值</th><th>字段作用与关联</th></tr></thead><tbody>${t.fields.map(f=>{let rel=[...(f.physicalRelations||[]),...(f.logicalRelations||[])].filter(r=>r.toTable&&r.toField).map(r=>`${r.kind==='physical'?'物理外键':'逻辑关联'}：${r.toTable}.${r.toField}${r.description?'（'+r.description+'）':''}`).join('；');return `<tr><td><code>${esc(f.name)}</code><br><b>${esc(f.label)}</b></td><td><code>${esc(f.type||'—')}</code></td><td><div class="schema-tags">${(f.tags||[]).map(schemaTag).join('')||'<span class="schema-tag">可空</span>'}</div></td><td><code>${esc(f.default??'—')}</code></td><td>${esc(f.description)}${rel?`<br><span class="schema-code">${esc(rel)}</span>`:''}</td></tr>`}).join('')}</tbody></table></div>`;let idx=t.indexes?.length?`<div class="schema-section-title"><h3>索引</h3></div><div class="schema-relations">${t.indexes.map(i=>`<div class="schema-relation"><code>${esc(i.name)}</code> ${i.unique?schemaTag('UNIQUE'):''}<p>${esc((i.fields||[]).join(', ')||'表达式或自动索引')}</p></div>`).join('')}</div>`:'';return `<details class="schema-table" ${S.cache.schemaQuery?'open':''}><summary><div class="schema-title"><b>${esc(t.label)}</b><code>${esc(t.name)}</code></div><div class="schema-purpose">${esc(t.purpose)}</div><span class="badge">${t.fieldCount} 字段</span><span class="badge">${esc(t.scopeType||'结构元数据')}</span></summary><div class="schema-body">${fields}${idx}</div></details>`}
 function bars(a){if(!a?.length)return '<div class="empty">暂无数据</div>';let mx=Math.max(...a.map(x=>x.value),1);return a.map(x=>`<div><span>${esc(x.name||'未分类')} · ${x.value}</span><div class="bar"><i style="width:${x.value/mx*100}%"></i></div></div>`).join('')}
-function createOrg(){openModal('新建企业',[{name:'name',label:'企业名称',required:true,placeholder:'例：华东销售有限公司',help:'必填，2-50 字符'},{name:'organizationId',label:'企业 ID（可留空自动生成）',placeholder:'留空自动生成',help:'建议留空，由系统分配唯一 ID'}],o=>api('/api/v207/admin/organizations',{method:'POST',body:o}))}function createTeam(){openModal('新建团队',[{name:'name',label:'团队名称',required:true,placeholder:'例：华东大区'},{name:'workspaceName',label:'工作区名称',placeholder:'例：销售协同空间'}],o=>api('/api/v207/admin/teams'+qp(),{method:'POST',body:o}))}function createUser(){let teams=S.cache.teams||[];openModal('新建用户',[{name:'loginName',label:'登录名',required:true,placeholder:'例：zhangsan',help:'字母/数字/下划线，全局唯一'},{name:'displayName',label:'显示名',placeholder:'例：张三'},{name:'password',label:'临时密码（至少 12 位）',type:'password',required:true,placeholder:'至少12位，含大小写+数字',help:'首次登录后需修改'},{name:'teamId',label:'所属团队',type:'select',options:teams.map(x=>({value:x.team_id,label:x.name}))},{name:'roleId',label:'角色',type:'select',options:[['role_orgadmin','企业管理员'],['role_teamlead','团队主管'],['role_operator','操作员'],['role_readonly','只读用户'],['role_auditor','审计员']].map(x=>({value:x[0],label:x[1]}))}],o=>api('/api/v207/admin/users'+qp(),{method:'POST',body:o}))}function createAccount(){WizAccount.start()}
+function createOrg(){openModal('新建企业',[{name:'name',label:'企业名称',required:true,placeholder:'例：华东销售有限公司',help:'必填，2-50 字符'},{name:'organizationId',label:'企业 ID（可留空自动生成）',placeholder:'留空自动生成',help:'建议留空，由系统分配唯一 ID'}],o=>api('/api/v207/admin/organizations',{method:'POST',body:o}))}async function createContact(){let [wd,sd]=await Promise.all([api('/api/v207/admin/workspaces'+qp()),api('/api/v207/admin/sources'+qp()+'&pageSize=200')]);let ws=wd.items||[],src=sd.items||[];if(!ws.length||!src.length){toast('请先创建工作区和来源',1);return}openModal('新建联系人',[{name:'manualName',label:'姓名',required:true},{name:'manualPhone',label:'电话'},{name:'workspaceId',label:'工作区',type:'select',required:true,options:ws.map(x=>({value:x.workspace_id,label:x.name}))},{name:'sourceId',label:'来源',type:'select',required:true,options:src.map(x=>({value:x.source_id,label:x.source_name||x.source_id}))},{name:'identityType',label:'身份类型',type:'select',options:[{value:'external_id',label:'人工编号'},{value:'phone',label:'手机号'},{value:'email',label:'邮箱'}]},{name:'identityValue',label:'身份值',help:'留空时自动生成人工编号'}],o=>api('/api/v207/admin/contacts'+qp(),{method:'POST',body:o}))}
+function createWorkspace(){openModal('新建工作区',[{name:'name',label:'工作区名称',required:true,placeholder:'例：销售协同空间'}],o=>api('/api/v207/admin/workspaces'+qp(),{method:'POST',body:o}))}function createTeam(){let ws=S.cache.workspaces||[];if(!ws.length){toast('请先创建工作区',1);navigate('workspaces');return}openModal('新建团队',[{name:'name',label:'团队名称',required:true,placeholder:'例：华东大区'},{name:'workspaceId',label:'所属工作区',type:'select',required:true,options:ws.map(x=>({value:x.workspace_id,label:x.name}))}],o=>api('/api/v207/admin/teams'+qp(),{method:'POST',body:o}))}function createUser(){let teams=S.cache.teams||[];openModal('新建用户',[{name:'loginName',label:'登录名',required:true,placeholder:'例：zhangsan',help:'字母/数字/下划线，全局唯一'},{name:'displayName',label:'显示名',placeholder:'例：张三'},{name:'password',label:'临时密码（至少 12 位）',type:'password',required:true,placeholder:'至少12位，含大小写+数字',help:'首次登录后需修改'},{name:'teamId',label:'所属团队',type:'select',options:teams.map(x=>({value:x.team_id,label:x.name}))},{name:'roleId',label:'角色',type:'select',options:[['role_orgadmin','企业管理员'],['role_teamlead','团队主管'],['role_operator','操作员'],['role_readonly','只读用户'],['role_auditor','审计员']].map(x=>({value:x[0],label:x[1]}))}],o=>api('/api/v207/admin/users'+qp(),{method:'POST',body:o}))}function createAccount(){WizAccount.start()}
 const WizAccount={step:1,data:{channel:'',displayName:'',identity:'',identityType:'login',teamId:''},
  channels:[['whatsapp','WhatsApp','#25d366','\ud83d\udcf1'],['instagram','Instagram','#e1306c','\ud83d\udcbc'],['facebook','Facebook','#1877f2','\ud83d\udcf0'],['messenger','Messenger','#0084ff','\ud83d\udcac'],['telegram','Telegram','#229ed9','\ud83d\udce8']],
  idTypes:[['login','\u767b\u5f55\u540d\u8d26'],['phone','\u624b\u673a\u53f7\u7801'],['email','\u90ae\u7bb1'],['username','\u7528\u6237\u540d']],
@@ -352,7 +517,7 @@ async function permSources(uid,name){
   $('#modal').classList.remove('hide');
  }catch(e){toast(e.message||'追溯加载失败',1)}
 }
-function resetPwd(id){openModal('重置临时密码',[{name:'password',label:'新临时密码（至少 12 位）',type:'password',required:true,placeholder:'至少12位，含大小写+数字'}],o=>api(`/api/v207/admin/users/${id}/reset-password${qp()}`,{method:'POST',body:o}))}async function members(id,name){let d=await api(`/api/v207/admin/teams/${id}/members${qp()}`);showJson({团队:name,成员:d.items})}function editContact(r){openModal('编辑联系人',[{name:'manualName',label:'人工姓名',value:r.manual_name,placeholder:'例：李四'},{name:'manualPhone',label:'人工电话',value:r.manual_phone,placeholder:'例：13800138000',help:'11 位手机号'},{name:'remark',label:'备注',type:'textarea',value:r.remark,placeholder:'例：负责华东区售前',help:'选填，200 字内'},{name:'status',label:'业务状态',value:r.status},{name:'reason',label:'操作原因'}],o=>api(`/api/v207/admin/contacts/${r.contact_id}${qp()}`,{method:'PATCH',body:o}))}function searchContacts(){let q=$('#cq').value;navigate('contacts');setTimeout(()=>{},0)}function showJson(x){$('#modalTitle').textContent='详细信息';$('#modalBody').innerHTML='<pre class="json">'+esc(JSON.stringify(x,null,2))+'</pre>';$('#modalForm .modal-actions').classList.add('hide');$('#modal').classList.remove('hide')}
+function resetPwd(id){openModal('重置临时密码',[{name:'password',label:'新临时密码（至少 12 位）',type:'password',required:true,placeholder:'至少12位，含大小写+数字'}],o=>api(`/api/v207/admin/users/${id}/reset-password${qp()}`,{method:'POST',body:o}))}async function members(id,name){let d=await api(`/api/v207/admin/teams/${id}/members${qp()}`);showJson({团队:name,成员:d.items})}function editContact(r){openModal('编辑联系人',[{name:'manualName',label:'人工姓名',value:r.manual_name,placeholder:'例：李四'},{name:'manualPhone',label:'人工电话',value:r.manual_phone,placeholder:'例：13800138000',help:'11 位手机号'},{name:'remark',label:'备注',type:'textarea',value:r.remark,placeholder:'例：负责华东区售前',help:'选填，200 字内'},{name:'status',label:'业务状态',value:r.status},{name:'reason',label:'操作原因'}],o=>api(`/api/v207/admin/contacts/${r.contact_id}${qp()}`,{method:'PATCH',body:o}))}function searchContacts(){if(S.page!=='contacts')return navigate('contacts');if(typeof S.tableRefresh.contacts==='function')S.tableRefresh.contacts()}function showJson(x){$('#modalTitle').textContent='详细信息';$('#modalBody').innerHTML='<pre class="json">'+esc(JSON.stringify(x,null,2))+'</pre>';$('#modalForm .modal-actions').classList.add('hide');$('#modal').classList.remove('hide')}
 function createTag(){let w=S.cache.currentWorkspace;if(!w){toast('请先选择工作区',1);return}openModal('新建标签',[{name:'name',label:'标签名称',required:true,placeholder:'例：高意向客户'},{name:'kind',label:'标签类型',type:'select',value:'portrait',options:[{value:'portrait',label:'画像类（可多选）'},{value:'status',label:'状态类（单选互斥）'}]},{name:'category',label:'分类',placeholder:'例：客户画像'},{name:'color',label:'颜色',value:'#64748b',placeholder:'例：#FF5733',help:'十六进制色值'},{name:'sortOrder',label:'排序',type:'number',value:0}],async o=>await api('/api/v207/admin/tags',{method:'POST',body:{...o,workspace:w.workspace_id}}))}
 function editTag(id){openModal('编辑标签',[{name:'name',label:'标签名称',placeholder:'例：高意向客户'},{name:'kind',label:'标签类型',type:'select',options:[{value:'portrait',label:'画像类'},{value:'status',label:'状态类'}]},{name:'category',label:'分类',placeholder:'例：客户画像'},{name:'color',label:'颜色',placeholder:'例：#FF5733',help:'十六进制色值'},{name:'sortOrder',label:'排序',type:'number'}],o=>api('/api/v207/admin/tags',{method:'POST',body:{...o,tag_id:id,workspace:S.cache.currentWorkspace.workspace_id}}))}
 async function deleteTag(id,name){if(!confirm(`确认删除标签"${name}"？\n如有联系人使用此标签，将无法删除。`))return;try{await api(`/api/v207/admin/tags/${id}`,{method:'DELETE'});toast('标签已删除');loadPage()}catch(e){toast(e.message,1)}}
@@ -406,7 +571,667 @@ async function deleteRole(id,name){try{let p=await api(`/api/v207/admin/roles/${
 
 function openModal(title,fields,onSubmit){$('#modalTitle').textContent=title;let body='';fields.forEach(f=>{let input='';if(f.type==='select')input=`<select name="${esc(f.name)}" ${f.required?'required':''}><option value="">${esc(f.placeholder||'请选择…')}</option>${(f.options||[]).map(o=>`<option value="${esc(o.value)}" ${o.value===f.value?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`;else if(f.type==='textarea')input=`<textarea name="${esc(f.name)}" rows="4" placeholder="${esc(f.placeholder||'')}" ${f.required?'required':''}>${esc(f.value||'')}</textarea>`;else input=`<input type="${f.type||'text'}" name="${esc(f.name)}" value="${esc(f.value||'')}" placeholder="${esc(f.placeholder||'')}" ${f.required?'required':''}>`;body+=`<div class="field"><label>${esc(f.label)}</label>${input}${f.help?`<small class="field-help">${esc(f.help)}</small>`:''}</div>`});$('#modalBody').innerHTML=body;$('#modalForm .modal-actions').classList.remove('hide');$('#modalForm').onsubmit=async e=>{e.preventDefault();let data={};new FormData(e.target).forEach((v,k)=>data[k]=v);try{await onSubmit(data);closeModal();toast('操作成功');loadPage()}catch(e){toast(e.message,1)}};$('#modal').classList.remove('hide')}
 function closeModal(){$('#modal').classList.add('hide');$('#modalForm').reset()}
-function drawGraph(g){let ns=[],es=[],add=(id,label,type)=>{if(id&&!ns.some(x=>x.id===id))ns.push({id,label,type})};(g.organizations||[]).forEach(x=>add(x.organization_id,x.name,'企业'));(g.teams||[]).forEach(x=>{add(x.team_id,x.name,'团队');es.push([x.organization_id,x.team_id]);es.push([x.team_id,x.workspace_id])});(g.workspaces||[]).forEach(x=>add(x.workspace_id,x.name,'工作区'));(g.users||[]).forEach(x=>add(x.user_id,x.display_name,'用户'));(g.teamMemberships||[]).forEach(x=>es.push([x.team_id,x.user_id]));(g.accounts||[]).forEach(x=>add(x.channel_account_id,x.display_name,'账号'));(g.accountGrants||[]).forEach(x=>es.push([x.team_id,x.channel_account_id]));(g.sources||[]).forEach(x=>{add(x.source_id,x.source_name,'来源');es.push([x.channel_account_id||x.team_id,x.source_id])});(g.devices||[]).forEach(x=>{add(x.device_id,x.admin_device_name||x.user_device_alias||x.system_device_name||x.device_id,'设备');es.push([x.team_id,x.device_id])});let W=1100,H=Math.max(650,Math.ceil(ns.length/6)*130),pos={};ns.forEach((n,i)=>{let col=i%6,row=Math.floor(i/6);pos[n.id]=[95+col*180,75+row*130]});let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><g>${es.filter(e=>pos[e[0]]&&pos[e[1]]).map(e=>`<line class="edge" x1="${pos[e[0]][0]}" y1="${pos[e[0]][1]}" x2="${pos[e[1]][0]}" y2="${pos[e[1]][1]}"/>`).join('')}</g><g>${ns.map(n=>`<g class="gnode" transform="translate(${pos[n.id][0]-70},${pos[n.id][1]-25})"><rect width="140" height="50"/><text x="70" y="19" text-anchor="middle">${esc(n.type)}</text><text x="70" y="37" text-anchor="middle">${esc(n.label).slice(0,16)}</text><title>${esc(n.id)}</title></g>`).join('')}</g></svg>`;$('#graphbox').innerHTML=svg}
+// ===== Stage10 patch: 组织架构可视化 =====
+function computeDepth(items,parentKey='parent_id'){
+ let map={};items.forEach(r=>{map[r[parentKey]||null]=(map[r[parentKey]||null]||0)+1});
+ let depthMap={};
+ function depth(id){
+  if(depthMap[id]!==undefined)return depthMap[id];
+  let node=items.find(r=>r.department_id===id||r.business_line_id===id||r.market_id===id);
+  if(!node||!node[parentKey])return 0;
+  return depthMap[id]=(depth(node[parentKey])+1);
+ }
+ return items.map(r=>depth(r.department_id||r.business_line_id||r.market_id));
+}
+function renderStructureCharts(deps,lines,mkts){
+ if(!window.echarts)return;
+ // 1. 部门层级深度分布
+ let dEl=document.querySelector('#struDeptChart');
+ if(dEl){
+  dEl.innerHTML='';
+  if(window._struDept)try{window._struDept.dispose()}catch(e){}
+  let depths=computeDepth(deps||[],'parent_id');
+  let dist={};
+  depths.forEach(d=>{let k=d===0?'根':`L${d+1}`;dist[k]=(dist[k]||0)+1});
+  let sorted=Object.entries(dist).sort((a,b)=>parseInt(a[0].replace('根','0').slice(1))-parseInt(b[0].replace('根','0').slice(1)));
+  let chart=echarts.init(dEl);window._struDept=chart;
+  let palette=['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#06b6d4'];
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:30,left:50,right:30,bottom:30},xAxis:{type:'category',data:sorted.map(r=>r[0])},yAxis:{type:'value',name:'部门数'},series:[{type:'bar',barWidth:'50%',data:sorted.map((r,i)=>({value:r[1],itemStyle:{color:palette[i%palette.length],borderRadius:[4,4,0,0]}})),label:{show:true,position:'top',fontSize:11}}]});
+ }
+ // 2. 业务线状态对比
+ let lEl=document.querySelector('#struLineChart');
+ if(lEl){
+  lEl.innerHTML='';
+  if(window._struLine)try{window._struLine.dispose()}catch(e){}
+  let active=(lines||[]).filter(r=>r.status==='active').length;
+  let inactive=(lines||[]).filter(r=>r.status!=='active').length;
+  let root=(lines||[]).filter(r=>!r.parent_id).length;
+  let child=(lines||[]).filter(r=>r.parent_id).length;
+  let chart=echarts.init(lEl);window._struLine=chart;
+  chart.setOption({tooltip:{trigger:'item',formatter:'{b}：<b>{c}</b> ({d}%)'},legend:{bottom:0},series:[{type:'pie',radius:['40%','72%'],data:[{name:'活跃',value:active,itemStyle:{color:'#10b981'}},{name:'停用',value:inactive,itemStyle:{color:'#64748b'}},{name:'根业务线',value:root,itemStyle:{color:'#6366f1'}},{name:'子业务线',value:child,itemStyle:{color:'#ec4899'}}],label:{fontSize:11,formatter:'{b}\n{d}%'}}]});
+ }
+ // 3. 市场类型分布
+ let tEl=document.querySelector('#struTypeChart');
+ if(tEl){
+  tEl.innerHTML='';
+  if(window._struType)try{window._struType.dispose()}catch(e){}
+  let typeMap={};(mkts||[]).forEach(r=>{let k=r.market_type||'unknown';typeMap[k]=(typeMap[k]||0)+1});
+  let palette=['#6366f1','#ec4899','#f59e0b','#10b981','#06b6d4','#8b5cf6','#f43f5e'];
+  let data=Object.entries(typeMap).map(([k,v],i)=>({name:k,value:v,itemStyle:{color:palette[i%palette.length]}}));
+  let chart=echarts.init(tEl);window._struType=chart;
+  chart.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{fontSize:11}},series:[{type:'pie',radius:['40%','72%'],roseType:'radius',data:data,label:{fontSize:11,formatter:'{b}\n{d}%'}}]});
+ }
+ // 4. 国家分布 Top 10
+ let cEl=document.querySelector('#struCountryChart');
+ if(cEl){
+  cEl.innerHTML='';
+  if(window._struCountry)try{window._struCountry.dispose()}catch(e){}
+  let ccMap={};(mkts||[]).forEach(r=>{let k=r.country_code||'—';ccMap[k]=(ccMap[k]||0)+1});
+  let sorted=Object.entries(ccMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  let chart=echarts.init(cEl);window._struCountry=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:60,right:30,bottom:25,containLabel:true},xAxis:{type:'value',name:'市场数'},yAxis:{type:'category',data:sorted.map(r=>r[0]).reverse(),axisLabel:{fontSize:11}},series:[{type:'bar',data:sorted.map(r=>r[1]).reverse(),itemStyle:{color:'#06b6d4',borderRadius:[0,6,6,0]},label:{show:true,position:'right',fontSize:11},barWidth:'55%'}]});
+ }
+ window.addEventListener('resize',()=>{try{if(window._struDept)window._struDept.resize();if(window._struLine)window._struLine.resize();if(window._struType)window._struType.resize();if(window._struCountry)window._struCountry.resize();}catch(e){}});
+}
+function renderPositionCharts(positions,departments){
+ if(!window.echarts)return;
+ // 1. 部门职位数 Top 10
+ let dEl=document.querySelector('#posByDeptChart');
+ if(dEl){
+  dEl.innerHTML='';
+  if(window._posByDept)try{window._posByDept.dispose()}catch(e){}
+  let deptMap={};(positions||[]).forEach(r=>{let k=r.department_name||'未分配';deptMap[k]=(deptMap[k]||0)+1});
+  let sorted=Object.entries(deptMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  let chart=echarts.init(dEl);window._posByDept=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:120,right:30,bottom:25,containLabel:true},xAxis:{type:'value',name:'职位数'},yAxis:{type:'category',data:sorted.map(r=>r[0]).reverse(),axisLabel:{fontSize:11}},series:[{type:'bar',data:sorted.map(r=>r[1]).reverse(),itemStyle:{color:'#8b5cf6',borderRadius:[0,6,6,0]},label:{show:true,position:'right',fontSize:11},barWidth:'55%'}]});
+ }
+ // 2. 部门-状态矩阵热力图
+ let hEl=document.querySelector('#posStatusChart');
+ if(hEl){
+  hEl.innerHTML='';
+  if(window._posStatus)try{window._posStatus.dispose()}catch(e){}
+  let depts=[...new Set((positions||[]).map(r=>r.department_name).filter(Boolean))].slice(0,12);
+  let statuses=['active','inactive','deleted'];
+  let statusName={active:'启用',inactive:'停用',deleted:'已删'};
+  let data=[];
+  depts.forEach((d,di)=>{statuses.forEach((s,si)=>{let cnt=(positions||[]).filter(r=>r.department_name===d&&r.status===s).length;data.push([si,di,cnt])})});
+  let chart=echarts.init(hEl);window._posStatus=chart;
+  chart.setOption({tooltip:{position:'top',formatter:p=>`<b>${depts[p.value[1]]}</b> · ${statusName[statuses[p.value[0]]]}<br>职位数：<b>${p.value[2]}</b>`},grid:{top:30,left:80,right:30,bottom:30},xAxis:{type:'category',data:statuses.map(s=>statusName[s]),splitArea:{show:true}},yAxis:{type:'category',data:depts,splitArea:{show:true},axisLabel:{fontSize:10}},visualMap:{min:0,max:Math.max(1,...data.map(r=>r[2])),calculable:true,orient:'horizontal',left:'center',bottom:0,textStyle:{fontSize:10},inRange:{color:['#ec489911','#ec4899','#be185d']}},series:[{type:'heatmap',data:data,label:{show:true,fontSize:10,color:'#fff',fontWeight:'bold'},emphasis:{itemStyle:{shadowBlur:10,shadowColor:'rgba(0,0,0,0.5)'}}}]});
+ }
+ // 3. 任职人数 Top 10 职位
+ let mEl=document.querySelector('#posHeadcountChart');
+ if(mEl){
+  mEl.innerHTML='';
+  if(window._posHeadcount)try{window._posHeadcount.dispose()}catch(e){}
+  let top=(positions||[]).slice().sort((a,b)=>(b.user_count||0)-(a.user_count||0)).slice(0,10);
+  let chart=echarts.init(mEl);window._posHeadcount=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:120,right:30,bottom:25,containLabel:true},xAxis:{type:'value',name:'任职人数'},yAxis:{type:'category',data:top.map(r=>r.name).reverse(),axisLabel:{fontSize:11}},series:[{type:'bar',data:top.map(r=>r.user_count||0).reverse(),itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'#ec4899aa'},{offset:1,color:'#ec4899'}]},borderRadius:[0,6,6,0]},label:{show:true,position:'right',fontSize:11},barWidth:'55%'}]});
+ }
+ // 4. 部门-任职人数堆叠
+ let sEl=document.querySelector('#posStackChart');
+ if(sEl){
+  sEl.innerHTML='';
+  if(window._posStack)try{window._posStack.dispose()}catch(e){}
+  let depts2=[...new Set((positions||[]).map(r=>r.department_name).filter(Boolean))].slice(0,8);
+  let activeData=depts2.map(d=>(positions||[]).filter(r=>r.department_name===d&&r.status==='active').reduce((a,r)=>a+(r.user_count||0),0));
+  let inactiveData=depts2.map(d=>(positions||[]).filter(r=>r.department_name===d&&r.status!=='active').reduce((a,r)=>a+(r.user_count||0),0));
+  let chart=echarts.init(sEl);window._posStack=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},axisPointer:{label:{backgroundColor:'#6a7985'}}},legend:{bottom:0},grid:{top:20,left:50,right:30,bottom:35,containLabel:true},xAxis:{type:'category',data:depts2,axisLabel:{interval:0,rotate:depts2.length>5?20:0,fontSize:10}},yAxis:{type:'value',name:'任职人数'},series:[{name:'启用',type:'bar',stack:'total',data:activeData,itemStyle:{color:'#10b981'}},{name:'停用/其他',type:'bar',stack:'total',data:inactiveData,itemStyle:{color:'#64748b'}}]});
+ }
+ window.addEventListener('resize',()=>{try{if(window._posByDept)window._posByDept.resize();if(window._posStatus)window._posStatus.resize();if(window._posHeadcount)window._posHeadcount.resize();if(window._posStack)window._posStack.resize();}catch(e){}});
+}
+// ===== Stage8 patch: 标签/字段/角色可视化 =====
+function renderConfigCharts(tags,fields){
+ if(!window.echarts)return;
+ // 标签类型分布（环形）
+ let tEl=document.querySelector('#cfgTagTypeChart');
+ if(tEl){
+  tEl.innerHTML='';
+  if(window._cfgTagType)try{window._cfgTagType.dispose()}catch(e){}
+  let typeMap={};
+  (tags||[]).forEach(r=>{let k=r.tag_kind||'portrait';typeMap[k]=(typeMap[k]||0)+1});
+  let nameMap={portrait:'画像类',status:'状态类'};
+  let chart=echarts.init(tEl);window._cfgTagType=chart;
+  chart.setOption({tooltip:{trigger:'item'},legend:{bottom:0},series:[{type:'pie',radius:['40%','72%'],data:Object.entries(typeMap).map(([k,v])=>({name:nameMap[k]||k,value:v,itemStyle:{color:k==='status'?'#f59e0b':'#6366f1'}})),label:{formatter:'{b}\n{d}%'}}]});
+ }
+ // 标签分类柱状图
+ let cEl=document.querySelector('#cfgTagCatChart');
+ if(cEl){
+  cEl.innerHTML='';
+  if(window._cfgTagCat)try{window._cfgTagCat.dispose()}catch(e){}
+  let catMap={};
+  (tags||[]).forEach(r=>{let k=r.category||'未分类';catMap[k]=(catMap[k]||0)+1});
+  let sorted=Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  let chart=echarts.init(cEl);window._cfgTagCat=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:90,right:30,bottom:25,containLabel:true},xAxis:{type:'value'},yAxis:{type:'category',data:sorted.map(r=>r[0]).reverse(),axisLabel:{fontSize:11}},series:[{type:'bar',data:sorted.map(r=>r[1]).reverse(),itemStyle:{color:'#10b981',borderRadius:[0,6,6,0]},label:{show:true,position:'right',fontSize:11},barWidth:'55%'}]});
+ }
+ // 字段类型分布
+ let fEl=document.querySelector('#cfgFieldTypeChart');
+ if(fEl){
+  fEl.innerHTML='';
+  if(window._cfgFieldType)try{window._cfgFieldType.dispose()}catch(e){}
+  let fMap={};
+  (fields||[]).forEach(r=>{let k=r.field_type||'text';fMap[k]=(fMap[k]||0)+1});
+  let palette=['#6366f1','#ec4899','#f59e0b','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'];
+  let chart=echarts.init(fEl);window._cfgFieldType=chart;
+  chart.setOption({tooltip:{trigger:'item'},legend:{type:'scroll',bottom:0,textStyle:{fontSize:10}},series:[{type:'pie',radius:['35%','72%'],roseType:'radius',data:Object.entries(fMap).map(([k,v],i)=>({name:k,value:v,itemStyle:{color:palette[i%palette.length]}})),label:{fontSize:10}}]});
+ }
+ // 标签 vs 字段 对比柱状
+ let bEl=document.querySelector('#cfgCompareChart');
+ if(bEl){
+  bEl.innerHTML='';
+  if(window._cfgCompare)try{window._cfgCompare.dispose()}catch(e){}
+  let enabledFields=(fields||[]).filter(r=>r.enabled).length;
+  let portraitTags=(tags||[]).filter(r=>r.tag_kind!=='status').length;
+  let statusTags=(tags||[]).filter(r=>r.tag_kind==='status').length;
+  let chart=echarts.init(bEl);window._cfgCompare=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:30,left:50,right:30,bottom:30},xAxis:{type:'category',data:['画像类标签','状态类标签','自定义字段','启用字段']},yAxis:{type:'value'},series:[{type:'bar',barWidth:'40%',data:[{value:portraitTags,itemStyle:{color:'#6366f1'}},{value:statusTags,itemStyle:{color:'#f59e0b'}},{value:(fields||[]).length,itemStyle:{color:'#ec4899'}},{value:enabledFields,itemStyle:{color:'#10b981'}}],label:{show:true,position:'top',fontSize:11,fontWeight:'bold'}}]});
+ }
+ window.addEventListener('resize',()=>{try{if(window._cfgTagType)window._cfgTagType.resize();if(window._cfgTagCat)window._cfgTagCat.resize();if(window._cfgFieldType)window._cfgFieldType.resize();if(window._cfgCompare)window._cfgCompare.resize();}catch(e){}});
+}
+function renderRbacCharts(roles,perms){
+ if(!window.echarts)return;
+ // scope 等级分布
+ let sEl=document.querySelector('#rbacScopeChart');
+ if(sEl){
+  sEl.innerHTML='';
+  if(window._rbacScope)try{window._rbacScope.dispose()}catch(e){}
+  let scopeMap={};let scopeName={platform:'平台',organization:'企业',workspace:'工作区',department:'部门',team:'团队',self:'本人'};
+  (roles||[]).forEach(r=>{let k=r.scope_level||'organization';scopeMap[k]=(scopeMap[k]||0)+1});
+  let chart=echarts.init(sEl);window._rbacScope=chart;
+  let data=Object.entries(scopeMap).map(([k,v])=>({name:scopeName[k]||k,value:v}));
+  chart.setOption({tooltip:{trigger:'item'},legend:{bottom:0,textStyle:{fontSize:11}},series:[{type:'pie',radius:['40%','72%'],data:data,label:{formatter:'{b}\n{d}%',fontSize:11}}]});
+ }
+ // 权限组 Top 5
+ let gEl=document.querySelector('#rbacGroupChart');
+ if(gEl){
+  gEl.innerHTML='';
+  if(window._rbacGroup)try{window._rbacGroup.dispose()}catch(e){}
+  let groups={};(perms||[]).forEach(p=>{let key=p.permission_key||p.id||'';let g=String(key).split('.')[0]||'其他';groups[g]=(groups[g]||0)+1});
+  let sorted=Object.entries(groups).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  let chart=echarts.init(gEl);window._rbacGroup=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:80,right:30,bottom:25,containLabel:true},xAxis:{type:'value',name:'权限数'},yAxis:{type:'category',data:sorted.map(r=>r[0]).reverse(),axisLabel:{fontSize:11}},series:[{type:'bar',data:sorted.map(r=>r[1]).reverse(),itemStyle:{color:'#06b6d4',borderRadius:[0,6,6,0]},label:{show:true,position:'right',fontSize:11},barWidth:'55%'}]});
+ }
+ // 角色成员数 Top 10
+ let mEl=document.querySelector('#rbacMemberChart');
+ if(mEl){
+  mEl.innerHTML='';
+  if(window._rbacMember)try{window._rbacMember.dispose()}catch(e){}
+  let topRoles=(roles||[]).slice().sort((a,b)=>(b.member_count||0)-(a.member_count||0)).slice(0,10);
+  let chart=echarts.init(mEl);window._rbacMember=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:110,right:30,bottom:25,containLabel:true},xAxis:{type:'value',name:'成员数'},yAxis:{type:'category',data:topRoles.map(r=>r.name).reverse(),axisLabel:{fontSize:11}},series:[{type:'bar',data:topRoles.map(r=>r.member_count||0).reverse(),itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'#8b5cf6aa'},{offset:1,color:'#8b5cf6'}]},borderRadius:[0,6,6,0]},label:{show:true,position:'right',fontSize:11},barWidth:'55%'}]});
+ }
+ // 角色 vs 权限数 散点
+ let scEl=document.querySelector('#rbacScatter');
+ if(scEl){
+  scEl.innerHTML='';
+  if(window._rbacScatter)try{window._rbacScatter.dispose()}catch(e){}
+  let data=(roles||[]).map(r=>{let pc=String(r.permissions||'').split(',').filter(Boolean).length;return [(r.member_count||0),pc,r.name]});
+  let chart=echarts.init(scEl);window._rbacScatter=chart;
+  chart.setOption({tooltip:{formatter:p=>`<b>${esc(p.value[2])}</b><br>成员数：${p.value[0]}<br>权限数：${p.value[1]}`},grid:{top:20,left:50,right:30,bottom:35},xAxis:{type:'value',name:'成员数',nameGap:25,nameTextStyle:{fontSize:11}},yAxis:{type:'value',name:'权限数',nameTextStyle:{fontSize:11}},series:[{type:'scatter',symbolSize:d=>Math.max(12,Math.min(36,d[1]/2)),itemStyle:{color:'#ec4899',opacity:0.7,borderColor:'#fff',borderWidth:1},data:data,label:{show:true,formatter:d=>d[2],fontSize:9,position:'right'}}]});
+ }
+ window.addEventListener('resize',()=>{try{if(window._rbacScope)window._rbacScope.resize();if(window._rbacGroup)window._rbacGroup.resize();if(window._rbacMember)window._rbacMember.resize();if(window._rbacScatter)window._rbacScatter.resize();}catch(e){}});
+}
+// ===== Stage7 patch: 系统诊断可视化 =====
+function renderDiagnosticsCharts(){
+ if(!window.echarts)return;
+ let ds=S.cache.diagnosticsData;if(!ds)return;
+ let meta=ds.tableMeta||[];
+ // 1. 表行数 Top 12 横向条形图
+ let rEl=document.querySelector('#diagRowChart');
+ if(rEl){
+  rEl.innerHTML='';
+  if(window._diagRow)try{window._diagRow.dispose()}catch(e){}
+  let top=meta.slice(0,12);
+  let chart=echarts.init(rEl);window._diagRow=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:140,right:30,bottom:25,containLabel:true},xAxis:{type:'value',name:'行数'},yAxis:{type:'category',data:top.map(r=>r.name).reverse(),axisTick:{show:false},axisLabel:{fontSize:11}},series:[{type:'bar',data:top.map(r=>r.rows).reverse(),itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'#6366f1aa'},{offset:1,color:'#6366f1'}]},borderRadius:[0,6,6,0]},label:{show:true,position:'right',formatter:({value})=>value.toLocaleString(),fontSize:10},barWidth:'55%'}]});
+ }
+ // 2. 表空间占比（玫瑰图）
+ let sEl=document.querySelector('#diagSizeChart');
+ if(sEl){
+  sEl.innerHTML='';
+  if(window._diagSize)try{window._diagSize.dispose()}catch(e){}
+  let sized=meta.filter(r=>r.size>0).slice(0,10);
+  let palette=['#6366f1','#ec4899','#f59e0b','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b','#84cc16','#a855f7'];
+  let chart=echarts.init(sEl);window._diagSize=chart;
+  chart.setOption({tooltip:{trigger:'item',formatter:p=>`${p.name}<br>大小：<b>${(p.value/1024).toFixed(1)} KB</b>（{d}%）`},legend:{type:'scroll',bottom:0,textStyle:{fontSize:10}},series:[{type:'pie',radius:['20%','75%'],roseType:'area',itemStyle:{borderRadius:4},label:{fontSize:10,formatter:'{b}\n{d}%'},data:sized.map((r,i)=>({name:r.name,value:r.size,itemStyle:{color:palette[i%palette.length]}}))}]});
+ }
+ // 3. 索引数 Top 12
+ let iEl=document.querySelector('#diagIdxChart');
+ if(iEl){
+  iEl.innerHTML='';
+  if(window._diagIdx)try{window._diagIdx.dispose()}catch(e){}
+  let withIdx=meta.filter(r=>r.indexes>0).slice(0,12);
+  let chart=echarts.init(iEl);window._diagIdx=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:140,right:30,bottom:25,containLabel:true},xAxis:{type:'value',name:'索引数'},yAxis:{type:'category',data:withIdx.map(r=>r.name).reverse(),axisLabel:{fontSize:11}},series:[{type:'bar',data:withIdx.map(r=>r.indexes).reverse(),itemStyle:{color:'#8b5cf6',borderRadius:[0,6,6,0]},label:{show:true,position:'right',fontSize:10},barWidth:'55%'}]});
+ }
+ // 4. 外键异常表（按表分组）
+ let fEl=document.querySelector('#diagFkChart');
+ if(fEl){
+  fEl.innerHTML='';
+  if(window._diagFk)try{window._diagFk.dispose()}catch(e){}
+  let fkMap={};(ds.foreignKeyIssues||[]).forEach(r=>{let t=r.table||'unknown';fkMap[t]=(fkMap[t]||0)+1});
+  let fkKeys=Object.keys(fkMap);
+  let data=fkKeys.length?fkKeys.map(k=>({name:k,value:fkMap[k]})):[];
+  let chart=echarts.init(fEl);window._diagFk=chart;
+  if(fkKeys.length){
+   chart.setOption({tooltip:{trigger:'item',formatter:'{b}<br>异常数：<b>{c}</b>'},color:['#dc2626','#f97316','#f59e0b','#84cc16','#10b981','#06b6d4','#6366f1','#8b5cf6','#ec4899','#64748b'],series:[{type:'pie',radius:['40%','75%'],label:{fontSize:10},data:data}]});
+  }else{
+   chart.setOption({title:{text:'✓ 无外键异常',left:'center',top:'middle',textStyle:{color:'#10b981',fontSize:18,fontWeight:'bold'}},graphic:[{type:'text',left:'center',bottom:30,style:{text:'所有外键完整性检查通过',fill:'#64748b',fontSize:12}}]});
+  }
+ }
+ // 5. 数据库空间使用（仪表盘）
+ let gEl=document.querySelector('#diagGauge');
+ if(gEl){
+  gEl.innerHTML='';
+  if(window._diagGauge)try{window._diagGauge.dispose()}catch(e){}
+  let used=ds.databaseUsageBytes||0;let free=ds.databaseFreeBytes||0;let total=used+free;let pct=total?Math.round(used*100/total):0;
+  let chart=echarts.init(gEl);window._diagGauge=chart;
+  chart.setOption({tooltip:{formatter:`{a}<br>已用：${(used/1024/1024).toFixed(2)} MB<br>空闲：${(free/1024).toFixed(1)} KB`},series:[{name:'数据库空间使用',type:'gauge',radius:'90%',min:0,max:100,splitNumber:5,axisLine:{lineStyle:{width:18,color:[[30,'#10b981'],[70,'#f59e0b'],[100,'#dc2626']]}},pointer:{width:5,length:'70%'},axisTick:{length:8,lineStyle:{color:'#94a3b8'}},splitLine:{length:14,lineStyle:{color:'#94a3b8'}},axisLabel:{fontSize:11,color:'#64748b',distance:18},detail:{formatter:'{value}%',fontSize:24,color:'#1e293b',fontWeight:'bold',offsetCenter:[0,'60%']},title:{offsetCenter:[0,'85%'],fontSize:12,color:'#64748b'},data:[{value:pct,name:'已用 / 总容量'}]}]});
+ }
+ // 6. 表行数 vs 索引数 散点图
+ let scEl=document.querySelector('#diagScatter');
+ if(scEl){
+  scEl.innerHTML='';
+  if(window._diagScatter)try{window._diagScatter.dispose()}catch(e){}
+  let data=meta.map(r=>[r.rows,r.indexes,r.name]);
+  let chart=echarts.init(scEl);window._diagScatter=chart;
+  chart.setOption({tooltip:{formatter:p=>`<b>${esc(p.value[2])}</b><br>行数：${p.value[0].toLocaleString()}<br>索引数：${p.value[1]}`},grid:{top:20,left:50,right:30,bottom:35},xAxis:{type:'log',name:'行数',nameGap:25,nameTextStyle:{fontSize:11}},yAxis:{type:'value',name:'索引数',nameTextStyle:{fontSize:11}},series:[{type:'scatter',symbolSize:d=>Math.max(10,Math.min(40,Math.sqrt(d[0])/2)),itemStyle:{color:'#10b981',opacity:0.7,borderColor:'#fff',borderWidth:1},data:data,label:{show:true,formatter:d=>d[2],fontSize:9,position:'right'}}]});
+ }
+ window.addEventListener('resize',()=>{try{if(window._diagRow)window._diagRow.resize();if(window._diagSize)window._diagSize.resize();if(window._diagIdx)window._diagIdx.resize();if(window._diagFk)window._diagFk.resize();if(window._diagGauge)window._diagGauge.resize();if(window._diagScatter)window._diagScatter.resize();}catch(e){}});
+}
+// ===== Stage6 patch: 联系人详情 + 触点/归因列表 =====
+async function openContact(contactId){
+ try{
+  let c=(S.cache.contacts||[]).find(x=>x.contact_id===contactId);
+  if(!c)c=await api('/api/v207/admin/contacts?pageSize=1&contactId='+encodeURIComponent(contactId)).catch(()=>({items:[]}));c=c?.items?.[0]||c;
+  let [tp,at]=await Promise.all([api('/api/v207/admin/touchpoints?contactId='+encodeURIComponent(contactId)+'&pageSize=200').catch(()=>({items:[]})),api('/api/v207/admin/attributions?contactId='+encodeURIComponent(contactId)+'&pageSize=200').catch(()=>({items:[]}))]);
+  let tps=tp.items||[],ats=at.items||[];
+  $('#modalTitle').textContent='联系人详情';
+  let baseInfo=`<div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+   <div class="card"><span>显示名</span><b>${esc(c?.manual_name||c?.display_name||'—')}</b></div>
+   <div class="card"><span>电话</span><b>${esc(c?.manual_phone||c?.observed_phone||'—')}</b></div>
+   <div class="card"><span>状态</span><b>${c?.deleted_at?'<span style="color:var(--bad)">已删除</span>':esc(c?.status||'正常')}</b></div>
+   <div class="card"><span>来源</span><b>${esc(c?.source_name||'—')}</b></div>
+   <div class="card"><span>团队</span><b>${esc(c?.team_name||'—')}</b></div>
+   <div class="card"><span>触点数</span><b style="color:var(--blue)">${tps.length}</b></div>
+  </div>`;
+  let tpTypeMap={};tps.forEach(r=>{let k=r.touchpoint_type||'unknown';tpTypeMap[k]=(tpTypeMap[k]||0)+1});
+  let atTypeMap={};ats.forEach(r=>{let k=r.attribution_type||'unknown';atTypeMap[k]=(atTypeMap[k]||0)+1});
+  let timeline=tps.length?`<ol style="list-style:none;padding:0;margin:0">${tps.map(t=>{let dir=t.direction==='inbound'?'← 入站':t.direction==='outbound'?'→ 出站':'↔ 双向';let init=t.initiated_by==='customer'?'客户':t.initiated_by==='business'?'业务':'系统';return `<li style="padding:10px 12px;margin-bottom:6px;border-left:3px solid ${t.direction==='inbound'?'var(--blue)':t.direction==='outbound'?'var(--pink)':'var(--muted)'};background:var(--panel2);border-radius:0 8px 8px 0"><div style="display:flex;gap:10px;align-items:center"><b>${esc(t.touchpoint_type||'unknown')}</b><span class="status ${t.direction==='inbound'?'active':''}">${dir}</span><span class="status">${esc(init)}</span><span style="color:var(--muted);font-size:11px;margin-left:auto">${fmt(t.occurred_at)}</span></div><div style="margin-top:4px;color:var(--muted);font-size:11px">来源：<b>${esc(t.source_name||'—')}</b>${t.session_id?' · 会话：<code>'+esc(t.session_id)+'</code>':''}</div></li>`}).join('')}</ol>`:'<div class="empty">暂无触点记录</div>';
+  let attrList=ats.length?`<ol style="list-style:none;padding:0;margin:0">${ats.map(a=>{let modelColor=a.attribution_type==='first_touch'?'#6366f1':a.attribution_type==='last_touch'?'#ec4899':a.attribution_type==='linear'?'#10b981':a.attribution_type==='time_decay'?'#f59e0b':a.attribution_type==='position_based'?'#06b6d4':'#64748b';return `<li style="padding:10px 12px;margin-bottom:6px;border-left:3px solid ${modelColor};background:var(--panel2);border-radius:0 8px 8px 0"><div style="display:flex;gap:10px;align-items:center"><b style="color:${modelColor}">${esc(a.attribution_type||'—')}</b><span class="status">权重 ${(a.weight||0).toFixed(2)}</span><span style="color:var(--muted);font-size:11px;margin-left:auto">${fmt(a.attributed_at)}</span></div><div style="margin-top:4px;color:var(--muted);font-size:11px">来源：<b>${esc(a.source_name||'—')}</b>${a.is_primary?' · <span style="color:var(--ok)">★ 主归因</span>':''}</div></li>`}).join('')}</ol>`:'<div class="empty">暂无归因记录</div>';
+  $('#modalBody').innerHTML=baseInfo+`<div class="grid2" style="margin-bottom:14px"><div class="panel" style="padding:14px"><h3 style="margin:0 0 10px;font-size:14px">触点类型分布</h3><div id="cdTpChart" style="width:100%;height:200px"></div></div><div class="panel" style="padding:14px"><h3 style="margin:0 0 10px;font-size:14px">归因模型贡献</h3><div id="cdAtChart" style="width:100%;height:200px"></div></div></div><div class="grid2"><div><h3 style="margin:0 0 10px;font-size:14px">触点时间线（${tps.length}）</h3>${timeline}</div><div><h3 style="margin:0 0 10px;font-size:14px">归因贡献（${ats.length}）</h3>${attrList}</div></div>`;
+  $('#modalForm .modal-actions').classList.add('hide');$('#modal').classList.remove('hide');
+  setTimeout(()=>{
+   if(!window.echarts)return;
+   let palette=['#6366f1','#ec4899','#f59e0b','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'];
+   let tpEl=document.querySelector('#cdTpChart');if(tpEl){let chart=echarts.init(tpEl);chart.setOption({tooltip:{trigger:'item'},series:[{type:'pie',radius:['45%','72%'],label:{fontSize:10},data:Object.entries(tpTypeMap).map(([k,v],i)=>({name:k,value:v,itemStyle:{color:palette[i%palette.length]}}))}]})}
+   let atEl=document.querySelector('#cdAtChart');if(atEl){let chart=echarts.init(atEl);chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:10,right:20,bottom:25,containLabel:true},xAxis:{type:'category',data:Object.keys(atTypeMap)},yAxis:{type:'value'},series:[{type:'bar',barWidth:'50%',data:Object.values(atTypeMap),itemStyle:{color:'#ec4899',borderRadius:[4,4,0,0]},label:{show:true,position:'top',fontSize:11}}]})}
+  },80);
+ }catch(e){toast(e.message||'加载联系人详情失败',1)}
+}
+async function touchpointsPage(){
+ let d=await api('/api/v207/admin/touchpoints?pageSize=200');
+ let items=d.items||[];S.cache.touchpoints=items;
+ let dirs=[...new Set(items.map(r=>r.direction).filter(Boolean))].map(v=>({value:v,label:v==='inbound'?'入站':v==='outbound'?'出站':'双向'}));
+ let inits=[...new Set(items.map(r=>r.initiated_by).filter(Boolean))].map(v=>({value:v,label:v==='customer'?'客户':v==='business'?'业务':v==='system'?'系统':'未知'}));
+ let sources=[...new Set(items.map(r=>r.source_name).filter(Boolean))].map(v=>({value:v,label:v}));
+ S.tableRefresh.touchpoints=()=>{$('#tps').innerHTML=smartTable('touchpoints',[['触点 ID','touchpoint_id'],['类型','touchpoint_type'],['方向','direction'],['发起','initiated_by'],['来源','source_name'],['联系人','contact_name'],['平台','platform_id'],['渠道账号','channel_account_id'],['会话','session_id'],['发生时间','occurred_at']],S.cache.touchpoints,r=>{return ''},[{field:'direction',label:'方向',options:dirs},{field:'initiated_by',label:'发起',options:inits},{field:'source_name',label:'来源',options:sources}],{searchHint:'触点ID/联系人/会话ID'})}
+ $('#content').innerHTML=head('触点记录','所有渠道来源的触点事件流','<button class="btn secondary" onclick="loadPage()">刷新</button>')+`<div id="tps"></div>`;S.tableRefresh.touchpoints();}
+async function attributionsPage(){
+ let d=await api('/api/v207/admin/attributions?pageSize=200');
+ let items=d.items||[];S.cache.attributions=items;
+ let models=[...new Set(items.map(r=>r.attribution_type).filter(Boolean))].map(v=>({value:v,label:v}));
+ let sources=[...new Set(items.map(r=>r.source_name).filter(Boolean))].map(v=>({value:v,label:v}));
+ S.tableRefresh.attributions=()=>{$('#ats').innerHTML=smartTable('attributions',[['归因 ID','attribution_id'],['模型','attribution_type'],['权重','weight'],['来源','source_name'],['联系人','contact_name'],['主归因','is_primary'],['归因时间','attributed_at']],S.cache.attributions,r=>'',[{field:'attribution_type',label:'模型',options:models},{field:'source_name',label:'来源',options:sources},{field:'is_primary',label:'主归因',options:[{value:'1',label:'仅主归因'},{value:'0',label:'仅非主'}]}],{searchHint:'归因ID/联系人/来源'})}
+ $('#content').innerHTML=head('归因记录','基于触点的多模型归因贡献','<button class="btn secondary" onclick="loadPage()">刷新</button>')+`<div id="ats"></div>`;S.tableRefresh.attributions();}
+function showAuditDetail(auditId){
+ let r=(S.cache.auditItems||[]).find(x=>x.audit_id===auditId);if(!r){toast('日志不存在',1);return}
+ let parse=raw=>{if(!raw)return {};if(typeof raw==='object')return raw;try{return JSON.parse(raw)}catch(e){return raw}};
+ let before=parse(r.before_json),after=parse(r.after_json);
+ let beforeHtml=Object.keys(before).length?`<pre class="json">${esc(JSON.stringify(before,null,2))}</pre>`:'<div class="empty">无变更前数据</div>';
+ let afterHtml=Object.keys(after).length?`<pre class="json">${esc(JSON.stringify(after,null,2))}</pre>`:'<div class="empty">无变更后数据</div>';
+ $('#modalTitle').textContent=`审计日志详情 · ${esc(r.operation||'')}`;
+ $('#modalBody').innerHTML=`<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px">
+  <div class="kv"><span>操作</span><b>${esc(r.operation||'—')}</b></div>
+  <div class="kv"><span>实体类型</span><b>${esc(r.entity_type||'—')}</b></div>
+  <div class="kv"><span>实体 ID</span><b><code>${esc(r.entity_id||'—')}</code></b></div>
+  <div class="kv"><span>操作者</span><b>${esc(r.actor_name||'—')}</b></div>
+  <div class="kv"><span>工作区</span><b><code>${esc(r.workspace_id||'—')}</code></b></div>
+  <div class="kv"><span>原因</span><b>${esc(r.reason||'—')}</b></div>
+  <div class="kv" style="grid-column:span 2"><span>时间</span><b>${fmt(r.created_at)}</b></div>
+ </div>
+ <div class="grid2">
+  <div><h4 style="margin:0 0 8px;color:var(--muted);font-size:13px">变更前</h4>${beforeHtml}</div>
+  <div><h4 style="margin:0 0 8px;color:var(--ok);font-size:13px">变更后</h4>${afterHtml}</div>
+ </div>`;
+ $('#modalForm .modal-actions').classList.add('hide');$('#modal').classList.remove('hide');
+}
+// ===== Stage5 patch: 审计日志可视化 =====
+function renderAuditCharts(){
+ if(!window.echarts)return;
+ let ds=S.cache.auditData;if(!ds)return;
+ // 1. 30 日操作趋势（柱状图）
+ let tEl=document.querySelector('#auditTrendChart');
+ if(tEl){
+  tEl.innerHTML='';
+  if(window._auditTrend)try{window._auditTrend.dispose()}catch(e){}
+  let data=ds.dailyTrend||[];
+  let chart=echarts.init(tEl);window._auditTrend=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:20,left:40,right:20,bottom:30},xAxis:{type:'category',data:data.map(r=>r.day),axisLabel:{fontSize:10,rotate:30}},yAxis:{type:'value'},series:[{type:'bar',barWidth:'65%',itemStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'#6366f1'},{offset:1,color:'#8b5cf6aa'}]},borderRadius:[6,6,0,0]},data:data.map(r=>r.value)}]});
+ }
+ // 2. 操作时间热力图（星期 × 小时）
+ let hEl=document.querySelector('#auditHeatChart');
+ if(hEl){
+  hEl.innerHTML='';
+  if(window._auditHeat)try{window._auditHeat.dispose()}catch(e){}
+  let heatData=(ds.heatMap||[]).map(r=>[r.hour,r.weekday,r.cnt]);
+  let maxCnt=Math.max(1,...(ds.heatMap||[]).map(r=>r.cnt));
+  let weekdays=['日','一','二','三','四','五','六'];
+  let hours=Array.from({length:24},(_,i)=>i+':00');
+  let chart=echarts.init(hEl);window._auditHeat=chart;
+  chart.setOption({tooltip:{position:'top',formatter:p=>`${weekdays[p.value[1]]} ${hours[p.value[0]]}<br>操作数：<b>${p.value[2]}</b>`},grid:{top:10,left:50,right:20,bottom:60},xAxis:{type:'category',data:hours,splitArea:{show:true},axisLabel:{fontSize:9,interval:1}},yAxis:{type:'category',data:weekdays,splitArea:{show:true},axisLabel:{fontSize:11}},visualMap:{min:0,max:maxCnt,calculable:true,orient:'horizontal',left:'center',bottom:0,itemHeight:80,textStyle:{fontSize:10},inRange:{color:['#f3f4f6','#fbbf24','#f97316','#dc2626']}},series:[{type:'heatmap',data:heatData,label:{show:false},emphasis:{itemStyle:{shadowBlur:10,shadowColor:'rgba(0,0,0,0.3)'}}}]});
+ }
+ // 3. 操作类型分布（环形图）
+ let opEl=document.querySelector('#auditOpChart');
+ if(opEl){
+  opEl.innerHTML='';
+  if(window._auditOp)try{window._auditOp.dispose()}catch(e){}
+  let palette=['#6366f1','#ec4899','#f59e0b','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'];
+  let opName={create:'创建',update:'更新',delete:'删除',disable:'停用',enable:'启用',grant:'授权',revoke:'撤销',restore:'恢复',login:'登录',logout:'登出',reset_password:'重置密码'};
+  let data=(ds.operationDistribution||[]).map((d,i)=>({name:opName[d.name]||d.name,value:d.value,itemStyle:{color:palette[i%palette.length]}}));
+  let chart=echarts.init(opEl);window._auditOp=chart;
+  chart.setOption({tooltip:{trigger:'item',formatter:'{b}<br>操作数：<b>{c}</b>（{d}%）'},legend:{type:'scroll',bottom:0,textStyle:{fontSize:11}},series:[{type:'pie',radius:['38%','72%'],avoidLabelOverlap:true,label:{show:true,formatter:'{b}\n{d}%',fontSize:11},data:data}]});
+ }
+ // 4. 操作者 Top 10
+ let aEl=document.querySelector('#auditActorChart');
+ if(aEl){
+  aEl.innerHTML='';
+  if(window._auditActor)try{window._auditActor.dispose()}catch(e){}
+  let actors=ds.topActors||[];
+  let chart=echarts.init(aEl);window._auditActor=chart;
+  chart.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:90,right:30,bottom:10,containLabel:true},xAxis:{type:'value'},yAxis:{type:'category',data:actors.map(r=>r.name).reverse(),axisLabel:{fontSize:11}},series:[{type:'bar',data:actors.map(r=>r.value).reverse(),itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'#ec4899aa'},{offset:1,color:'#ec4899'}]},borderRadius:[0,6,6,0]},label:{show:true,position:'right',formatter:'{c}',fontSize:11},barWidth:'60%'}]});
+ }
+ // 5. 实体类型分布（饼图）
+ let etEl=document.querySelector('#auditTypeChart');
+ if(etEl){
+  etEl.innerHTML='';
+  if(window._auditType)try{window._auditType.dispose()}catch(e){}
+  let et=ds.entityTypeDistribution||[];
+  let palette=['#10b981','#06b6d4','#8b5cf6','#f59e0b','#ec4899','#64748b'];
+  let data=et.map((d,i)=>({name:d.name,value:d.value,itemStyle:{color:palette[i%palette.length]}}));
+  let chart=echarts.init(etEl);window._auditType=chart;
+  chart.setOption({tooltip:{trigger:'item',formatter:'{b}<br>操作数：<b>{c}</b>（{d}%）'},legend:{type:'scroll',bottom:0,textStyle:{fontSize:11}},series:[{type:'pie',radius:['38%','72%'],avoidLabelOverlap:true,label:{show:true,formatter:'{b}\n{d}%',fontSize:11},data:data}]});
+ }
+ window.addEventListener('resize',()=>{try{if(window._auditTrend)window._auditTrend.resize();if(window._auditHeat)window._auditHeat.resize();if(window._auditOp)window._auditOp.resize();if(window._auditActor)window._auditActor.resize();if(window._auditType)window._auditType.resize();}catch(e){}});
+}
+// ===== Stage4 patch: 仪表盘图表 + 全景关系图升级 =====
+function renderDashboardCharts(){
+ if(!window.echarts){return}
+ let ds=S.cache.dashboardData;if(!ds)return;
+ // 1. 7日操作趋势
+ let tEl=document.querySelector('#trendChart');
+ if(tEl){
+  tEl.innerHTML='';
+  if(window._dashTrend)try{window._dashTrend.dispose()}catch(e){}
+  let trendData=ds.auditTrend||[];
+  let t=echarts.init(tEl);window._dashTrend=t;
+  t.setOption({tooltip:{trigger:'axis'},grid:{top:20,left:40,right:20,bottom:30},xAxis:{type:'category',data:trendData.map(r=>r.day)},yAxis:{type:'value'},series:[{type:'line',smooth:true,symbol:'circle',symbolSize:8,itemStyle:{color:'#6366f1'},areaStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'#6366f1aa'},{offset:1,color:'#6366f111'}]}},data:trendData.map(r=>r.value)}]});
+ }
+ // 2. 联系人增长趋势
+ let ctEl=document.querySelector('#contactTrendChart');
+ if(ctEl){
+  ctEl.innerHTML='';
+  if(window._dashContactTrend)try{window._dashContactTrend.dispose()}catch(e){}
+  let cData=ds.contactTrend||[];
+  let c=echarts.init(ctEl);window._dashContactTrend=c;
+  c.setOption({tooltip:{trigger:'axis'},grid:{top:20,left:40,right:20,bottom:30},xAxis:{type:'category',data:cData.map(r=>r.day)},yAxis:{type:'value'},series:[{type:'bar',barWidth:'60%',itemStyle:{color:{type:'linear',x:0,y:0,x2:0,y2:1,colorStops:[{offset:0,color:'#ec4899'},{offset:1,color:'#ec489966'}]}},borderRadius:[6,6,0,0],data:cData.map(r=>r.value)}]});
+ }
+ // 3. 渠道账号分布（环形图）
+ let chEl=document.querySelector('#channelPieChart');
+ if(chEl){
+  chEl.innerHTML='';
+  if(window._dashChannel)try{window._dashChannel.dispose()}catch(e){}
+  let chData=ds.channelDistribution||[];
+  let palette=['#6366f1','#ec4899','#f59e0b','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'];
+  let ch=echarts.init(chEl);window._dashChannel=ch;
+  ch.setOption({tooltip:{trigger:'item',formatter:'{b}<br>账号数：<b>{c}</b>（{d}%）'},legend:{type:'scroll',bottom:0,textStyle:{fontSize:11}},series:[{type:'pie',radius:['42%','70%'],avoidLabelOverlap:true,label:{show:true,formatter:'{b}\n{d}%',fontSize:11},data:chData.map((d,i)=>({name:d.name,value:d.value,itemStyle:{color:palette[i%palette.length]}}))}]});
+ }
+ // 4. 来源类型分布 + 团队成员 Top 8
+ let stEl=document.querySelector('#sourceTypeChart');
+ if(stEl){
+  stEl.innerHTML='';
+  if(window._dashSourceType)try{window._dashSourceType.dispose()}catch(e){}
+  let stData=ds.sourceDistribution||[];
+  let tDist=ds.teamDistribution||[];
+  let s=echarts.init(stEl);window._dashSourceType=s;
+  s.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:20,left:80,right:20,bottom:30},xAxis:{type:'value'},yAxis:{type:'category',data:stData.map(r=>r.name).reverse(),axisLabel:{fontSize:11}},series:[
+   {name:'来源数',type:'bar',data:stData.map(r=>r.value).reverse(),itemStyle:{color:'#8b5cf6',borderRadius:[0,6,6,0]},barWidth:'55%'}
+  ]});
+ }
+ let tdEl=document.querySelector('#teamDistChart');
+ if(tdEl){
+  tdEl.innerHTML='';
+  if(window._dashTeamDist)try{window._dashTeamDist.dispose()}catch(e){}
+  let td=echarts.init(tdEl);window._dashTeamDist=td;
+  td.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},grid:{top:10,left:10,right:30,bottom:10,containLabel:true},xAxis:{type:'value',show:false},yAxis:{type:'category',data:(ds.teamDistribution||[]).map(r=>r.name).reverse(),axisTick:{show:false},axisLine:{show:false},axisLabel:{fontSize:11}},series:[{type:'bar',data:(ds.teamDistribution||[]).map(r=>r.value).reverse(),itemStyle:{color:{type:'linear',x:0,y:0,x2:1,y2:0,colorStops:[{offset:0,color:'#06b6d4'},{offset:1,color:'#6366f1'}]},borderRadius:[0,6,6,0]},label:{show:true,position:'right',formatter:'{c} 人',fontSize:11},barWidth:'55%'}]});
+ }
+ window.addEventListener('resize',()=>{try{if(window._dashTrend)window._dashTrend.resize();if(window._dashContactTrend)window._dashContactTrend.resize();if(window._dashChannel)window._dashChannel.resize();if(window._dashSourceType)window._dashSourceType.resize();if(window._dashTeamDist)window._dashTeamDist.resize();}catch(e){}});
+}
+// ===== Stage5 patch: 智能表格（搜索 + 过滤 + 排序） =====
+function smartTable(key,cols,items,actions,filters,opts){
+ if(!items?.length)return '<div class="panel empty">暂无数据</div>';
+ let state=S.tableState[key]||(S.tableState[key]={q:'',filters:{},sortKey:null,sortDir:1});
+ let bar=filters?`<div class="toolbar" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center">
+  <input class="select" placeholder="搜索 ${opts?.searchHint||'关键字'}" value="${esc(state.q)}" oninput="tableStateUpdate('${esc(key)}','q',this.value);refreshTable('${esc(key)}')" style="min-width:160px;flex:1">
+  ${filters.map(f=>`<select class="select" onchange="tableStateUpdate('${esc(key)}','${esc(f.field)}',this.value);refreshTable('${esc(key)}')" style="min-width:120px"><option value="">全部${esc(f.label)}</option>${(f.options||[]).map(o=>`<option value="${esc(o.value)}" ${state.filters[f.field]===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`).join('')}
+  <span class="badge" id="__count_${esc(key)}">${items.length} 条</span>
+  <button class="btn secondary small" onclick="tableReset('${esc(key)}')">重置</button>
+ </div>`:'';
+ let filtered=items;
+ if(state.q){
+  const q=state.q.toLowerCase();
+  filtered=filtered.filter(r=>Object.values(r).some(v=>String(v||'').toLowerCase().includes(q)));
+ }
+ if(filters){
+  Object.entries(state.filters||{}).forEach(([f,v])=>{if(!v)return;filtered=filtered.filter(r=>{let val=r[f];if(Array.isArray(val))return val.includes(v);return String(val||'')===v})});
+ }
+ if(state.sortKey){
+  const k=state.sortKey,d=state.sortDir||1;
+  filtered=[...filtered].sort((a,b)=>{
+   let va=a[k],vb=b[k];
+   if(typeof va==='number'&&typeof vb==='number')return(va-vb)*d;
+   va=String(va||'');vb=String(vb||'');
+   return va.localeCompare(vb,'zh-Hans-CN')*d;
+  });
+ }
+ let count=filtered.length;
+ S.tableState[key].filteredItems=filtered;
+ let html=`<div class="table-wrap"><table><thead><tr>`;
+ html+=cols.map(x=>{
+  const k=x[1];const sortable=typeof k==='string'&&k&&x[3]!==false&&!k.startsWith('__');
+  if(sortable){
+   const active=state.sortKey===k;
+   const arrow=active?(state.sortDir>0?' ▲':' ▼'):' ⇅';
+   return `<th onclick="tableSort('${esc(key)}','${esc(k)}')" style="cursor:pointer;user-select:none">${esc(x[0])}${arrow}</th>`;
+  }
+  return `<th>${esc(x[0])}</th>`;
+ }).join('');
+ if(actions)html+='<th>操作</th>';
+ html+='</tr></thead><tbody>';
+ html+=filtered.map(r=>{
+  let row='<tr>';
+  cols.forEach(x=>{
+   const rendered=typeof x[2]==='function';
+   const v=rendered?x[2](r):r[x[1]];
+   row+=`<td>${v===undefined||v===null?'':rendered?String(v):esc(v)}</td>`;
+  });
+  if(actions)row+=`<td>${actions(r)}</td>`;
+  row+='</tr>';
+  return row;
+ }).join('');
+ html+='</tbody></table></div>';
+ let bar2=`<span class="badge" id="__count_${esc(key)}" style="margin-left:auto">${count} / ${items.length} 条</span>`;
+ return bar+html+(filters?bar2:'');
+}
+function tableSort(key,colKey){
+ let s=S.tableState[key]||{};
+ if(s.sortKey===colKey)s.sortDir=(s.sortDir||1)*-1;else{s.sortKey=colKey;s.sortDir=1}
+ S.tableState[key]=s;
+ refreshTable(key);
+}
+function tableStateUpdate(key,field,val){
+ let s=S.tableState[key]||{filters:{}};
+ if(field==='q')s.q=val;else s.filters=Object.assign({},s.filters,{[field]:val});
+ S.tableState[key]=s;
+}
+function refreshTable(key){
+ if(typeof S.tableRefresh[key]!=='function')return;
+ S.tableRefresh[key]();
+}
+function tableReset(key){
+ S.tableState[key]={q:'',filters:{},sortKey:null,sortDir:1};
+ refreshTable(key);
+}
+// ===== Stage4 patch: 归因可视化 =====
+function renderAttrCharts(){
+ if(!window.echarts){['#attrPieChart','#attrBarChart','#attrFunnelChart'].forEach(s=>{let el=document.querySelector(s);if(el)el.innerHTML='<p style="color:#888;padding:20px">ECharts 未加载，无法渲染图表。</p>'});return}
+ let ast=S.cache.attrStats||{},tpi=S.cache.touchpoints||[];
+ let typeColors={first_touch:'#6366f1',last_touch:'#ec4899',conversion:'#10b981',primary:'#f59e0b',assisted:'#06b6d4',referral:'#8b5cf6',manual:'#64748b'};
+ let typeName={first_touch:'首次触达',last_touch:'末次触达',conversion:'转化贡献',primary:'主归因',assisted:'辅助触达',referral:'推荐归因',manual:'人工归因'};
+ // 1. 类型分布饼图
+ let pieEl=document.querySelector('#attrPieChart');
+ if(pieEl){
+  pieEl.innerHTML='';
+  if(window._attrPie)try{window._attrPie.dispose()}catch(e){}
+  let data=(ast.typeDistribution||[]).map(d=>({name:typeName[d.name]||d.name,value:d.value,itemStyle:{color:typeColors[d.name]||'#94a3b8'}}));
+  let pie=echarts.init(pieEl);window._attrPie=pie;
+  pie.setOption({tooltip:{trigger:'item',formatter:'{b}<br>归因数：<b>{c}</b><br>占比：{d}%'},legend:{bottom:0,type:'scroll',textStyle:{fontSize:11}},series:[{type:'pie',radius:['38%','72%'],avoidLabelOverlap:true,label:{show:true,formatter:'{b}\n{d}%',fontSize:11},data:data||[]}]});
+ }
+ // 2. 来源贡献条形图（堆叠：按归因类型分组）
+ let barEl=document.querySelector('#attrBarChart');
+ if(barEl){
+  barEl.innerHTML='';
+  if(window._attrBar)try{window._attrBar.dispose()}catch(e){}
+  let contrib=ast.sourceContribution||[];
+  let srcNames=[...new Set(contrib.map(c=>c.source_name))].slice(0,10);
+  let types=[...new Set(contrib.map(c=>c.attribution_type))];
+  let series=types.map(tp=>({name:typeName[tp]||tp,type:'bar',stack:'total',itemStyle:{color:typeColors[tp]||'#94a3b8'},data:srcNames.map(sn=>{let m=contrib.find(c=>c.source_name===sn&&c.attribution_type===tp);return m?m.touchpoint_count:0})}));
+  let bar=echarts.init(barEl);window._attrBar=bar;
+  bar.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},legend:{top:0,textStyle:{fontSize:11},data:types.map(tp=>typeName[tp]||tp)},grid:{top:36,left:60,right:20,bottom:30},xAxis:{type:'value'},yAxis:{type:'category',data:srcNames,axisLabel:{fontSize:11}},series:series});
+ }
+ // 3. 触点 → 归因漏斗图
+ let funnelEl=document.querySelector('#attrFunnelChart');
+ if(funnelEl){
+  funnelEl.innerHTML='';
+  if(window._attrFunnel)try{window._attrFunnel.dispose()}catch(e){}
+  let funnelData=[
+   {name:'触点总数',value:ast.totalTouchpoints||tpi.length,itemStyle:{color:'#6366f1'}},
+   {name:'关联联系人',value:tpi.filter(t=>t.contact_id).length,itemStyle:{color:'#8b5cf6'}},
+   {name:'生成归因',value:ast.totalAttributions||0,itemStyle:{color:'#ec4899'}},
+   {name:'主归因记录',value:tpi.filter(t=>t.is_primary||(t.attribution_weight&&t.attribution_weight>=0.5)).length||Math.round((ast.totalAttributions||0)*0.4),itemStyle:{color:'#f59e0b'}},
+   {name:'转化贡献',value:Math.round((ast.typeDistribution||[]).filter(t=>['conversion','last_touch'].includes(t.name)).reduce((s,t)=>s+t.value,0)),itemStyle:{color:'#10b981'}}
+  ];
+  let funnel=echarts.init(funnelEl);window._attrFunnel=funnel;
+  funnel.setOption({tooltip:{trigger:'item',formatter:'{b}<br>数量：<b>{c}</b>'},legend:{top:0,textStyle:{fontSize:11}},series:[{type:'funnel',left:'8%',right:'8%',top:36,bottom:0,width:'84%',sort:'descending',gap:2,label:{show:true,position:'inside',formatter:'{b}: {c}',fontSize:12,color:'#fff',fontWeight:600},data:funnelData}]});
+ }
+ window.addEventListener('resize',()=>{try{if(window._attrPie)window._attrPie.resize();if(window._attrBar)window._attrBar.resize();if(window._attrFunnel)window._attrFunnel.resize();}catch(e){}});
+}
+// ===== Stage3 patch: 统一确认模态框 + 批量删除函数集 =====
+function confirmModal({title='确认操作',message='',details=null,warning=null,confirmText='确认',cancelText='取消',danger=true,requireReason=false}){
+  return new Promise(resolve=>{
+    const m=$('#modal');
+    $('#modalTitle').textContent=title;
+    $('#modalBody').innerHTML=`
+      ${message?`<div style="margin:6px 0 12px;font-size:14px;line-height:1.6">${esc(message)}</div>`:''}
+      ${details?`<div style="padding:10px 12px;background:var(--panel-2,#f8fafc);border:1px solid var(--line,#e2e8f0);border-radius:8px;margin-bottom:10px;font-size:13px">${details}</div>`:''}
+      ${warning?`<div style="padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-size:13px;margin-bottom:10px">⚠ ${esc(warning)}</div>`:''}
+      ${requireReason?`<div class="field"><label>操作原因（必填）</label><textarea id="__confirmReason" rows="2" placeholder="请说明删除原因，便于审计追溯" required></textarea></div>`:''}
+    `;
+    const act=$('#modalForm .modal-actions');
+    act.classList.remove('hide');
+    act.innerHTML=`<button type="button" class="btn secondary" id="__cancelBtn">${esc(cancelText)}</button><span class="grow"></span><button type="button" class="btn ${danger?'danger':''}" id="__confirmBtn">${esc(confirmText)}</button>`;
+    const cleanup=()=>{$('#modalForm').onsubmit=null;act.innerHTML='';};
+    $('#__cancelBtn').onclick=()=>{cleanup();closeModal();resolve(false);};
+    $('#__confirmBtn').onclick=async()=>{
+      if(requireReason){const r=($('#__confirmReason')||{}).value||'';if(!r.trim()){toast('请填写操作原因',1);return}cleanup();closeModal();resolve(r.trim());return}
+      cleanup();closeModal();resolve(true);
+    };
+    $('#modalForm').onsubmit=async e=>{e.preventDefault();$('#__confirmBtn').click()};
+    m.classList.remove('hide');
+  });
+}
+async function safeDelete({path,kind,name,refs}){
+  let preview=null;
+  if(refs){
+    const lines=Object.entries(refs).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line,#e2e8f0)"><span style="color:#64748b">${esc(k)}</span><b>${v}</b></div>`).join('');
+    preview=`<div style="margin-top:6px"><b style="color:#991b1b">仍有以下业务对象引用此${esc(kind)}：</b>${lines}<div style="margin-top:8px;color:#64748b;font-size:12px">请先处理上述关联对象，再执行删除。</div></div>`;
+  }
+  const msg=await confirmModal({title:`删除${kind}`,message:`确认永久删除${kind}「${name}」？此操作不可恢复。`,warning:refs?preview:null,confirmText:refs?'仍要删除':'确认删除'});
+  if(!msg)return;
+  const body=typeof msg==='string'?{reason:msg}:{};
+  try{await api(path,{method:'DELETE',body});toast('已删除');loadPage()}
+  catch(e){
+    if(e.code==='ORG_IN_USE'||e.code==='TEAM_IN_USE'||e.code==='USER_IN_USE'||e.code==='WORKSPACE_IN_USE'||e.code==='DEVICE_IN_USE'||e.code==='SOURCE_IN_USE'||e.code==='CAMPAIGN_IN_USE'||e.code==='IN_USE'||e.code==='PLATFORM_IN_USE'){
+      await confirmModal({title:'无法删除：仍有引用',message:String(e.message||'请先处理关联对象'),details:e.references?`<pre style="margin:0;font-size:12px">${esc(JSON.stringify(e.references,null,2))}</pre>`:null,confirmText:'我知道了',cancelText:'关闭',danger:false});
+    }else toast(e.message||'删除失败',1);
+  }
+}
+async function deleteOrg(id,name){await safeDelete({path:`/api/v207/admin/organizations/${encodeURIComponent(id)}${qp()}`,kind:'企业',name})}
+async function deleteTeam(id,name){await safeDelete({path:`/api/v207/admin/teams/${encodeURIComponent(id)}${qp()}`,kind:'团队',name})}
+async function deleteUser(id,name){const ok=await confirmModal({title:'删除用户',message:`确认永久删除用户「${name}」？该用户的所有有效会话将立即撤销，授权将归档。`,confirmText:'确认删除'});if(!ok)return;try{await api(`/api/v207/admin/users/${encodeURIComponent(id)}${qp()}`,{method:'DELETE'});toast('用户已删除');loadPage()}catch(e){if(e.code==='USER_IN_USE')await confirmModal({title:'无法删除：仍有引用',message:String(e.message||''),details:e.references?`<pre style="margin:0;font-size:12px">${esc(JSON.stringify(e.references,null,2))}</pre>`:null,confirmText:'我知道了',cancelText:'关闭',danger:false});else toast(e.message||'删除失败',1)}}
+async function deleteWorkspace(id,name){await safeDelete({path:`/api/v207/admin/workspaces/${encodeURIComponent(id)}${qp()}`,kind:'工作区',name})}
+async function deleteDevice(id,name){await safeDelete({path:`/api/v207/admin/devices/${encodeURIComponent(id)}${qp()}`,kind:'设备',name})}
+async function deletePlatform(id,name,code){if(code&&['whatsapp','instagram','facebook','messenger','telegram','wechat','system'].includes(String(code).toLowerCase())){toast('系统预置平台不能删除',1);return}await safeDelete({path:`/api/v207/admin/platforms/${encodeURIComponent(id)}${qp()}`,kind:'平台',name})}
+async function deleteCampaign(id,name){await safeDelete({path:`/api/v207/admin/campaigns/${encodeURIComponent(id)}${qp()}`,kind:'营销活动',name})}
+async function deleteSource(id,name){await safeDelete({path:`/api/v207/admin/sources/${encodeURIComponent(id)}${qp()}`,kind:'来源节点',name})}
+async function deleteDepartment(id,name){await safeDelete({path:`/api/v207/admin/departments/${encodeURIComponent(id)}${qp()}`,kind:'部门',name})}
+async function deleteBusinessLine(id,name){await safeDelete({path:`/api/v207/admin/business-lines/${encodeURIComponent(id)}${qp()}`,kind:'业务线',name})}
+async function deleteMarket(id,name){await safeDelete({path:`/api/v207/admin/markets/${encodeURIComponent(id)}${qp()}`,kind:'市场',name})}
+async function deletePosition(id,name){await safeDelete({path:`/api/v207/admin/positions/${encodeURIComponent(id)}${qp()}`,kind:'职位',name})}
+function drawGraph(g){let el=document.getElementById('graphbox');if(!el)return;
+ if(!window.echarts){let ns=[],es=[],add=(id,label,type)=>{if(id&&!ns.some(x=>x.id===id))ns.push({id,label,type})};(g.organizations||[]).forEach(x=>add(x.organization_id,x.name,'企业'));(g.teams||[]).forEach(x=>{add(x.team_id,x.name,'团队');es.push([x.organization_id,x.team_id]);es.push([x.team_id,x.workspace_id])});(g.workspaces||[]).forEach(x=>add(x.workspace_id,x.name,'工作区'));(g.users||[]).forEach(x=>add(x.user_id,x.display_name,'用户'));(g.teamMemberships||[]).forEach(x=>es.push([x.team_id,x.user_id]));(g.accounts||[]).forEach(x=>add(x.channel_account_id,x.display_name,'账号'));(g.accountGrants||[]).forEach(x=>es.push([x.team_id,x.channel_account_id]));(g.sources||[]).forEach(x=>{add(x.source_id,x.source_name,'来源');es.push([x.channel_account_id||x.team_id,x.source_id])});(g.devices||[]).forEach(x=>{add(x.device_id,x.admin_device_name||x.user_device_alias||x.system_device_name||x.device_id,'设备');es.push([x.team_id,x.device_id])});let W=1100,H=Math.max(650,Math.ceil(ns.length/6)*130),pos={};ns.forEach((n,i)=>{let col=i%6,row=Math.floor(i/6);pos[n.id]=[95+col*180,75+row*130]});let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><g>${es.filter(e=>pos[e[0]]&&pos[e[1]]).map(e=>`<line class="edge" x1="${pos[e[0]][0]}" y1="${pos[e[0]][1]}" x2="${pos[e[1]][0]}" y2="${pos[e[1]][1]}"/>`).join('')}</g><g>${ns.map(n=>`<g class="gnode" transform="translate(${pos[n.id][0]-70},${pos[n.id][1]-25})"><rect width="140" height="50"/><text x="70" y="19" text-anchor="middle">${esc(n.type)}</text><text x="70" y="37" text-anchor="middle">${esc(n.label).slice(0,16)}</text><title>${esc(n.id)}</title></g>`).join('')}</g></svg>`;$('#graphbox').innerHTML=svg;return}
+ el.innerHTML='';
+ let filterEl=document.getElementById('graphFilter');
+ let filterType=filterEl?filterEl.value:'';
+ let nodeMap=new Map(),linkSet=new Set();
+ let addN=(id,label,type)=>{if(!id)return;if(filterType&&type!==filterType)return;if(!nodeMap.has(id))nodeMap.set(id,{id,name:label,category:type})};
+ let addE=(s,t)=>{if(!s||!t)return;if(!nodeMap.has(s)||!nodeMap.has(t))return;let k=s+'|'+t;if(linkSet.has(k))return;linkSet.add(k)};
+ (g.organizations||[]).forEach(x=>addN(x.organization_id,x.name,'organization'));
+ (g.workspaces||[]).forEach(x=>addN(x.workspace_id,x.name,'workspace'));
+ (g.teams||[]).forEach(x=>{addN(x.team_id,x.name,'team');addE(x.organization_id,x.team_id);addE(x.team_id,x.workspace_id)});
+ (g.users||[]).forEach(x=>addN(x.user_id,x.display_name,'user'));
+ (g.teamMemberships||[]).forEach(x=>addE(x.team_id,x.user_id));
+ (g.accounts||[]).forEach(x=>addN(x.channel_account_id,x.display_name,'account'));
+ (g.accountGrants||[]).forEach(x=>addE(x.team_id,x.channel_account_id));
+ (g.sources||[]).forEach(x=>{addN(x.source_id,x.source_name,'source');addE(x.channel_account_id||x.team_id,x.source_id)});
+ (g.devices||[]).forEach(x=>{addN(x.device_id,x.admin_device_name||x.user_device_alias||x.system_device_name||x.device_id,'device');addE(x.team_id,x.device_id)});
+ let nodes=Array.from(nodeMap.values());
+ let edges=Array.from(linkSet).map(k=>{let [s,t]=k.split('|');return{source:s,target:t}});
+ let typeColor={organization:'#6366f1',workspace:'#8b5cf6',team:'#ec4899',user:'#f59e0b',account:'#10b981',source:'#06b6d4',device:'#64748b'};
+ let typeSymbol={organization:'roundRect',workspace:'rect',team:'circle',user:'circle',account:'diamond',source:'triangle',device:'rect'};
+ let categories=[...new Set(nodes.map(n=>n.category))].map(c=>({name:c,itemStyle:{color:typeColor[c]||'#94a3b8'}}));
+ let data=nodes.map(n=>({...n,symbol:'-',symbolSize:n.category==='organization'?70:n.category==='workspace'?55:n.category==='team'?45:35,itemStyle:{color:typeColor[n.category]||'#94a3b8',borderColor:'#fff',borderWidth:2},label:{show:true,formatter:(p)=>p.data.name.length>14?p.data.name.slice(0,12)+'…':p.data.name,fontSize:n.category==='organization'?13:11,color:'#334155',position:'right'},emphasis:{label:{show:true,fontSize:14,fontWeight:600},itemStyle:{borderColor:'#fbbf24',borderWidth:3}}}));
+ let links=edges.map(e=>({...e,lineStyle:{color:'#94a3b8aa',width:1,curveness:0.05},emphasis:{lineStyle:{color:'#fbbf24',width:2.5}}}));
+ let countEl=document.getElementById('graphNodeCount');if(countEl)countEl.textContent=`${nodes.length} 节点 · ${edges.length} 关系`;
+ if(window._graphChart)try{window._graphChart.dispose()}catch(e){}
+ let chart=echarts.init(el);window._graphChart=chart;
+ chart.setOption({
+  backgroundColor:'transparent',
+  tooltip:{formatter:p=>{if(p.dataType==='edge'){let s=nodes.find(n=>n.id===p.data.source),t=nodes.find(n=>n.id===p.data.target);return `${s?s.name:'?'} → ${t?t.name:'?'}`;}return`<b>${esc(p.data.name)}</b><br><span class="status ${p.data.category}">${esc(p.data.category)}</span><br>ID：<code style="font-size:10px">${esc(p.data.id)}</code>`}},
+  legend:[{data:categories.map(c=>c.name),top:10,textStyle:{fontSize:11}}],
+  series:[{
+   type:'graph',layout:'force',
+   roam:true,draggable:true,
+   categories:categories,
+   data:data,links:links,
+   force:{repulsion:300,edgeLength:120,gravity:0.05,friction:0.35,layoutAnimation:true},
+   lineStyle:{opacity:0.6},
+   emphasis:{focus:'adjacency',lineStyle:{width:2.5}}
+  }]
+ });
+ window.addEventListener('resize',()=>{try{chart.resize()}catch(e){}});
+}
 
 // ===== Stage2 patch: org tree =====
 function buildTree(items,idKey,parentKey,nameKey){
