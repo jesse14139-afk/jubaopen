@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""V207 企业综合管理 API。Schema 210；所有范围与写入均由服务端校验。"""
+"""V207 企业综合管理 API。Schema 211；所有范围与写入均由服务端校验。"""
 import json, uuid, os, sqlite3, secrets
 from V207_shared_db import now_ms,dumps,loads,hash_password
 from V207_security import can,permissions,verify_password,password_strong,is_platform_admin,grant_binding_in_tx,revoke_sessions_in_tx,revoke_session_in_tx,issue_confirmation,consume_confirmation
@@ -34,11 +34,11 @@ def pack(items,total,p,size,**extra):return {'ok':True,'items':items,'pagination
 def bad(h,code,msg,status=400):return h.sendj({'ok':False,'code':code,'message':msg},status) or True
 def _audit_workspace(c,a,wid=None):
  if wid:
-  row=c.execute("SELECT workspace_id FROM workspaces WHERE workspace_id=?",(wid,)).fetchone()
+  row=c.execute("SELECT workspace_id FROM workspaces WHERE workspace_id=? AND organization_id=?",(wid,a['organization_id'])).fetchone()
   if row:return row[0]
- rows=c.execute("SELECT DISTINCT t.workspace_id FROM role_bindings b JOIN teams t ON b.scope_type='team' AND b.scope_id=t.team_id JOIN workspaces w ON w.workspace_id=t.workspace_id AND w.organization_id=t.organization_id WHERE b.user_id=? AND b.organization_id=? AND b.status='active' AND t.status='active'",(a['user_id'],a['organization_id'])).fetchall()
- if len(rows)!=1:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
- return rows[0][0]
+ row=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at,workspace_id LIMIT 1",(a['organization_id'],)).fetchone()
+ if not row:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
+ return row[0]
 def audit(db,a,op,typ,eid,before,after,reason=None,wid=None):
  with db.tx() as c:audit_in_tx(c,a,op,typ,eid,before,after,reason,wid)
 def audit_in_tx(c,a,op,typ,eid,before,after,reason=None,wid=None):
@@ -62,6 +62,81 @@ def creates_cycle(c,org,workspace_id,from_source,to_source):
   stack.extend(r[0] for r in c.execute('SELECT to_source_id FROM source_links WHERE organization_id=? AND workspace_id=? AND from_source_id=?',(org,workspace_id,cur)))
  return False
 
+# 动态数据库预览安全策略。客户端只能提交由 sqlite_schema 发现的精确表名，不能提交 SQL。
+_DB_RESTRICTED_TABLES={'user_credentials','sessions','rbac_confirmations','delete_confirmations'}
+_DB_BLOCK_PARTS=('password','passwd','salt','secret','private_key','access_token','refresh_token','token_hash','token_digest','credential','authorization','otp','verification_code','recovery_code','api_key')
+_DB_MASK_PARTS=('phone','mobile','email','ip_address','client_ip','identity_value','canonical_value','external_id','document_number','id_card','bank_account','address','account_identity')
+_DB_CATEGORIES=(
+ ('organization','组织与成员',('organization','workspace','department','team','position','business_line','market','membership')),
+ ('identity','用户与身份',('user','contact','identity')),
+ ('security','权限与安全',('role','permission','session','credential','confirmation','security','grant')),
+ ('channel','渠道与来源',('platform','channel','source','device')),
+ ('marketing','营销与活动',('campaign','touchpoint','attribution','event','change')),
+ ('operations','审计与运维',('audit','migration','meta','config','tag','field')),
+)
+def _db_qi(name):return '"'+str(name).replace('"','""')+'"'
+def _db_category(name):
+ low=name.lower()
+ for key,label,words in _DB_CATEGORIES:
+  if any(word in low for word in words):return key,label
+ return 'other','系统与其他'
+def _db_tables(c):
+ return [r[0] for r in c.execute("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+def _db_columns(c,name):return [r[1] for r in c.execute('PRAGMA table_info('+_db_qi(name)+')')]
+def _db_scope(columns,org):
+ cs=set(columns)
+ if 'organization_id' in cs:return _db_qi('organization_id')+'=?',[org],'organization_id',True
+ # 仅使用服务端固定映射，绝不把请求内容拼入 SQL。
+ links=(('workspace_id','workspaces','workspace_id'),('team_id','teams','team_id'),('user_id','users','user_id'),('actor_id','users','user_id'),('assigned_user_id','users','user_id'),('contact_id','contacts','contact_id'),('source_id','sources','source_id'),('channel_account_id','channel_accounts','channel_account_id'),('campaign_id','campaigns','campaign_id'))
+ for col,parent,pk in links:
+  if col in cs:return _db_qi(col)+' IN (SELECT '+_db_qi(pk)+' FROM '+_db_qi(parent)+' WHERE organization_id=?)',[org],col+'→organization_id',True
+ if 'role_id' in cs:return _db_qi('role_id')+' IN (SELECT role_id FROM roles WHERE organization_id=?)',[org],'role_id→organization_id',True
+ return '1=0',[],'未识别企业范围',False
+def _db_field_mode(name):
+ low=name.lower()
+ if any(part in low for part in _DB_BLOCK_PARTS):return 'omit'
+ if any(part in low for part in _DB_MASK_PARTS):return 'mask'
+ return 'plain'
+def _db_mask(name,value):
+ if value is None:return None
+ text=str(value)
+ if not text:return text
+ low=name.lower()
+ if 'email' in low and '@' in text:
+  left,right=text.split('@',1);return (left[:1] if left else '')+'***@'+right
+ if 'ip' in low:
+  parts=text.split('.')
+  return '.'.join(parts[:2]+['*','*']) if len(parts)==4 else text[:3]+'***'
+ if len(text)<=4:return '****'
+ return text[:3]+'****'+text[-2:]
+def _db_sanitize_json(value):
+ if isinstance(value,dict):
+  out={}
+  for key,item in value.items():
+   mode=_db_field_mode(str(key))
+   if mode=='omit':continue
+   out[key]=_db_mask(str(key),item) if mode=='mask' else _db_sanitize_json(item)
+  return out
+ if isinstance(value,list):return [_db_sanitize_json(item) for item in value]
+ return value
+def _db_sanitize_row(row):
+ out={};masked=[];omitted=[]
+ for key,value in row.items():
+  mode=_db_field_mode(key)
+  if mode=='omit':omitted.append(key);continue
+  if mode=='mask':out[key]=_db_mask(key,value);masked.append(key);continue
+  if isinstance(value,str) and (key.lower().endswith('_json') or key.lower() in ('payload','context','metadata')):
+   try:out[key]=dumps(_db_sanitize_json(json.loads(value)))
+   except Exception:out[key]=value
+  else:out[key]=value
+ return out,masked,omitted
+def _db_policy(name,columns,scoped):
+ low=name.lower()
+ restricted=(not scoped) or low in _DB_RESTRICTED_TABLES or any(part in low for part in ('credential','session_token','api_key','secret_store'))
+ modes={column:_db_field_mode(column) for column in columns}
+ sensitive=restricted or any(mode!='plain' for mode in modes.values())
+ return ('restricted' if restricted else ('masked' if sensitive else 'full')),modes
+
 def dispatch(h,m,p,q,a,db):
  if not p.startswith('/api/v207/admin/'):return False
  seg=[x for x in p[len('/api/v207/admin/'):].split('/') if x]
@@ -72,7 +147,7 @@ def dispatch(h,m,p,q,a,db):
   org=target(q,a)
   if not manage(db,a,'permission.read',org):return bad(h,'FORBIDDEN','无权限读取权限',403)
   with db.tx(False) as c:
-   roles=rows(c,"SELECT role_id,name,role_code,scope_level,status,is_system,description FROM roles WHERE organization_id=? OR organization_id IS NULL ORDER BY is_system DESC,created_at",(org,))
+   roles=rows(c,"SELECT role_id,name,role_code,scope_level,status,is_system,description FROM roles WHERE organization_id=? OR organization_id IS NULL ORDER BY is_system DESC,name,role_id",(org,))
    perms=rows(c,"SELECT permission_key,description FROM permissions ORDER BY permission_key")
    binds=rows(c,"SELECT rp.role_id,rp.permission_key FROM role_permissions rp JOIN roles r ON r.role_id=rp.role_id WHERE r.organization_id=? OR r.organization_id IS NULL",(org,))
   return h.sendj({'ok':True,'roles':roles,'permissions':perms,'bindings':binds}) or True
@@ -92,7 +167,7 @@ def dispatch(h,m,p,q,a,db):
   if not manage(db,a,'permission.read',org):return bad(h,'FORBIDDEN','无权限读取权限',403)
   with db.tx(False) as c:
    direct=rows(c,"SELECT b.binding_id,b.role_id,r.name role_name,r.scope_level,b.scope_type,b.scope_id,b.status FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=? AND (b.organization_id=? OR b.organization_id IS NULL)",(ident,org))
-   inherited=rows(c,"SELECT tm.team_id,t.name team_name,r.name role_name,r.scope_level FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id JOIN roles r ON r.role_id=tm.role_id WHERE tm.user_id=? AND t.organization_id=?",(ident,org))
+   inherited=rows(c,"SELECT tm.team_id,t.name team_name,tm.membership_type,tm.is_primary,tm.status FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=? AND t.organization_id=?",(ident,org))
    channel=rows(c,"SELECT g.grant_id,ca.name account_name,g.status FROM user_channel_account_grants g JOIN channel_accounts ca ON ca.channel_account_id=g.channel_account_id WHERE g.user_id=?",(ident,))
   return h.sendj({'ok':True,'direct':direct,'inherited':inherited,'channel':channel}) or True
 
@@ -193,6 +268,50 @@ def dispatch(h,m,p,q,a,db):
   if m!='GET':return bad(h,'METHOD_NOT_ALLOWED','数据库结构接口只允许只读访问',405)
   if not (platform(db,a) or can(db,a,'audit.read')):return bad(h,'FORBIDDEN','需要审计读取权限',403)
   return h.sendj(build_schema_catalog(db)) or True
+ # safe database overview: platform-admin only, fixed whitelist, no SQL input, no credential/token tables
+ if root=='database-overview' and m=='GET':
+  if not platform(db,a):return bad(h,'FORBIDDEN','仅平台超级管理员可查看数据库数据总览',403)
+  with db.tx() as c:
+   items=[]
+   for name in _db_tables(c):
+    columns=_db_columns(c,name);where,args,scope,scoped=_db_scope(columns,org);mode,modes=_db_policy(name,columns,scoped)
+    total=c.execute('SELECT count(*) FROM '+_db_qi(name)+' WHERE '+where,args).fetchone()[0] if scoped else c.execute('SELECT count(*) FROM '+_db_qi(name)).fetchone()[0]
+    category,category_label=_db_category(name)
+    reason=None
+    if mode=='restricted':reason='包含认证凭据、会话密钥，或无法确认企业范围；仅允许查看结构和记录数'
+    items.append({'name':name,'rows':total,'columns':len(columns),'scopedBy':scope,'category':category,'categoryLabel':category_label,'securityLevel':'high' if mode=='restricted' else ('sensitive' if mode=='masked' else 'normal'),'previewMode':mode,'sensitive':mode!='full','restrictedReason':reason,'maskedFields':[key for key,value in modes.items() if value=='mask'],'omittedFields':[key for key,value in modes.items() if value=='omit']})
+   categories=[]
+   for key,label,_ in _DB_CATEGORIES:
+    count=sum(1 for item in items if item['category']==key)
+    if count:categories.append({'key':key,'label':label,'count':count})
+   count=sum(1 for item in items if item['category']=='other')
+   if count:categories.append({'key':'other','label':'系统与其他','count':count})
+   audit_in_tx(c,a,'database_overview','database','*',{}, {'organization_id':org,'table_count':len(items)})
+  return h.sendj({'ok':True,'items':items,'categories':categories,'readOnly':True,'dynamicDiscovery':True,'summary':{'tableCount':len(items),'restrictedCount':sum(1 for item in items if item['previewMode']=='restricted'),'maskedCount':sum(1 for item in items if item['previewMode']=='masked')}}) or True
+ if root=='database-tables' and ident and action=='rows' and m=='GET':
+  if not platform(db,a):return bad(h,'FORBIDDEN','仅平台超级管理员可预览数据库记录',403)
+  try:page_no=max(1,int(q.get('page') or 1));page_size=min(100,max(1,int(q.get('pageSize') or 50)))
+  except Exception:return bad(h,'INVALID_PAGINATION','分页参数无效')
+  with db.tx() as c:
+   discovered=_db_tables(c)
+   if ident not in discovered:return bad(h,'TABLE_NOT_FOUND','数据表不存在或不允许访问',404)
+   columns=_db_columns(c,ident);where,args,scope,scoped=_db_scope(columns,org);mode,modes=_db_policy(ident,columns,scoped)
+   total=c.execute('SELECT count(*) FROM '+_db_qi(ident)+' WHERE '+where,args).fetchone()[0] if scoped else c.execute('SELECT count(*) FROM '+_db_qi(ident)).fetchone()[0]
+   category,category_label=_db_category(ident)
+   visible_columns=[{'name':column,'mode':modes[column]} for column in columns if modes[column]!='omit']
+   omitted=[column for column in columns if modes[column]=='omit']
+   if mode=='restricted':
+    audit_in_tx(c,a,'database_preview_denied','database_table',ident,{}, {'organization_id':org,'reason':'restricted'})
+    result={'ok':True,'table':ident,'items':[],'columns':visible_columns,'omittedFields':omitted,'maskedFields':[column for column in columns if modes[column]=='mask'],'previewMode':'restricted','restricted':True,'restrictedReason':'该表包含认证凭据、会话密钥，或无法确认企业范围；仅允许查看结构和记录数','category':category,'categoryLabel':category_label,'scopedBy':scope,'pagination':{'page':page_no,'pageSize':page_size,'total':total,'pages':(total+page_size-1)//page_size},'readOnly':True}
+   else:
+    offset=(page_no-1)*page_size
+    raw=rows(c,'SELECT * FROM '+_db_qi(ident)+' WHERE '+where+' LIMIT ? OFFSET ?',tuple(args+[page_size,offset]))
+    items=[];masked=set();omitted_set=set(omitted)
+    for item in raw:
+     clean,masked_now,omitted_now=_db_sanitize_row(item);items.append(clean);masked.update(masked_now);omitted_set.update(omitted_now)
+    audit_in_tx(c,a,'database_preview','database_table',ident,{}, {'organization_id':org,'page':page_no,'page_size':page_size})
+    result={'ok':True,'table':ident,'items':items,'columns':visible_columns,'omittedFields':sorted(omitted_set),'maskedFields':sorted(masked),'previewMode':mode,'restricted':False,'category':category,'categoryLabel':category_label,'scopedBy':scope,'pagination':{'page':page_no,'pageSize':page_size,'total':total,'pages':(total+page_size-1)//page_size},'readOnly':True}
+  return h.sendj(result) or True
  # dashboard
  if root=='dashboard' and m=='GET':
   with db.tx(False) as c:
@@ -206,12 +325,12 @@ def dispatch(h,m,p,q,a,db):
    contact_trend=rows(c,"SELECT date(created_at/1000,'unixepoch','localtime') day,count(*) value FROM contacts WHERE organization_id=? AND deleted_at IS NULL AND created_at>=? GROUP BY day ORDER BY day",(org,now_ms()-14*86400*1000))
    source_trend=rows(c,"SELECT date(last_seen_at/1000,'unixepoch','localtime') day,count(DISTINCT source_id) value FROM sources WHERE organization_id=? AND last_seen_at>=? GROUP BY day ORDER BY day",(org,now_ms()-14*86400*1000))
    source_dist=rows(c,"SELECT source_type name,count(*) value FROM sources WHERE organization_id=? AND status='active' GROUP BY source_type",(org,))
-   team_dist=rows(c,"SELECT t.name,count(DISTINCT u.user_id) value FROM teams t LEFT JOIN role_bindings b ON b.scope_type='team' AND b.scope_id=t.team_id AND b.status='active' LEFT JOIN users u ON u.user_id=b.user_id WHERE t.organization_id=? GROUP BY t.team_id ORDER BY value DESC LIMIT 8",(org,))
+   team_dist=rows(c,"SELECT t.name,count(DISTINCT m.user_id) value FROM teams t LEFT JOIN team_memberships m ON m.team_id=t.team_id AND m.status='active' WHERE t.organization_id=? GROUP BY t.team_id ORDER BY value DESC LIMIT 8",(org,))
   return h.sendj({'auditTrend':trend,'ok':True,'counts':counts,'channelDistribution':channel,'deviceStatus':status,'recentAudit':recent,'database':db.quick_check(),'schemaVersion':SCHEMA_VERSION,'version':PRODUCT_VERSION,'contactTrend':contact_trend,'sourceTrend':source_trend,'sourceDistribution':source_dist,'teamDistribution':team_dist}) or True
  # teams
  if root=='teams':
   if m=='GET':
-   with db.tx(False) as c:its=rows(c,"SELECT t.*,w.name workspace_name,(SELECT count(DISTINCT b.user_id) FROM role_bindings b WHERE b.scope_type='team' AND b.scope_id=t.team_id AND b.organization_id=t.organization_id AND b.status='active') member_count,(SELECT count(*) FROM team_channel_accounts x WHERE x.team_id=t.team_id) account_count FROM teams t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.organization_id=? ORDER BY t.created_at",(org,))
+   with db.tx(False) as c:its=rows(c,"SELECT t.*,w.name workspace_name,(SELECT count(*) FROM team_memberships tm WHERE tm.team_id=t.team_id AND tm.status='active') member_count,(SELECT count(*) FROM team_channel_accounts x WHERE x.team_id=t.team_id) account_count FROM teams t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.organization_id=? ORDER BY t.created_at",(org,))
    return h.sendj({'ok':True,'items':its}) or True
   if m=='POST':
    if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队管理权限',403)
@@ -239,7 +358,7 @@ def dispatch(h,m,p,q,a,db):
    with db.tx() as c:
     old=one(c,'SELECT * FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
     if not old:return bad(h,'NOT_FOUND','团队不存在',404)
-    refs={'bindings':c.execute('SELECT count(*) FROM role_bindings WHERE organization_id=? AND scope_type=\'team\' AND scope_id=? AND status=\'active\'',(org,ident)).fetchone()[0],'channelGrants':c.execute('SELECT count(*) FROM team_channel_accounts WHERE team_id=?',(ident,)).fetchone()[0],'positions':c.execute('SELECT count(*) FROM positions WHERE team_id=?',(ident,)).fetchone()[0],'sources':c.execute('SELECT count(*) FROM sources WHERE team_id=? AND status=\'active\'',(ident,)).fetchone()[0]}
+    refs={'members':c.execute("SELECT count(*) FROM team_memberships WHERE team_id=? AND status='active'",(ident,)).fetchone()[0],'bindings':c.execute('SELECT count(*) FROM role_bindings WHERE organization_id=? AND scope_type=\'team\' AND scope_id=? AND status=\'active\'',(org,ident)).fetchone()[0],'channelGrants':c.execute('SELECT count(*) FROM team_channel_accounts WHERE team_id=?',(ident,)).fetchone()[0],'positions':c.execute('SELECT count(*) FROM positions WHERE team_id=?',(ident,)).fetchone()[0],'sources':c.execute('SELECT count(*) FROM sources WHERE team_id=? AND status=\'active\'',(ident,)).fetchone()[0]}
     refs={k:v for k,v in refs.items() if v}
     if refs:return bad(h,'TEAM_IN_USE','团队仍被业务对象引用，无法删除',409,references=refs)
     c.execute('DELETE FROM workspace_teams WHERE team_id=?',(ident,))
@@ -248,35 +367,48 @@ def dispatch(h,m,p,q,a,db):
    return h.sendj({'ok':True}) or True
   if ident and action=='members':
    if m=='GET':
-    with db.tx(False) as c:its=rows(c,"SELECT b.binding_id,b.user_id,b.role_id,b.status,b.created_at,b.updated_at,u.login_name,u.display_name,u.status user_status,r.name role_name FROM role_bindings b JOIN users u ON u.user_id=b.user_id JOIN roles r ON r.role_id=b.role_id WHERE b.scope_type='team' AND b.scope_id=? AND b.organization_id=? AND u.organization_id=b.organization_id",(ident,org))
+    with db.tx(False) as c:its=rows(c,"SELECT tm.*,u.login_name,u.display_name,u.status user_status FROM team_memberships tm JOIN users u ON u.user_id=tm.user_id JOIN teams t ON t.team_id=tm.team_id WHERE tm.team_id=? AND t.organization_id=? ORDER BY tm.is_primary DESC,u.display_name",(ident,org))
     return h.sendj({'ok':True,'items':its}) or True
    if m=='POST':
     if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无成员管理权限',403)
-    b=h.body();uid=str(b.get('userId') or '');role=str(b.get('roleId') or 'role_operator')
+    b=h.body();uid=str(b.get('userId') or '');kind=str(b.get('membershipType') or 'member');primary=1 if str(b.get('isPrimary') or '0').lower() in ('1','true') else 0
+    if kind not in ('member','manager','operator','support'):return bad(h,'INVALID_MEMBERSHIP_TYPE','成员类型无效')
     with db.tx() as c:
      if not c.execute('SELECT 1 FROM users WHERE user_id=? AND organization_id=?',(uid,org)).fetchone():return bad(h,'USER_NOT_FOUND','用户不属于目标企业',404)
-     grant_binding_in_tx(c,uid,role,org,'team',ident,a['user_id'])
-     audit_in_tx(c,a,'grant','team_membership',uid,{},b)
+     if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+     n=now_ms()
+     if primary:c.execute("UPDATE team_memberships SET is_primary=0,updated_at=? WHERE user_id=? AND status='active'",(n,uid))
+     c.execute("INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,?, 'active',?,NULL,?,?) ON CONFLICT(user_id,team_id) DO UPDATE SET membership_type=excluded.membership_type,is_primary=excluded.is_primary,status='active',left_at=NULL,updated_at=excluded.updated_at",(uid,ident,kind,primary,n,n,n))
+     audit_in_tx(c,a,'upsert','team_membership',uid,{},dict(b,teamId=ident))
+    return h.sendj({'ok':True}) or True
+   if m=='DELETE':
+    if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无成员管理权限',403)
+    b=h.body();uid=str(b.get('userId') or '')
+    with db.tx() as c:
+     n=now_ms();c.execute("UPDATE team_memberships SET status='disabled',is_primary=0,left_at=?,updated_at=? WHERE user_id=? AND team_id=?",(n,n,uid,ident));audit_in_tx(c,a,'remove','team_membership',uid,{},dict(b,teamId=ident))
     return h.sendj({'ok':True}) or True
  # users
  if root=='users':
   if m=='GET':
-   with db.tx(False) as c:its=rows(c,"SELECT u.*,group_concat(DISTINCT CASE WHEN b.scope_type='team' AND b.status='active' THEN t.name END) teams,group_concat(DISTINCT CASE WHEN b.status='active' THEN r.name END) roles FROM users u LEFT JOIN role_bindings b ON b.user_id=u.user_id AND b.organization_id=u.organization_id LEFT JOIN teams t ON b.scope_type='team' AND t.team_id=b.scope_id AND t.organization_id=b.organization_id LEFT JOIN roles r ON r.role_id=b.role_id WHERE u.organization_id=? GROUP BY u.user_id ORDER BY u.created_at",(org,))
+   with db.tx(False) as c:its=rows(c,"SELECT u.*,(SELECT group_concat(t.name) FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=u.user_id AND tm.status='active') teams,(SELECT group_concat(r.name) FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=u.user_id AND b.organization_id=u.organization_id AND b.status='active') roles,(SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name FROM users u WHERE u.organization_id=? ORDER BY u.created_at",(org,))
    return h.sendj({'ok':True,'items':its}) or True
   if m=='POST':
    if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无用户管理权限',403)
-   b=h.body();ln=str(b.get('loginName') or '').strip();pwd=str(b.get('password') or '');team=str(b.get('teamId') or '');role=str(b.get('roleId') or 'role_operator')
+   b=h.body();ln=str(b.get('loginName') or '').strip();pwd=str(b.get('password') or '');team=str(b.get('teamId') or '').strip();role=str(b.get('roleId') or 'role_operator');position=str(b.get('positionId') or '').strip();kind=str(b.get('membershipType') or 'member')
    if not ln or not password_strong(pwd):return bad(h,'INVALID_USER','登录名必填；密码至少 12 位且必须同时包含字母和数字')
+   if kind not in ('member','manager','operator','support'):return bad(h,'INVALID_MEMBERSHIP_TYPE','成员类型无效')
    with db.tx() as c:
-    tr=c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(team,org)).fetchone()
-    if not tr:return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
     rr=c.execute("SELECT scope_level FROM roles WHERE role_id=? AND status='active' AND (organization_id IS NULL OR organization_id=?)",(role,org)).fetchone()
     if not rr or rr[0] not in ('organization','team'):return bad(h,'INVALID_ROLE','角色不存在、已停用或范围不适用于企业用户',400)
-    scope_type=rr[0];scope_id=org if scope_type=='organization' else team
-    uid='usr_'+uuid.uuid4().hex;n=now_ms();ph,salt,it=hash_password(pwd)
+    if team and not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(team,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+    if rr[0]=='team' and not team:return bad(h,'TEAM_REQUIRED','团队级角色必须选择团队',400)
+    if position and not c.execute("SELECT 1 FROM positions WHERE position_id=? AND organization_id=? AND status='active'",(position,org)).fetchone():return bad(h,'POSITION_NOT_FOUND','职位不存在或已停用',404)
+    scope_type=rr[0];scope_id=org if scope_type=='organization' else team;uid='usr_'+uuid.uuid4().hex;n=now_ms();ph,salt,it=hash_password(pwd)
     try:
      c.execute('INSERT INTO users(user_id,organization_id,login_name,display_name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(uid,org,ln,str(b.get('displayName') or ln),'active',n,n))
      c.execute('INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,?,?)',(uid,ph,salt,it,1,n))
+     if position:c.execute("INSERT INTO user_positions(user_id,position_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,1,'active',?,?)",(uid,position,org,n,n))
+     if team:c.execute("INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,1,'active',?,NULL,?,?)",(uid,team,kind,n,n,n))
      grant_binding_in_tx(c,uid,role,org,scope_type,scope_id,a['user_id'])
     except Exception:
      return bad(h,'USER_CONFLICT','登录名冲突或数据无效',409)

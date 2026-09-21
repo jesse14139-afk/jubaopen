@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""聚宝盆 V207.6.0-dev 中心服务（Python 标准库，零第三方依赖）。"""
+"""聚宝盆 V207.8.0 / Schema 211 中心服务（Python 标准库，零第三方依赖）。"""
 import argparse,json,os,sys,uuid
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.parse import urlparse,parse_qs,unquote
@@ -15,7 +15,11 @@ VERSION=PRODUCT_VERSION;DB=None;ADMIN=open(os.path.join(ROOT,'admin_v207.html'),
 READ_PERM={'/api/v207/contacts':'contact.read','/api/v207/changes':'contact.read','/api/v207/admin/graph':'organization.read'}
 class H(BaseHTTPRequestHandler):
  server_version='Jubaopen/'+PRODUCT_VERSION
- def log_message(self,fmt,*args):sys.stderr.write('%s %s\n'%(self.address_string(),fmt%args))
+ def log_message(self,fmt,*args):
+  # 正常 HTTP 访问日志写 stdout，避免 Windows PowerShell 误报 NativeCommandError。
+  sys.stdout.write('%s %s\n'%(self.address_string(),fmt%args));sys.stdout.flush()
+ def log_error(self,fmt,*args):
+  sys.stderr.write('%s ERROR %s\n'%(self.address_string(),fmt%args));sys.stderr.flush()
  def sendj(self,d,s=200):
   b=json.dumps(d,ensure_ascii=False,separators=(',',':')).encode();self.send_response(s);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.security_headers();self.end_headers();self.wfile.write(b)
  def security_headers(self):
@@ -41,8 +45,11 @@ class H(BaseHTTPRequestHandler):
   for value in (after,before):
    if isinstance(value,dict):candidates.append(value.get('workspace_id') or value.get('workspaceId'))
   wid=next((x for x in candidates if x),None)
-  if not wid:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
   with DB.tx() as c:
+   if not wid:
+    default_ws=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at,workspace_id LIMIT 1",(a['organization_id'],)).fetchone()
+    if not default_ws:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
+    wid=default_ws['workspace_id']
    scope=c.execute('SELECT organization_id FROM workspaces WHERE workspace_id=?',(wid,)).fetchone()
    if not scope or scope['organization_id']!=a['organization_id']:raise RuntimeError('AUDIT_SCOPE_MISMATCH')
    c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms(),a['organization_id']))
@@ -205,7 +212,7 @@ def main():
  if any(bootstrap.values()):bootstrap['builtin_default']='0'
  else:bootstrap=None
  DB.initialize(bootstrap)
- print('V207.7 服务：http://%s:%s/admin'%(a.host,a.port));ThreadingHTTPServer((a.host,a.port),H).serve_forever()
+ print('V207.8 服务：http://%s:%s/admin'%(a.host,a.port));ThreadingHTTPServer((a.host,a.port),H).serve_forever()
 if __name__=='__main__':main()
 
-# V207.7.0-dev 更新说明（2026-09-20）：统一版本源并接入严格只读数据字典接口。
+# V207.8.0 更新说明（2026-09-20）：统一版本源并接入严格只读数据字典接口。

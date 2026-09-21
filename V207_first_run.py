@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Jubaopen V207.7 安全无交互首次初始化。"""
+"""Jubaopen V207.8 安全无交互首次初始化。"""
 import argparse,sys,os
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent
@@ -8,7 +8,7 @@ if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 from V207_shared_db import Database
 
 def main():
- p=argparse.ArgumentParser(description="初始化 Jubaopen V207.7 默认组织和平台管理员")
+ p=argparse.ArgumentParser(description="初始化 Jubaopen V207.8 默认组织和平台管理员")
  p.add_argument('--db',default=str(ROOT/'data'/'jubaopen-v207.db'))
  p.add_argument('--admin-password',default=os.environ.get('JUBAOPEN_INITIAL_ADMIN_PASSWORD'),help='初始管理员密码；也可使用 JUBAOPEN_INITIAL_ADMIN_PASSWORD')
  a=p.parse_args();db=Path(a.db).expanduser().resolve()

@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS roles(role_id TEXT PRIMARY KEY,organization_id TEXT,n
 CREATE TABLE IF NOT EXISTS permissions(permission_key TEXT PRIMARY KEY,description TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS role_permissions(role_id TEXT NOT NULL,permission_key TEXT NOT NULL,PRIMARY KEY(role_id,permission_key));
 CREATE TABLE IF NOT EXISTS organization_memberships(user_id TEXT NOT NULL,organization_id TEXT NOT NULL,role_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',PRIMARY KEY(user_id,organization_id,role_id));
-CREATE TABLE IF NOT EXISTS team_memberships(user_id TEXT NOT NULL,team_id TEXT NOT NULL,role_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',PRIMARY KEY(user_id,team_id,role_id));
+CREATE TABLE IF NOT EXISTS team_memberships(user_id TEXT NOT NULL,team_id TEXT NOT NULL,membership_type TEXT NOT NULL DEFAULT 'member' CHECK(membership_type IN ('member','manager','operator','support')),is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),joined_at INTEGER NOT NULL,left_at INTEGER,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,team_id),FOREIGN KEY(user_id) REFERENCES users(user_id) ON UPDATE NO ACTION ON DELETE NO ACTION,FOREIGN KEY(team_id) REFERENCES teams(team_id) ON UPDATE NO ACTION ON DELETE NO ACTION);
 CREATE TABLE IF NOT EXISTS channel_accounts(channel_account_id TEXT PRIMARY KEY,organization_id TEXT NOT NULL,channel TEXT NOT NULL CHECK(channel IN ('whatsapp','instagram','facebook','messenger','telegram')),display_name TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS channel_account_identities(identity_id TEXT PRIMARY KEY,channel_account_id TEXT NOT NULL,identity_type TEXT NOT NULL,identity_value TEXT NOT NULL,canonical_value TEXT NOT NULL,created_at INTEGER NOT NULL,UNIQUE(channel_account_id,identity_type,canonical_value));
 CREATE INDEX IF NOT EXISTS idx_identity_lookup ON channel_account_identities(identity_type,canonical_value);
@@ -76,6 +76,9 @@ PERMS=['organization.read','organization.manage','team.read','team.manage','user
 def _cols(c,t):return {x[1] for x in c.execute('PRAGMA table_info('+t+')')}
 def _add(c,t,col,decl):
  if col not in _cols(c,t):c.execute(f'ALTER TABLE {t} ADD COLUMN {col} {decl}')
+def _team_membership_schema211(c):
+ cols=_cols(c,'team_memberships')
+ return 'membership_type' in cols and 'role_id' not in cols
 def hash_password(password,salt=None,it=260000):
  salt=salt or secrets.token_hex(16); h=hashlib.pbkdf2_hmac('sha256',password.encode(),bytes.fromhex(salt),it).hex(); return h,salt,it
 
@@ -307,7 +310,7 @@ workspaces/users/roles -> organizations
 sessions/user_credentials -> users
 role_permissions -> roles/permissions
 organization_memberships -> users/organizations/roles
-team_memberships -> users/teams/roles
+team_memberships -> users/teams (membership fact; authorization is role_bindings)
 membership scope triggers; all delete/update actions NO ACTION
 """
 def _v208_checksum(mid):
@@ -421,12 +424,12 @@ IDENTITY_FK_EXPECTED={
  'roles':{('organization_id','organizations','organization_id')},
  'role_permissions':{('role_id','roles','role_id'),('permission_key','permissions','permission_key')},
  'organization_memberships':{('user_id','users','user_id'),('organization_id','organizations','organization_id'),('role_id','roles','role_id')},
- 'team_memberships':{('user_id','users','user_id'),('team_id','teams','team_id'),('role_id','roles','role_id')}}
+ 'team_memberships':{('user_id','users','user_id'),('team_id','teams','team_id')}}
 IDENTITY_SCOPE_TRIGGERS={
  'trg_org_membership_scope_insert':"""CREATE TRIGGER IF NOT EXISTS trg_org_membership_scope_insert BEFORE INSERT ON organization_memberships BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u JOIN roles r ON r.role_id=NEW.role_id WHERE u.user_id=NEW.user_id AND u.organization_id=NEW.organization_id AND (r.organization_id IS NULL OR r.organization_id=NEW.organization_id)) THEN RAISE(ABORT,'MEMBERSHIP_SCOPE_INVALID') END; END""",
  'trg_org_membership_scope_update':"""CREATE TRIGGER IF NOT EXISTS trg_org_membership_scope_update BEFORE UPDATE OF user_id,organization_id,role_id ON organization_memberships BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u JOIN roles r ON r.role_id=NEW.role_id WHERE u.user_id=NEW.user_id AND u.organization_id=NEW.organization_id AND (r.organization_id IS NULL OR r.organization_id=NEW.organization_id)) THEN RAISE(ABORT,'MEMBERSHIP_SCOPE_INVALID') END; END""",
- 'trg_team_membership_scope_insert':"""CREATE TRIGGER IF NOT EXISTS trg_team_membership_scope_insert BEFORE INSERT ON team_memberships BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u JOIN teams t JOIN roles r ON r.role_id=NEW.role_id WHERE u.user_id=NEW.user_id AND t.team_id=NEW.team_id AND u.organization_id=t.organization_id AND (r.organization_id IS NULL OR r.organization_id=t.organization_id)) THEN RAISE(ABORT,'MEMBERSHIP_SCOPE_INVALID') END; END""",
- 'trg_team_membership_scope_update':"""CREATE TRIGGER IF NOT EXISTS trg_team_membership_scope_update BEFORE UPDATE OF user_id,team_id,role_id ON team_memberships BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u JOIN teams t JOIN roles r ON r.role_id=NEW.role_id WHERE u.user_id=NEW.user_id AND t.team_id=NEW.team_id AND u.organization_id=t.organization_id AND (r.organization_id IS NULL OR r.organization_id=t.organization_id)) THEN RAISE(ABORT,'MEMBERSHIP_SCOPE_INVALID') END; END"""}
+ 'trg_team_membership_scope_insert':"""CREATE TRIGGER IF NOT EXISTS trg_team_membership_scope_insert BEFORE INSERT ON team_memberships BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u JOIN teams t ON t.team_id=NEW.team_id WHERE u.user_id=NEW.user_id AND u.organization_id=t.organization_id) THEN RAISE(ABORT,'TEAM_MEMBERSHIP_SCOPE_MISMATCH') END; END""",
+ 'trg_team_membership_scope_update':"""CREATE TRIGGER IF NOT EXISTS trg_team_membership_scope_update BEFORE UPDATE ON team_memberships BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u JOIN teams t ON t.team_id=NEW.team_id WHERE u.user_id=NEW.user_id AND u.organization_id=t.organization_id) THEN RAISE(ABORT,'TEAM_MEMBERSHIP_SCOPE_MISMATCH') END; END"""}
 
 def _identity_fk_ready(c):
  for table,expected in IDENTITY_FK_EXPECTED.items():
@@ -444,7 +447,7 @@ def _identity_preflight(c):
   'role_permissions.role':"SELECT count(*) FROM role_permissions x LEFT JOIN roles p ON p.role_id=x.role_id WHERE p.role_id IS NULL",
   'role_permissions.permission':"SELECT count(*) FROM role_permissions x LEFT JOIN permissions p ON p.permission_key=x.permission_key WHERE p.permission_key IS NULL",
   'organization_memberships.scope':"SELECT count(*) FROM organization_memberships m LEFT JOIN users u ON u.user_id=m.user_id LEFT JOIN organizations o ON o.organization_id=m.organization_id LEFT JOIN roles r ON r.role_id=m.role_id WHERE u.user_id IS NULL OR o.organization_id IS NULL OR r.role_id IS NULL OR u.organization_id<>m.organization_id OR (r.organization_id IS NOT NULL AND r.organization_id<>m.organization_id)",
-  'team_memberships.scope':"SELECT count(*) FROM team_memberships m LEFT JOIN users u ON u.user_id=m.user_id LEFT JOIN teams t ON t.team_id=m.team_id LEFT JOIN roles r ON r.role_id=m.role_id WHERE u.user_id IS NULL OR t.team_id IS NULL OR r.role_id IS NULL OR u.organization_id<>t.organization_id OR (r.organization_id IS NOT NULL AND r.organization_id<>t.organization_id)"}
+  'team_memberships.scope':"SELECT count(*) FROM team_memberships m LEFT JOIN users u ON u.user_id=m.user_id LEFT JOIN teams t ON t.team_id=m.team_id WHERE u.user_id IS NULL OR t.team_id IS NULL OR u.organization_id<>t.organization_id"}
  bad={k:c.execute(sql).fetchone()[0] for k,sql in checks.items()}
  bad={k:v for k,v in bad.items() if v}
  if bad:raise RuntimeError('IDENTITY_RBAC_FOREIGN_KEY_BASELINE_BLOCKED: '+dumps(bad))
@@ -476,7 +479,7 @@ def _ensure_identity_rbac_fk_baseline(c):
    ('user_credentials',['user_id','password_hash','salt','iterations','must_change','updated_at','failed_attempts','locked_until','last_failed_at'],"CREATE TABLE user_credentials(user_id TEXT PRIMARY KEY,password_hash TEXT NOT NULL,salt TEXT NOT NULL,iterations INTEGER NOT NULL,must_change INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL,failed_attempts INTEGER NOT NULL DEFAULT 0,locked_until INTEGER,last_failed_at INTEGER,FOREIGN KEY(user_id) REFERENCES users(user_id) ON UPDATE NO ACTION ON DELETE NO ACTION)"),
    ('role_permissions',['role_id','permission_key'],"CREATE TABLE role_permissions(role_id TEXT NOT NULL,permission_key TEXT NOT NULL,PRIMARY KEY(role_id,permission_key),FOREIGN KEY(role_id) REFERENCES roles(role_id) ON UPDATE NO ACTION ON DELETE NO ACTION,FOREIGN KEY(permission_key) REFERENCES permissions(permission_key) ON UPDATE NO ACTION ON DELETE NO ACTION)"),
    ('organization_memberships',['user_id','organization_id','role_id','status'],"CREATE TABLE organization_memberships(user_id TEXT NOT NULL,organization_id TEXT NOT NULL,role_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',PRIMARY KEY(user_id,organization_id,role_id),FOREIGN KEY(user_id) REFERENCES users(user_id) ON UPDATE NO ACTION ON DELETE NO ACTION,FOREIGN KEY(organization_id) REFERENCES organizations(organization_id) ON UPDATE NO ACTION ON DELETE NO ACTION,FOREIGN KEY(role_id) REFERENCES roles(role_id) ON UPDATE NO ACTION ON DELETE NO ACTION)"),
-   ('team_memberships',['user_id','team_id','role_id','status'],"CREATE TABLE team_memberships(user_id TEXT NOT NULL,team_id TEXT NOT NULL,role_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',PRIMARY KEY(user_id,team_id,role_id),FOREIGN KEY(user_id) REFERENCES users(user_id) ON UPDATE NO ACTION ON DELETE NO ACTION,FOREIGN KEY(team_id) REFERENCES teams(team_id) ON UPDATE NO ACTION ON DELETE NO ACTION,FOREIGN KEY(role_id) REFERENCES roles(role_id) ON UPDATE NO ACTION ON DELETE NO ACTION)"))
+   ('team_memberships',['user_id','team_id','membership_type','is_primary','status','joined_at','left_at','created_at','updated_at'],"CREATE TABLE team_memberships(user_id TEXT NOT NULL,team_id TEXT NOT NULL,membership_type TEXT NOT NULL DEFAULT 'member' CHECK(membership_type IN ('member','manager','operator','support')),is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),joined_at INTEGER NOT NULL,left_at INTEGER,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(user_id,team_id),FOREIGN KEY(user_id) REFERENCES users(user_id) ON UPDATE NO ACTION ON DELETE NO ACTION,FOREIGN KEY(team_id) REFERENCES teams(team_id) ON UPDATE NO ACTION ON DELETE NO ACTION)"))
   c.execute('PRAGMA legacy_alter_table=ON')
   counts={}
   try:
@@ -526,8 +529,18 @@ def ensure_v208(c):
  'trg_team_department_scope_update':"""CREATE TRIGGER IF NOT EXISTS trg_team_department_scope_update BEFORE UPDATE OF department_id,organization_id ON teams WHEN NEW.department_id IS NOT NULL BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM departments d WHERE d.department_id=NEW.department_id AND d.organization_id=NEW.organization_id AND d.status='active') THEN RAISE(ABORT,'TEAM_DEPARTMENT_SCOPE_INVALID') END; END"""}
  for sql in triggers.values():c.execute(sql)
  hierarchy_triggers=_ensure_hierarchy_guards(c)
- identity_result=_ensure_identity_rbac_fk_baseline(c)
- _assert_v208_objects(c)
+ if _team_membership_schema211(c):
+  # Schema 211 intentionally removed team_memberships.role_id.  Do not replay
+  # the superseded V208 identity/RBAC baseline against the final member table.
+  if not _teams_fk_ready(c):raise RuntimeError('V208_OBJECT_ASSERTION_FAILED: teams foreign keys')
+  actual={r[0] for r in c.execute("SELECT name FROM sqlite_schema WHERE type='trigger'")}
+  required={'trg_department_cycle_insert','trg_department_cycle_update','trg_market_cycle_insert','trg_market_cycle_update','trg_business_line_cycle_insert','trg_business_line_cycle_update'}
+  missing=sorted(required-actual)
+  if missing:raise RuntimeError('V208_OBJECT_ASSERTION_FAILED: '+dumps(missing))
+  identity_result={'status':'success','supersededBy':'Schema 211 membership/authorization separation'}
+ else:
+  identity_result=_ensure_identity_rbac_fk_baseline(c)
+  _assert_v208_objects(c)
  _v208_record(c,'V208_030_foreign_key_baseline',{'status':'success','crossTenantTriggers':len(triggers),'hierarchyTriggers':len(hierarchy_triggers),'teamsForeignKeys':3})
  _v208_record(c,'V208_040_catalog_baseline',{'status':'success','catalogVersion':CATALOG_VERSION})
  _v208_record(c,'V208_050_identity_rbac_foreign_keys',identity_result)
@@ -557,13 +570,19 @@ def bootstrap_fresh_database(c,b):
  c.execute('INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,1,?)',(b['admin_user_id'],h,salt,it,t))
  c.execute('INSERT INTO platform_administrators(user_id,is_builtin,onboarding_completed,created_at,updated_at) VALUES(?,1,0,?,?)',(b['admin_user_id'],t,t))
  c.execute("INSERT INTO role_bindings(binding_id,user_id,role_id,organization_id,scope_type,scope_id,status,granted_by,created_at,updated_at) VALUES(?,?,?,?,?,?,'active',?,?,?)",('bootstrap:org:'+b['admin_user_id'],b['admin_user_id'],'role_orgadmin',b['organization_id'],'organization',b['organization_id'],b['admin_user_id'],t,t))
- c.execute("INSERT INTO role_bindings(binding_id,user_id,role_id,organization_id,scope_type,scope_id,status,granted_by,created_at,updated_at) VALUES(?,?,?,?,?,?,'active',?,?,?)",('bootstrap:team:'+b['admin_user_id'],b['admin_user_id'],'role_teamlead',b['organization_id'],'team',b['team_id'],b['admin_user_id'],t,t))
  for i in range(1,9):c.execute('INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',(b['workspace_id'],f'f{i}',str(i),'text',i,1,t,t))
+
+def _connect_strict_readonly(path):
+ """打开不会创建 WAL/SHM 的不可变只读连接；非空 WAL 必须先由写入方安全检查点。"""
+ p=Path(path).resolve()
+ wal=Path(str(p)+'-wal')
+ if wal.exists() and wal.stat().st_size:
+  raise RuntimeError('STRICT_READONLY_WAL_PRESENT: '+str(wal))
+ return sqlite3.connect(p.as_uri()+'?mode=ro&immutable=1',uri=True)
 
 def validate_registered_migration_checksums(path):
  """只读预检迁移登记；任何已知迁移校验和漂移均阻止启动。"""
- uri='file:'+Path(path).resolve().as_posix()+'?mode=ro'
- c=sqlite3.connect(uri,uri=True)
+ c=_connect_strict_readonly(path)
  try:
   if not c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'").fetchone():return
   expected={
@@ -576,6 +595,7 @@ def validate_registered_migration_checksums(path):
   expected.update({mid:_v208_checksum(mid) for mid in V208_STAGES})
   expected[V209_MIGRATION_ID]=hashlib.sha256(V209_SIGNATURE.encode()).hexdigest() if 'V209_SIGNATURE' in globals() else None
   expected[V210_MIGRATION_ID]=hashlib.sha256(V210_SIGNATURE.encode()).hexdigest() if 'V210_SIGNATURE' in globals() else None
+  expected[V211_MIGRATION_ID]=hashlib.sha256(V211_SIGNATURE.encode()).hexdigest() if 'V211_SIGNATURE' in globals() else None
   bad=[]
   for mid,checksum in c.execute('SELECT migration_id,checksum FROM schema_migrations'):
    if mid in expected and checksum!=expected[mid]:bad.append(mid)
@@ -584,8 +604,7 @@ def validate_registered_migration_checksums(path):
 
 def readonly_preflight(path):
  """在备份和任何迁移写入前，以只读连接阻断损坏、歧义、孤立和跨租户数据。"""
- uri='file:'+Path(path).resolve().as_posix()+'?mode=ro'
- c=sqlite3.connect(uri,uri=True)
+ c=_connect_strict_readonly(path)
  try:
   c.row_factory=sqlite3.Row
   if c.execute('PRAGMA quick_check').fetchone()[0]!='ok':raise RuntimeError('PRECHECK_QUICK_CHECK_FAILED')
@@ -611,7 +630,7 @@ def readonly_preflight(path):
    orphan[row[0]]=orphan.get(row[0],0)+1
   orphan_checks=[
    ('teams/workspaces',"SELECT count(*) FROM teams t LEFT JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE w.workspace_id IS NULL"),
-   ('team_memberships',"SELECT count(*) FROM team_memberships r LEFT JOIN users u ON u.user_id=r.user_id LEFT JOIN teams t ON t.team_id=r.team_id LEFT JOIN roles p ON p.role_id=r.role_id WHERE u.user_id IS NULL OR t.team_id IS NULL OR p.role_id IS NULL"),
+   ('team_memberships',"SELECT count(*) FROM team_memberships r LEFT JOIN users u ON u.user_id=r.user_id LEFT JOIN teams t ON t.team_id=r.team_id WHERE u.user_id IS NULL OR t.team_id IS NULL"),
    ('organization_memberships',"SELECT count(*) FROM organization_memberships r LEFT JOIN users u ON u.user_id=r.user_id LEFT JOIN organizations o ON o.organization_id=r.organization_id LEFT JOIN roles p ON p.role_id=r.role_id WHERE u.user_id IS NULL OR o.organization_id IS NULL OR p.role_id IS NULL"),
    ('sessions',"SELECT count(*) FROM sessions r LEFT JOIN users u ON u.user_id=r.user_id WHERE u.user_id IS NULL"),
    ('role_permissions',"SELECT count(*) FROM role_permissions r LEFT JOIN roles p ON p.role_id=r.role_id LEFT JOIN permissions q ON q.permission_key=r.permission_key WHERE p.role_id IS NULL OR q.permission_key IS NULL"),
@@ -759,8 +778,159 @@ def ensure_v210(c):
  """)
  t=now_ms()
  c.execute("INSERT OR IGNORE INTO role_bindings(binding_id,user_id,role_id,organization_id,scope_type,scope_id,status,granted_by,created_at,updated_at) SELECT 'legacy:org:'||m.user_id||':'||m.organization_id||':'||m.role_id,m.user_id,m.role_id,m.organization_id,'organization',m.organization_id,m.status,NULL,?,? FROM organization_memberships m JOIN users u ON u.user_id=m.user_id AND u.organization_id=m.organization_id JOIN roles r ON r.role_id=m.role_id AND r.status='active' WHERE m.role_id<>'role_superadmin' AND m.status IN ('active','disabled')",(t,t))
- c.execute("INSERT OR IGNORE INTO role_bindings(binding_id,user_id,role_id,organization_id,scope_type,scope_id,status,granted_by,created_at,updated_at) SELECT 'legacy:team:'||m.user_id||':'||m.team_id||':'||m.role_id,m.user_id,m.role_id,x.organization_id,'team',m.team_id,m.status,NULL,?,? FROM team_memberships m JOIN teams x ON x.team_id=m.team_id JOIN users u ON u.user_id=m.user_id AND u.organization_id=x.organization_id JOIN roles r ON r.role_id=m.role_id AND r.status='active' WHERE m.role_id<>'role_superadmin' AND m.status IN ('active','disabled')",(t,t))
  if not old:c.execute('INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES(?,?,?,?,?,?)',(V210_MIGRATION_ID,'Unified RBAC authorization center',checksum,t,'system',dumps({'status':'success'})))
+
+
+# V207.8 / Schema 211：团队成员是组织事实，role_bindings 是唯一权限来源。
+V211_MIGRATION_ID='V211_000_legacy_organization_cleanup'
+V211_SIGNATURE="""Schema 211 / catalog 211.0
+team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at)
+role_bindings is the only authorization source; platform bootstrap has no implicit team role
+organization/team membership scope triggers and primary workspace constraints are mandatory
+"""
+def ensure_v211(c):
+ checksum=hashlib.sha256(V211_SIGNATURE.encode()).hexdigest()
+ old=c.execute('SELECT checksum FROM schema_migrations WHERE migration_id=?',(V211_MIGRATION_ID,)).fetchone()
+ if old and old[0]!=checksum:raise RuntimeError('MIGRATION_CHECKSUM_MISMATCH: '+V211_MIGRATION_ID)
+ cols=_cols(c,'team_memberships')
+ required={'user_id','team_id','membership_type','is_primary','status','joined_at','left_at','created_at','updated_at'}
+ if cols!=required:raise RuntimeError('SCHEMA_211_TEAM_MEMBERSHIP_INVALID: '+dumps(sorted(cols)))
+ for name in ('trg_org_membership_scope_insert','trg_org_membership_scope_update'):
+  c.execute(IDENTITY_SCOPE_TRIGGERS[name])
+ execute_sql_script(c,"""
+ CREATE INDEX IF NOT EXISTS idx_team_memberships_team ON team_memberships(team_id,status,is_primary);
+ CREATE INDEX IF NOT EXISTS idx_team_memberships_user ON team_memberships(user_id,status,is_primary);
+ CREATE UNIQUE INDEX IF NOT EXISTS uq_user_primary_team ON team_memberships(user_id) WHERE is_primary=1 AND status='active';
+ CREATE UNIQUE INDEX IF NOT EXISTS uq_team_primary_workspace ON workspace_teams(team_id) WHERE is_primary=1 AND status='active';
+ CREATE TRIGGER IF NOT EXISTS trg_team_membership_scope_insert BEFORE INSERT ON team_memberships BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u JOIN teams t ON t.team_id=NEW.team_id WHERE u.user_id=NEW.user_id AND u.organization_id=t.organization_id) THEN RAISE(ABORT,'TEAM_MEMBERSHIP_SCOPE_MISMATCH') END;
+ END;
+ CREATE TRIGGER IF NOT EXISTS trg_team_membership_scope_update BEFORE UPDATE ON team_memberships BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u JOIN teams t ON t.team_id=NEW.team_id WHERE u.user_id=NEW.user_id AND u.organization_id=t.organization_id) THEN RAISE(ABORT,'TEAM_MEMBERSHIP_SCOPE_MISMATCH') END;
+ END;
+ CREATE TRIGGER IF NOT EXISTS trg_team_primary_workspace_insert BEFORE INSERT ON workspace_teams WHEN NEW.is_primary=1 AND NEW.status='active' BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM teams t WHERE t.team_id=NEW.team_id AND t.workspace_id=NEW.workspace_id AND t.organization_id=NEW.organization_id) THEN RAISE(ABORT,'TEAM_PRIMARY_WORKSPACE_MISMATCH') END;
+ END;
+ CREATE TRIGGER IF NOT EXISTS trg_team_primary_workspace_update BEFORE UPDATE OF workspace_id,team_id,organization_id,is_primary,status ON workspace_teams WHEN NEW.is_primary=1 AND NEW.status='active' BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM teams t WHERE t.team_id=NEW.team_id AND t.workspace_id=NEW.workspace_id AND t.organization_id=NEW.organization_id) THEN RAISE(ABORT,'TEAM_PRIMARY_WORKSPACE_MISMATCH') END;
+ END;
+ """)
+ c.execute("DELETE FROM role_bindings WHERE binding_id LIKE 'bootstrap:team:%' AND user_id IN (SELECT user_id FROM platform_administrators WHERE is_builtin=1)")
+ t=now_ms()
+ if not old:c.execute('INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES(?,?,?,?,?,?)',(V211_MIGRATION_ID,'Schema 211 成员权限分离与主工作区约束',checksum,t,'system',dumps({'status':'success'})))
+
+def _read_existing_schema_version(path):
+ """只读识别现有数据库；不猜测、升级或修改未知结构。"""
+ c=_connect_strict_readonly(path)
+ try:
+  if not c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'").fetchone():
+   return None
+  row=c.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+  return str(row[0]).strip() if row and row[0] is not None else None
+ finally:c.close()
+
+def validate_schema211_readonly(path):
+ """Schema 211 重启路径：严格只读校验，绝不重放历史迁移。"""
+ c=_connect_strict_readonly(path);c.row_factory=sqlite3.Row
+ try:
+  required_tables={
+   'meta','schema_migrations','organizations','workspaces','teams','users',
+   'user_credentials','roles','permissions','role_permissions','role_bindings',
+   'team_memberships','audit_logs','sessions'
+  }
+  actual={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+  missing=sorted(required_tables-actual)
+  if missing:raise RuntimeError('SCHEMA_211_INVALID: missing tables: '+','.join(missing))
+  cols={r[1] for r in c.execute('PRAGMA table_info(team_memberships)')}
+  required_cols={'user_id','team_id','membership_type','is_primary','status','joined_at','left_at','created_at','updated_at'}
+  missing_cols=sorted(required_cols-cols)
+  if missing_cols:raise RuntimeError('SCHEMA_211_INVALID: team_memberships missing columns: '+','.join(missing_cols))
+  if 'role_id' in cols:raise RuntimeError('SCHEMA_211_INVALID: legacy team_memberships.role_id exists')
+  # 固定 Schema 211 约束基线：防止结构可读但关键业务约束已被误删。
+  required_indexes={
+   'idx_attribution_contact',
+   'idx_attribution_contact_rule',
+   'idx_business_line_org_parent',
+   'idx_campaign_org',
+   'idx_changes_cursor',
+   'idx_contact_identity_lookup',
+   'idx_contacts_source',
+   'idx_department_org_parent',
+   'idx_identity_lookup',
+   'idx_market_org_parent',
+   'idx_positions_org_department',
+   'idx_rbac_confirmations_user',
+   'idx_role_bindings_scope',
+   'idx_role_bindings_subject',
+   'idx_source_links_from',
+   'idx_source_links_to',
+   'idx_tags_workspace_kind',
+   'idx_team_bl_org_line',
+   'idx_team_markets_org_market',
+   'idx_team_memberships_team',
+   'idx_team_memberships_user',
+   'idx_touchpoint_contact_occurred',
+   'idx_touchpoint_contact_time',
+   'idx_touchpoint_session',
+   'idx_touchpoint_source_time',
+   'idx_user_positions_org',
+   'idx_workspace_bl_org',
+   'idx_workspace_market_org',
+   'idx_workspace_team_org',
+   'uq_attribution_primary',
+   'uq_contact_identity_primary',
+   'uq_roles_role_code',
+   'uq_team_primary_business_line',
+   'uq_team_primary_market',
+   'uq_touchpoint_external_event',
+   'uq_user_primary_position',
+   'uq_user_primary_team',
+   'uq_team_primary_workspace',
+   'uq_workspace_primary_bl',
+   'uq_workspace_primary_market',
+   'uq_workspace_primary_team',
+  }
+  indexes={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'")}
+  missing_indexes=sorted(required_indexes-indexes)
+  if missing_indexes:raise RuntimeError('SCHEMA_211_INVALID: missing indexes: '+','.join(missing_indexes))
+  required_triggers={
+   'trg_business_line_cycle_insert',
+   'trg_business_line_cycle_update',
+   'trg_department_cycle_insert',
+   'trg_department_cycle_update',
+   'trg_market_cycle_insert',
+   'trg_market_cycle_update',
+   'trg_org_membership_scope_insert',
+   'trg_org_membership_scope_update',
+   'trg_position_department_scope_insert',
+   'trg_position_department_scope_update',
+   'trg_role_binding_guard_insert',
+   'trg_role_binding_guard_update',
+   'trg_role_status_insert',
+   'trg_role_status_update',
+   'trg_team_bl_scope_insert',
+   'trg_team_bl_scope_update',
+   'trg_team_department_scope_insert',
+   'trg_team_department_scope_update',
+   'trg_team_market_scope_insert',
+   'trg_team_market_scope_update',
+   'trg_team_membership_scope_insert',
+   'trg_team_membership_scope_update',
+   'trg_team_primary_workspace_insert',
+   'trg_team_primary_workspace_update',
+   'trg_user_position_scope_insert',
+   'trg_user_position_scope_update',
+  }
+  triggers={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+  missing_triggers=sorted(required_triggers-triggers)
+  if missing_triggers:raise RuntimeError('SCHEMA_211_INVALID: missing triggers: '+','.join(missing_triggers))
+  qc=c.execute('PRAGMA quick_check').fetchone()[0]
+  if qc!='ok':raise RuntimeError('SCHEMA_211_INVALID: quick_check: '+str(qc))
+  fk=list(c.execute('PRAGMA foreign_key_check'))
+  if fk:raise RuntimeError('SCHEMA_211_INVALID: foreign_key_check: '+str(len(fk)))
+  validate_registered_migration_checksums(path)
+  return True
+ finally:c.close()
 
 class Database:
  def __init__(self,path):self.path=Path(path).resolve();self.path.parent.mkdir(parents=True,exist_ok=True)
@@ -773,28 +943,25 @@ class Database:
   except Exception:c.execute('ROLLBACK');raise
   finally:c.close()
  def initialize(self,bootstrap=None):
-  """初始化或幂等升级；新库使用安全内置模板，已有库绝不创建或重归属租户。"""
+  """全新安装创建 Schema 211；现有 Schema 211 仅只读校验，拒绝旧库自动迁移。"""
   fresh=not self.path.exists() or not self.path.stat().st_size
-  b=validate_bootstrap(bootstrap) if fresh else None
-  backup=None
   if not fresh:
-   validate_registered_migration_checksums(self.path)
-   readonly_preflight(self.path)
-   backup=_exclusive_backup_path(self.path)
-   src=sqlite3.connect(str(self.path));dst=sqlite3.connect(str(backup))
-   try:src.backup(dst)
-   except Exception:
-    dst.close();src.close();backup.unlink(missing_ok=True);raise
-   finally:
-    try:src.close();dst.close()
-    except Exception:pass
+   version=_read_existing_schema_version(self.path)
+   if version==str(SCHEMA_VERSION):
+    validate_schema211_readonly(self.path)
+    return
+   if version and version.isdigit() and int(version)<SCHEMA_VERSION:
+    raise RuntimeError('LEGACY_SCHEMA_NOT_SUPPORTED: detected Schema '+version+', require fresh Schema '+str(SCHEMA_VERSION))
+   raise RuntimeError('UNSUPPORTED_DATABASE_SCHEMA: detected '+repr(version)+', require Schema '+str(SCHEMA_VERSION))
+  b=validate_bootstrap(bootstrap)
+  backup=None
   c=self.connect()
   try:
    # SQLite 表重建要求在事务开始前关闭写入期外键检查；提交前强制 foreign_key_check。
    c.execute('PRAGMA foreign_keys=OFF')
    c.execute('BEGIN IMMEDIATE')
    if fresh:execute_sql_script(c,BASE_SCHEMA)
-   ensure_v207(c,fresh=fresh);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c)
+   ensure_v207(c,fresh=fresh);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c)
    if fresh:bootstrap_fresh_database(c,b)
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)",(str(SCHEMA_VERSION),))
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version',?)",(PRODUCT_VERSION,))
