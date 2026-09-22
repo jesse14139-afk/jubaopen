@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """V207 多租户业务扩展。"""
-from V207_shared_db import now_ms,dumps
+from V207_shared_db import hashlib, now_ms,dumps
+import secrets
 from V207_version import PRODUCT_VERSION,SCHEMA_VERSION
 from V207_security import canonical,permissions,can
 VERSION=PRODUCT_VERSION
@@ -40,17 +41,35 @@ def resolve_account(db,a,p):
  valid=[x for x in rows if x.get('source_id')]
  if len(valid)!=1:return err('ACCOUNT_BINDING_CONFLICT','当前账号未形成唯一来源绑定，请联系管理员处理',409,channel=ch,matches=len(valid))
  return ok(channel=ch,binding=valid[0])
+class _BindingCodeRace(Exception):pass
+
 def register_device(db,a,p):
- did=str(p.get('device_id') or '').strip();iid=str(p.get('installation_id') or '').strip();team=str(p.get('team_id') or '').strip()
- if not did or not iid or not team:return err('INVALID_DEVICE','device_id、installation_id、team_id 必填')
- with db.tx() as c:
-  trow=c.execute('SELECT * FROM teams WHERE team_id=? AND organization_id=?',(team,a['organization_id'])).fetchone()
-  if not trow:return err('TEAM_NOT_FOUND','团队不存在',404)
-  t=now_ms();sysd=str(p.get('system_device_name') or p.get('device_name') or did)[:120];sysc=str(p.get('system_computer_name') or p.get('computer_name') or '')[:120]
-  c.execute("INSERT INTO devices(device_id,workspace_id,installation_id,device_name,computer_name,status,first_seen_at,last_seen_at,metadata_json,organization_id,team_id,assigned_user_id,system_device_name,system_computer_name,user_device_alias,user_computer_alias) VALUES(?,?,?,?,?,'active',?,?,'{}',?,?,?,?,?,?,?) ON CONFLICT(device_id) DO UPDATE SET last_seen_at=excluded.last_seen_at,assigned_user_id=excluded.assigned_user_id,team_id=excluded.team_id,system_device_name=excluded.system_device_name,system_computer_name=excluded.system_computer_name,user_device_alias=COALESCE(excluded.user_device_alias,devices.user_device_alias),user_computer_alias=COALESCE(excluded.user_computer_alias,devices.user_computer_alias)",(did,trow['workspace_id'],iid,sysd,sysc,t,t,a['organization_id'],team,a['user_id'],sysd,sysc,p.get('user_device_alias'),p.get('user_computer_alias')))
-  if not c.execute('SELECT 1 FROM device_assignments WHERE device_id=? AND released_at IS NULL',(did,)).fetchone():c.execute('INSERT INTO device_assignments(assignment_id,device_id,assigned_user_id,team_id,assigned_at,released_at) VALUES(?,?,?,?,?,NULL)',('asn_'+did,did,a['user_id'],team,t))
-  r=dict(c.execute('SELECT * FROM devices WHERE device_id=?',(did,)).fetchone());r['display_name']=r.get('admin_device_name') or r.get('user_device_alias') or r.get('system_device_name') or did
-  return ok(device=r)
+ did=str(p.get('device_id') or '').strip();iid=str(p.get('installation_id') or '').strip();code=str(p.get('binding_code') or '').strip()
+ if not did or not iid:return err('INVALID_DEVICE','device_id、installation_id 必填')
+ if not code:return err('BINDING_CODE_REQUIRED','binding_code 必填',400)
+ try:
+  with db.tx() as c:
+   digest=hashlib.sha256(code.upper().encode()).hexdigest()
+   enrollment=c.execute("SELECT * FROM device_enrollments WHERE binding_code_hash=? AND organization_id=?",(digest,a['organization_id'])).fetchone()
+   if not enrollment:return err('BINDING_CODE_INVALID','设备绑定码无效',409)
+   if enrollment['status']!='pending':return err('BINDING_CODE_CONSUMED','设备绑定码已失效或已使用',409)
+   if enrollment['expires_at']<=now_ms():
+    c.execute("UPDATE device_enrollments SET status='expired' WHERE enrollment_id=? AND status='pending'",(enrollment['enrollment_id'],))
+    return err('BINDING_CODE_EXPIRED','设备绑定码已过期',409)
+   team=enrollment['team_id'];assigned=enrollment['assigned_user_id'] or a['user_id'];wid=enrollment['workspace_id']
+   if c.execute('SELECT 1 FROM devices WHERE device_id=?',(did,)).fetchone():return err('DEVICE_ID_CONFLICT','设备 ID 已被使用',409)
+   if c.execute('SELECT 1 FROM devices WHERE installation_id=?',(iid,)).fetchone():return err('INSTALLATION_CONFLICT','安装实例已绑定其他设备',409)
+   t=now_ms();sysd=str(p.get('system_device_name') or p.get('device_name') or did)[:120];sysc=str(p.get('system_computer_name') or p.get('computer_name') or '')[:120]
+   admind=enrollment['admin_device_name'] or '';adminc=enrollment['admin_computer_name'] or ''
+   c.execute("INSERT INTO devices(device_id,workspace_id,installation_id,device_name,computer_name,status,first_seen_at,last_seen_at,metadata_json,organization_id,team_id,assigned_user_id,system_device_name,system_computer_name,user_device_alias,user_computer_alias,admin_device_name,admin_computer_name) VALUES(?,?,?,?,?,'active',?,?,'{}',?,?,?,?,?,?,?,?,?)",(did,wid,iid,sysd,sysc,t,t,a['organization_id'],team,assigned,sysd,sysc,p.get('user_device_alias'),p.get('user_computer_alias'),admind,adminc))
+   changed=c.execute("UPDATE device_enrollments SET status='consumed',consumed_at=?,consumed_device_id=? WHERE enrollment_id=? AND status='pending'",(t,did,enrollment['enrollment_id'])).rowcount
+   if changed!=1:raise _BindingCodeRace()
+   c.execute('INSERT INTO device_assignments(assignment_id,device_id,assigned_user_id,team_id,assigned_at,released_at) VALUES(?,?,?,?,?,NULL)',('asn_'+secrets.token_hex(12),did,assigned,team,t))
+   r=dict(c.execute('SELECT * FROM devices WHERE device_id=?',(did,)).fetchone());r['display_name']=r.get('admin_device_name') or r.get('user_device_alias') or r.get('system_device_name') or did
+   return ok(device=r,enrollmentId=enrollment['enrollment_id'])
+ except _BindingCodeRace:
+  return err('BINDING_CODE_RACE','设备绑定码已被使用',409)
+
 def rename_device(db,a,p,admin=False):
  did=str(p.get('device_id') or '')
  with db.tx() as c:

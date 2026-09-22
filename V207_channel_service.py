@@ -95,8 +95,8 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
   team_id=str(body.get('teamId') or query.get('teamId') or query.get('team_id') or '')
   if not team_id:return _err('TEAM_REQUIRED','缺少团队 ID')
   with db.tx() as c:
-   team=_one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(team_id,org))
-   if not team:return _err('TEAM_NOT_FOUND','团队不存在',404)
+   team=_one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(team_id,org)) if team_id else None
+   if team_id and not team:return _err('TEAM_NOT_FOUND','团队不存在',404)
    old=_one(c,'SELECT * FROM team_channel_accounts WHERE team_id=? AND channel_account_id=?',(team_id,account_id))
    if method=='POST':
     if not old:c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team_id,account_id,actor['user_id'],now_ms()))
@@ -139,7 +139,8 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
   pid=str(body.get('platformId') or '').strip()
   if not pid:return _err('PLATFORM_ID_REQUIRED','platform_id is required')
   
-  team_id=str(body.get('teamId') or '')
+  team_id=str(body.get('teamId') or '').strip() or None
+  channel_type_id=str(body.get('channelTypeId') or body.get('channel_type_id') or '').strip() or None
   idata,e=_identity({'identityType':body.get('identityType','login'),'identityValue':body.get('identity'),'metadata':body.get('identityMetadata',{})})
   if e:return e
   
@@ -147,8 +148,9 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
   if not isinstance(meta,dict):return _err('INVALID_METADATA','metadata 必须是对象')
   
   with db.tx() as c:
-   team=_one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(team_id,org))
-   if not team:return _err('TEAM_NOT_FOUND','团队不存在',404)
+   team=_one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(team_id,org)) if team_id else None
+   if team_id and not team:return _err('TEAM_NOT_FOUND','团队不存在',404)
+   if channel_type_id and not _one(c,"SELECT 1 FROM channel_types WHERE channel_type_id=? AND platform_id=? AND is_active=1",(channel_type_id,pid)):return _err('INVALID_CHANNEL_TYPE','渠道类型不存在、未启用或不属于所选平台',404)
    
    # P2: 验证 platform_id 存在且激活
    platform=_one(c,"SELECT * FROM platforms WHERE platform_id=? AND status='active'",(pid,))
@@ -157,15 +159,16 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
    n=now_ms()
    aid='acc_'+uuid.uuid4().hex
    iid='idn_'+uuid.uuid4().hex
-   sid='src_'+uuid.uuid4().hex
    ch=platform['platform_code'].lower()  # channel 字段仅用于向后兼容
    
-   c.execute('INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,account_type,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?)',(aid,org,ch,str(body.get('displayName') or idata['value']).strip(), 'active',n,n,pid,str(body.get('accountType') or 'business_account'),dumps(meta)))
+   c.execute('INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,channel_type_id,account_type,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(aid,org,ch,str(body.get('displayName') or idata['value']).strip(), 'active',n,n,pid,channel_type_id,str(body.get('accountType') or 'business_account'),dumps(meta)))
    c.execute('INSERT INTO channel_account_identities(identity_id,channel_account_id,identity_type,identity_value,canonical_value,created_at,platform_id,is_primary,status,valid_from,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(iid,aid,idata['type'],idata['value'],idata['canonical'],n,pid,1,'active',n,dumps(idata['metadata'])))
-   c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team_id,aid,actor['user_id'],n))
-   c.execute("INSERT INTO sources(source_id,workspace_id,channel,account_identity,source_name,status,first_seen_at,last_seen_at,metadata_json,organization_id,team_id,channel_account_id,platform_id,updated_at) VALUES(?,?,?,?,?,'active',?,?,'{}',?,?,?,?,?)",(sid,team['workspace_id'],ch,idata['value'],str(body.get('sourceName') or body.get('displayName') or idata['value']),n,n,org,team_id,aid,pid,n))
-   new=_one(c,'SELECT * FROM channel_accounts WHERE channel_account_id=?',(aid,));_audit(c,actor,'create','channel_account',aid,{},new,body.get('reason'),team['workspace_id'])
-  return {'ok':True,'channelAccountId':aid,'sourceId':sid},201
+   if team_id:c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team_id,aid,actor['user_id'],n))
+   new=_one(c,'SELECT * FROM channel_accounts WHERE channel_account_id=?',(aid,))
+   audit_wid=team['workspace_id'] if team else (_one(c,"SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at,workspace_id LIMIT 1",(org,)) or {}).get('workspace_id')
+   if not audit_wid:return _err('WORKSPACE_REQUIRED','企业至少需要一个启用的工作区才能创建账号',409)
+   _audit(c,actor,'create','channel_account',aid,{},new,body.get('reason'),audit_wid)
+  return {'ok':True,'channelAccountId':aid},201
  if method=='PATCH' and account_id:
   st=str(body.get('status') or '').lower() if 'status' in body else None
   if st and st not in STATUSES:return _err('INVALID_ACCOUNT_STATUS','账号状态无效')

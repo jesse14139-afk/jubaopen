@@ -94,11 +94,11 @@ def handle(db,actor,method,platform_id=None,query=None,body=None):
     if method=='POST' and platform_id is None:
         data,error=_validate(body,True)
         if error:return error
-        pid='plt_'+data['code'];t=now_ms()
+        pid='plt_'+data['code'];t=now_ms();abbr=str(body.get('platform_abbr') or body.get('platformAbbr') or data['code'][:12]).strip().upper()[:16]
         try:
             with db.tx() as c:
-                c.execute('INSERT INTO platforms(platform_id,platform_code,platform_name,platform_kind,status,capabilities_json,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',
-                          (pid,data['code'],data['name'],data['kind'],data['status'],dumps(data['capabilities']),dumps(data['metadata']),t,t))
+                c.execute('INSERT INTO platforms(platform_id,platform_code,platform_name,platform_abbr,platform_kind,status,capabilities_json,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                          (pid,data['code'],data['name'],abbr,data['kind'],data['status'],dumps(data['capabilities']),dumps(data['metadata']),t,t))
                 item=_row(c,'SELECT * FROM platforms WHERE platform_id=?',(pid,));_audit(c,actor,'create',pid,{},item,body.get('reason'),audit_workspace_id)
         except sqlite3.IntegrityError:return _err('PLATFORM_CONFLICT','平台代码已存在',409)
         return {'ok':True,'platformId':pid,'item':item},201
@@ -111,8 +111,9 @@ def handle(db,actor,method,platform_id=None,query=None,body=None):
             if old['status']=='active' and data['status']=='disabled':
                 refs=_references(c,platform_id)
                 if any(refs.values()):return _err('PLATFORM_IN_USE','平台仍被活跃业务对象引用',409,references=refs)
-            c.execute('UPDATE platforms SET platform_name=?,platform_kind=?,status=?,capabilities_json=?,metadata_json=?,updated_at=? WHERE platform_id=?',
-                      (data['name'],data['kind'],data['status'],dumps(data['capabilities']),dumps(data['metadata']),now_ms(),platform_id))
+            abbr=str(body.get('platform_abbr') or body.get('platformAbbr') or old.get('platform_abbr') or data['code'][:12]).strip().upper()[:16]
+            c.execute('UPDATE platforms SET platform_name=?,platform_abbr=?,platform_kind=?,status=?,capabilities_json=?,metadata_json=?,updated_at=? WHERE platform_id=?',
+                      (data['name'],abbr,data['kind'],data['status'],dumps(data['capabilities']),dumps(data['metadata']),now_ms(),platform_id))
             item=_row(c,'SELECT * FROM platforms WHERE platform_id=?',(platform_id,));_audit(c,actor,'update',platform_id,old,item,body.get('reason'),audit_workspace_id)
         return {'ok':True,'item':item},200
     if method=='DELETE' and platform_id:

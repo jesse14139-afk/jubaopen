@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""V207 企业综合管理 API。Schema 211；所有范围与写入均由服务端校验。"""
-import json, uuid, os, sqlite3, secrets
+"""V207 企业综合管理 API。Schema 212；所有范围与写入均由服务端校验。"""
+import hashlib, json, uuid, os, sqlite3, secrets
 from V207_shared_db import now_ms,dumps,loads,hash_password,default_workspace_id
 from V207_security import can,permissions,verify_password,password_strong,is_platform_admin,grant_binding_in_tx,revoke_sessions_in_tx,revoke_session_in_tx,issue_confirmation,consume_confirmation
 from V207_schema_catalog import build_schema_catalog
@@ -167,14 +167,11 @@ def dispatch(h,m,p,q,a,db):
   org=target(q,a)
   if not manage(db,a,'permission.read',org):return bad(h,'FORBIDDEN','无权限读取权限',403)
   with db.tx(False) as c:
-   direct=rows(c,"SELECT b.binding_id,b.role_id,r.name role_name,r.scope_level,b.scope_type,b.scope_id,b.status FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=? AND (b.organization_id=? OR b.organization_id IS NULL)",(ident,org))
-   inherited=rows(c,"SELECT tm.team_id,t.name team_name,tm.membership_type,tm.is_primary,tm.status FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=? AND t.organization_id=?",(ident,org))
-   channel=rows(c,"SELECT g.grant_id,ca.name account_name,g.status FROM user_channel_account_grants g JOIN channel_accounts ca ON ca.channel_account_id=g.channel_account_id WHERE g.user_id=?",(ident,))
+   direct=rows(c,"SELECT b.binding_id,b.role_id,r.name role_name,r.scope_level,b.scope_type,COALESCE(b.scope_id,'') scope_id,b.status,r.status role_status FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=? AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active' AND r.status='active'",(ident,org))
+   inherited=rows(c,"SELECT tm.team_id,t.name team_name,tm.membership_type,tm.is_primary,tm.status FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=? AND t.organization_id=? AND tm.status='active' AND t.status='active'",(ident,org))
+   channel=rows(c,"SELECT (g.user_id || ':' || g.channel_account_id) grant_id,g.channel_account_id,COALESCE(ca.display_name,'已删除账号') account_name,'active' status,g.permission_scope,COALESCE(ca.status,'deleted') account_status FROM user_channel_account_grants g LEFT JOIN channel_accounts ca ON ca.channel_account_id=g.channel_account_id WHERE g.user_id=?",(ident,))
   return h.sendj({'ok':True,'direct':direct,'inherited':inherited,'channel':channel}) or True
 
- seg=[x for x in p[len('/api/v207/admin/'):].split('/') if x]
- if not seg:return bad(h,'NOT_FOUND','管理接口不存在',404)
- root=seg[0];ident=seg[1] if len(seg)>1 else None; action=seg[2] if len(seg)>2 else None
  # session/security
  if root=='profile' and m=='GET':
   with db.tx(False) as c:
@@ -366,32 +363,66 @@ def dispatch(h,m,p,q,a,db):
     c.execute('DELETE FROM teams WHERE team_id=?',(ident,))
     audit_in_tx(c,a,'delete','team',ident,old,{},old['workspace_id'])
    return h.sendj({'ok':True}) or True
+  if ident and action=='member-candidates' and m=='GET':
+   term=str(q.get('q') or '').strip();like='%'+term.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+   with db.tx(False) as c:
+    if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+    its=rows(c,"""SELECT u.user_id,u.login_name,u.display_name,u.status user_status,
+     (SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,
+     (SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name
+     FROM users u WHERE u.organization_id=? AND u.status='active'
+     AND NOT EXISTS(SELECT 1 FROM team_memberships tm WHERE tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active')
+     AND (?='' OR u.display_name LIKE ? ESCAPE '\' OR u.login_name LIKE ? ESCAPE '\'
+      OR EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.status='active' AND (p.name LIKE ? ESCAPE '\' OR d.name LIKE ? ESCAPE '\')))
+     ORDER BY u.display_name,u.login_name LIMIT 50""",(org,ident,term,like,like,like,like))
+   return h.sendj({'ok':True,'items':its,'query':term}) or True
   if ident and action=='members':
    if m=='GET':
-    with db.tx(False) as c:its=rows(c,"SELECT tm.*,u.login_name,u.display_name,u.status user_status FROM team_memberships tm JOIN users u ON u.user_id=tm.user_id JOIN teams t ON t.team_id=tm.team_id WHERE tm.team_id=? AND t.organization_id=? ORDER BY tm.is_primary DESC,u.display_name",(ident,org))
+    with db.tx(False) as c:
+     its=rows(c,"""SELECT tm.*,u.login_name,u.display_name,u.status user_status,
+      (SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,
+      (SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name,
+      (SELECT group_concat(DISTINCT r.name) FROM role_bindings rb JOIN roles r ON r.role_id=rb.role_id WHERE rb.user_id=u.user_id AND rb.organization_id=t.organization_id AND rb.status='active') role_names
+      FROM team_memberships tm JOIN users u ON u.user_id=tm.user_id JOIN teams t ON t.team_id=tm.team_id
+      WHERE tm.team_id=? AND t.organization_id=? AND tm.status='active'
+      ORDER BY tm.is_primary DESC,u.display_name,u.login_name""",(ident,org))
     return h.sendj({'ok':True,'items':its}) or True
    if m=='POST':
     if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无成员管理权限',403)
-    b=h.body();uid=str(b.get('userId') or '');kind=str(b.get('membershipType') or 'member');primary=1 if str(b.get('isPrimary') or '0').lower() in ('1','true') else 0
+    b=h.body();uid=str(b.get('userId') or '').strip();kind=str(b.get('membershipType') or 'member');primary=1 if str(b.get('isPrimary') or '0').lower() in ('1','true') else 0;reason=str(b.get('reason') or '').strip()
+    if not uid:return bad(h,'USER_REQUIRED','必须选择用户')
+    if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
     if kind not in ('member','manager','operator','support'):return bad(h,'INVALID_MEMBERSHIP_TYPE','成员类型无效')
     with db.tx() as c:
-     if not c.execute('SELECT 1 FROM users WHERE user_id=? AND organization_id=?',(uid,org)).fetchone():return bad(h,'USER_NOT_FOUND','用户不属于目标企业',404)
-     if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+     user=one(c,'SELECT user_id,display_name,login_name FROM users WHERE user_id=? AND organization_id=? AND status=\'active\'',(uid,org))
+     if not user:return bad(h,'USER_NOT_FOUND','用户不存在、已停用或不属于目标企业',404)
+     team=one(c,'SELECT team_id,name FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
+     if not team:return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+     old=one(c,'SELECT * FROM team_memberships WHERE user_id=? AND team_id=?',(uid,ident)) or {}
      n=now_ms()
-     if primary:c.execute("UPDATE team_memberships SET is_primary=0,updated_at=? WHERE user_id=? AND status='active'",(n,uid))
+     if primary:c.execute("UPDATE team_memberships SET is_primary=0,updated_at=? WHERE user_id=? AND team_id<>? AND status='active'",(n,uid,ident))
      c.execute("INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,?, 'active',?,NULL,?,?) ON CONFLICT(user_id,team_id) DO UPDATE SET membership_type=excluded.membership_type,is_primary=excluded.is_primary,status='active',left_at=NULL,updated_at=excluded.updated_at",(uid,ident,kind,primary,n,n,n))
-     audit_in_tx(c,a,'upsert','team_membership',uid,{},dict(b,teamId=ident))
-    return h.sendj({'ok':True}) or True
+     newrow=one(c,'SELECT * FROM team_memberships WHERE user_id=? AND team_id=?',(uid,ident))
+     audit_in_tx(c,a,'upsert','team_membership',uid,old,newrow,reason)
+    return h.sendj({'ok':True,'item':newrow}) or True
    if m=='DELETE':
     if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无成员管理权限',403)
-    b=h.body();uid=str(b.get('userId') or '')
+    b=h.body();uid=str(b.get('userId') or '').strip();reason=str(b.get('reason') or '').strip()
+    if not uid:return bad(h,'USER_REQUIRED','必须指定用户')
+    if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
     with db.tx() as c:
-     n=now_ms();c.execute("UPDATE team_memberships SET status='disabled',is_primary=0,left_at=?,updated_at=? WHERE user_id=? AND team_id=?",(n,n,uid,ident));audit_in_tx(c,a,'remove','team_membership',uid,{},dict(b,teamId=ident))
+     if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+     old=one(c,"SELECT * FROM team_memberships WHERE user_id=? AND team_id=? AND status='active'",(uid,ident))
+     if not old:return bad(h,'MEMBER_NOT_FOUND','该用户不是当前团队的有效成员',404)
+     if int(old.get('is_primary') or 0):return bad(h,'PRIMARY_TEAM_TRANSFER_REQUIRED','请先为该用户转移主团队，再执行移出',409)
+     n=now_ms();cur=c.execute("UPDATE team_memberships SET status='disabled',is_primary=0,left_at=?,updated_at=? WHERE user_id=? AND team_id=? AND status='active'",(n,n,uid,ident))
+     if cur.rowcount!=1:raise RuntimeError('TEAM_MEMBER_UPDATE_RACE')
+     audit_in_tx(c,a,'remove','team_membership',uid,old,{},reason)
     return h.sendj({'ok':True}) or True
  # users
  if root=='users':
   if m=='GET':
-   with db.tx(False) as c:its=rows(c,"SELECT u.*,(SELECT group_concat(t.name) FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=u.user_id AND tm.status='active') teams,(SELECT group_concat(r.name) FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=u.user_id AND b.organization_id=u.organization_id AND b.status='active') roles,(SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,(SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name FROM users u WHERE u.organization_id=? ORDER BY u.created_at",(org,))
+   with db.tx(False) as c:its=rows(c,"SELECT u.*,(SELECT group_concat(t.name) FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=u.user_id AND tm.status='active') teams,(SELECT group_concat(r.name) FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=u.user_id AND b.organization_id=u.organization_id AND b.status='active') roles,(SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,(SELECT p.position_id FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_id,(SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name,(SELECT tm.team_id FROM team_memberships tm WHERE tm.user_id=u.user_id AND tm.is_primary=1 AND tm.status='active' LIMIT 1) primary_team_id,(SELECT tm.membership_type FROM team_memberships tm WHERE tm.user_id=u.user_id AND tm.is_primary=1 AND tm.status='active' LIMIT 1) primary_membership_type FROM users u WHERE u.organization_id=? ORDER BY u.created_at",(org,))
    return h.sendj({'ok':True,'items':its}) or True
   if m=='POST':
    if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无用户管理权限',403)
@@ -420,13 +451,24 @@ def dispatch(h,m,p,q,a,db):
    return h.sendj({'ok':True,'userId':uid},201) or True
   if ident and not action and m=='PATCH':
    if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无用户管理权限',403)
-   b=h.body()
+   b=h.body();reason=str(b.get('reason') or '').strip()
+   if not reason:return bad(h,'REASON_REQUIRED','操作原因不能为空')
+   position=str(b.get('positionId') or '').strip();team=str(b.get('teamId') or '').strip();kind=str(b.get('membershipType') or 'member')
+   if kind not in ('member','manager','operator','support'):return bad(h,'INVALID_MEMBERSHIP_TYPE','成员类型无效')
    with db.tx() as c:
     old=one(c,'SELECT * FROM users WHERE user_id=? AND organization_id=?',(ident,org))
     if not old:return bad(h,'NOT_FOUND','用户不存在',404)
-    c.execute('UPDATE users SET display_name=?,status=?,updated_at=? WHERE user_id=?',(str(b.get('displayName') or old['display_name']),clean_status(b.get('status')) or old['status'],now_ms(),ident));new=one(c,'SELECT * FROM users WHERE user_id=?',(ident,))
+    if position and not c.execute("SELECT 1 FROM positions WHERE position_id=? AND organization_id=? AND status='active'",(position,org)).fetchone():return bad(h,'POSITION_NOT_FOUND','职位不存在或已停用',404)
+    if team and not c.execute("SELECT 1 FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(team,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在或已停用',404)
+    n=now_ms();new_status=clean_status(b.get('status')) or old['status']
+    c.execute('UPDATE users SET display_name=?,status=?,updated_at=? WHERE user_id=?',(str(b.get('displayName') or old['display_name']),new_status,n,ident))
+    c.execute("UPDATE user_positions SET is_primary=0,updated_at=? WHERE user_id=? AND organization_id=? AND is_primary=1",(n,ident,org))
+    if position:c.execute("INSERT INTO user_positions(user_id,position_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,1,'active',?,?) ON CONFLICT(user_id,position_id) DO UPDATE SET is_primary=1,status='active',updated_at=excluded.updated_at",(ident,position,org,n,n))
+    c.execute("UPDATE team_memberships SET is_primary=0,updated_at=? WHERE user_id=? AND status='active'",(n,ident))
+    if team:c.execute("INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,?, 'active',?,NULL,?,?) ON CONFLICT(user_id,team_id) DO UPDATE SET membership_type=excluded.membership_type,is_primary=1,status='active',left_at=NULL,updated_at=excluded.updated_at",(ident,team,kind,1,n,n,n))
+    new=one(c,'SELECT * FROM users WHERE user_id=?',(ident,))
     if new['status']!='active':revoke_sessions_in_tx(c,ident,a['user_id'],'user_disabled')
-    audit_in_tx(c,a,'update','user',ident,old,new,b.get('reason'))
+    audit_in_tx(c,a,'update','user',ident,old,dict(new,positionId=position,teamId=team,membershipType=kind),reason)
    return h.sendj({'ok':True,'item':new}) or True
   if ident and action=='reset-password' and m=='POST':
    if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无密码重置权限',403)
@@ -544,11 +586,18 @@ def dispatch(h,m,p,q,a,db):
   return bad(h,'METHOD_NOT_ALLOWED','授权接口方法不受支持',405)
  # roles and permission matrix
  if root=='permissions' and m=='GET':
-  if not (platform(db,a) or can(db,a,'user.read',organization_id=org)):return bad(h,'FORBIDDEN','无权限读取权限',403)
+  if not (platform(db,a) or can(db,a,'user.manage',organization_id=org)):return bad(h,'FORBIDDEN','无权限元数据读取权限',403)
   with db.tx(False) as c:its=rows(c,'SELECT * FROM permissions ORDER BY permission_key')
+  resource_zh={'account':'渠道账号','attribution':'归因','audit':'审计','campaign':'营销活动','contact':'联系人','device':'设备','organization':'组织','permission':'权限','platform':'平台','role':'角色','source':'来源','team':'团队','touchpoint':'客户触点','user':'用户','workspace':'工作区'}
+  action_zh={'read':'查看','manage':'管理','create':'新建','update':'修改','delete':'删除','bind':'绑定','identity':'身份管理','export':'导出','approve':'审批'}
+  for x in its:
+   parts=str(x.get('permission_key') or '').split('.');resource=parts[0] if parts else '';action=parts[-1] if parts else ''
+   if not x.get('display_name'):x['display_name']=' · '.join(resource_zh.get(p,action_zh.get(p,p)) for p in parts)
+   if not x.get('resource'):x['resource']=resource_zh.get(resource,resource or '其他')
+   if not x.get('risk_level'):x['risk_level']='high' if action in ('delete','manage','approve') else ('sensitive' if action in ('create','update','bind','export') else 'normal')
   return h.sendj({'ok':True,'items':its}) or True
  if root=='roles':
-  if not (platform(db,a) or can(db,a,'user.read',organization_id=org)):return bad(h,'FORBIDDEN','无角色读取权限',403)
+  if not (platform(db,a) or can(db,a,'user.manage',organization_id=org)):return bad(h,'FORBIDDEN','无角色读取权限',403)
   if m=='GET' and not ident:
    with db.tx(False) as c:its=rows(c,"SELECT r.*,group_concat(rp.permission_key) permissions,(SELECT count(DISTINCT b.user_id) FROM role_bindings b WHERE b.role_id=r.role_id AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active') member_count FROM roles r LEFT JOIN role_permissions rp ON rp.role_id=r.role_id WHERE r.organization_id IS NULL OR r.organization_id=? GROUP BY r.role_id ORDER BY r.is_system DESC,r.scope_level,r.name",(org,org))
    return h.sendj({'ok':True,'items':its}) or True
@@ -695,18 +744,22 @@ def dispatch(h,m,p,q,a,db):
   if not org_ok(db,a,org):return bad(h,'FORBIDDEN','无权限',403)
   with db.tx(False) as c:
    # 如果请求特定子资源
-   if ident=='platform-channels':
-    # 返回平台与渠道类型的关联
+   if ident in ('platform-channels','runtime'):
+    # P1：统一运行时字典入口，前端不再维护来源和渠道业务枚举。
     platform_channels={}
-    platforms=rows(c,"SELECT platform_id, platform_name FROM platforms WHERE status='active' ORDER BY platform_code")
+    platforms=rows(c,"SELECT platform_id,platform_code,platform_name FROM platforms WHERE status='active' ORDER BY platform_code")
     for p in platforms:
-     channels=rows(c,"""SELECT channel_type_id, channel_type_code, name 
-       FROM channel_types 
-       WHERE platform_id=? AND is_active=1 
-       ORDER BY sort_order, name""",(p['platform_id'],))
-     platform_channels[p['platform_id']]={'platform_name':p['platform_name'],'channel_types':channels}
-    return h.sendj({'ok':True,'data':platform_channels}) or True
-   
+     channels=rows(c,"SELECT channel_type_id,channel_type_code,name,direction FROM channel_types WHERE platform_id=? AND is_active=1 ORDER BY sort_order,name",(p['platform_id'],))
+     platform_channels[p['platform_id']]={'platform_code':p['platform_code'],'platform_name':p['platform_name'],'channel_types':channels}
+    if ident=='platform-channels':return h.sendj({'ok':True,'data':platform_channels}) or True
+    data={'platforms':platform_channels,
+     'source_types':rows(c,"SELECT source_type_id,source_type_code,name,description FROM source_type_definitions WHERE is_active=1 ORDER BY sort_order,name"),
+     'directions':[{'value':'inbound','label':'入站'},{'value':'outbound','label':'出站'},{'value':'bidirectional','label':'双向'},{'value':'unknown','label':'未知'}],
+     'channel_directions':[{'value':'inbound','label':'入站'},{'value':'outbound','label':'出站'},{'value':'both','label':'双向'}],
+     'account_purposes':[{'value':'chat','label':'日常聊天','requiresChannel':False},{'value':'internal','label':'内部协作','requiresChannel':False},{'value':'login','label':'普通平台登录','requiresChannel':False},{'value':'service','label':'客户服务','requiresChannel':True},{'value':'marketing','label':'营销触达','requiresChannel':True},{'value':'advertising','label':'广告投放','requiresChannel':True},{'value':'attribution','label':'来源归因','requiresChannel':True}],
+     'identity_types':[{'value':'login','label':'登录名账号'},{'value':'phone','label':'手机号码'},{'value':'email','label':'邮箱'},{'value':'username','label':'用户名'}]}
+    return h.sendj({'ok':True,'data':data}) or True
+
    # 默认返回所有字典摘要
    platforms_count=c.execute("SELECT count(*) FROM platforms").fetchone()[0]
    platforms_active=c.execute("SELECT count(*) FROM platforms WHERE status='active'").fetchone()[0]
@@ -777,30 +830,77 @@ def dispatch(h,m,p,q,a,db):
   body=h.body() if m in ('POST','PUT','PATCH','DELETE') else {}
   payload,status=handle_source(db,a,org,m,ident,q,body)
   return h.sendj(payload,status) or True
+ # device enrollment invitations: pending invitations are separate from formal devices
+ if root=='device-enrollments':
+  if not (platform(db,a) or manage(db,a,'device.bind',org)):return bad(h,'FORBIDDEN','无设备绑定权限',403)
+  if m=='GET':
+   with db.tx() as c:
+    now=now_ms();c.execute("UPDATE device_enrollments SET status='expired' WHERE organization_id=? AND status='pending' AND expires_at<=?",(org,now))
+    its=rows(c,"SELECT e.enrollment_id,e.organization_id,e.workspace_id,e.team_id,e.assigned_user_id,e.admin_device_name,e.admin_computer_name,e.status,e.expires_at,e.consumed_at,e.consumed_device_id,e.created_by,e.created_at,e.revoked_at,e.revoked_by,e.reason,w.name workspace_name,t.name team_name,u.display_name assigned_user FROM device_enrollments e JOIN workspaces w ON w.workspace_id=e.workspace_id JOIN teams t ON t.team_id=e.team_id LEFT JOIN users u ON u.user_id=e.assigned_user_id WHERE e.organization_id=? ORDER BY e.created_at DESC",(org,))
+   return h.sendj({'ok':True,'items':its}) or True
+  if not ident and m=='POST':
+   b=h.body();wid=str(b.get('workspaceId') or '').strip();tid=str(b.get('teamId') or '').strip();uid=str(b.get('assignedUserId') or '').strip() or None;reason=str(b.get('reason') or '').strip()
+   if not wid or not tid or not reason:return bad(h,'INVALID_INPUT','工作区、团队和操作原因必填')
+   try:hours=max(1,min(168,int(b.get('validHours') or 24)))
+   except Exception:return bad(h,'INVALID_INPUT','有效时长必须为整数')
+   with db.tx() as c:
+    team=one(c,"SELECT t.*,wt.workspace_id authorized_workspace FROM teams t LEFT JOIN workspace_teams wt ON wt.team_id=t.team_id AND wt.workspace_id=? AND wt.status='active' WHERE t.team_id=? AND t.organization_id=? AND t.status='active'",(wid,tid,org))
+    if not team or not (team.get('workspace_id')==wid or team.get('authorized_workspace')==wid):return bad(h,'TEAM_WORKSPACE_MISMATCH','团队不属于所选工作区',409)
+    if uid and not one(c,"SELECT 1 ok FROM users u JOIN team_memberships tm ON tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active' WHERE u.user_id=? AND u.organization_id=? AND u.status='active'",(tid,uid,org)):return bad(h,'USER_TEAM_MISMATCH','用户不是目标团队的有效成员',409)
+    code=secrets.token_hex(6).upper();eid='denr_'+secrets.token_hex(12);now=now_ms();exp=now+hours*3600*1000;digest=hashlib.sha256(code.encode()).hexdigest()
+    c.execute("INSERT INTO device_enrollments(enrollment_id,organization_id,workspace_id,team_id,assigned_user_id,admin_device_name,admin_computer_name,binding_code_hash,status,expires_at,created_by,created_at,reason) VALUES(?,?,?,?,?,?,?,?,'pending',?,?,?,?)",(eid,org,wid,tid,uid,str(b.get('deviceName') or '')[:120],str(b.get('computerName') or '')[:120],digest,exp,a['user_id'],now,reason))
+    item=one(c,'SELECT * FROM device_enrollments WHERE enrollment_id=?',(eid,));audit_in_tx(c,a,'create','device_enrollment',eid,None,{k:v for k,v in item.items() if k!='binding_code_hash'},reason,wid)
+   return h.sendj({'ok':True,'item':{k:v for k,v in item.items() if k!='binding_code_hash'},'bindingCode':code},201) or True
+  if ident and action=='revoke' and m=='POST':
+   b=h.body();reason=str(b.get('reason') or '').strip()
+   if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
+   with db.tx() as c:
+    old=one(c,'SELECT * FROM device_enrollments WHERE enrollment_id=? AND organization_id=?',(ident,org))
+    if not old:return bad(h,'NOT_FOUND','设备接入邀请不存在',404)
+    if old['status']!='pending':return bad(h,'STATE_CONFLICT','只有待核销邀请可以撤销',409)
+    now=now_ms();c.execute("UPDATE device_enrollments SET status='revoked',revoked_at=?,revoked_by=? WHERE enrollment_id=? AND status='pending'",(now,a['user_id'],ident));new=one(c,'SELECT * FROM device_enrollments WHERE enrollment_id=?',(ident,));audit_in_tx(c,a,'revoke','device_enrollment',ident,{k:v for k,v in old.items() if k!='binding_code_hash'},{k:v for k,v in new.items() if k!='binding_code_hash'},reason,old['workspace_id'])
+   return h.sendj({'ok':True,'item':{k:v for k,v in new.items() if k!='binding_code_hash'}}) or True
+  return bad(h,'METHOD_NOT_ALLOWED','不支持的设备接入邀请操作',405)
  # devices generic list and state
  if root=='devices':
   if m=='GET':
    if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备读取权限',403)
    with db.tx(False) as c:its=rows(c,"SELECT d.*,t.name team_name,u.display_name assigned_user,(SELECT count(*) FROM source_devices sd WHERE sd.device_id=d.device_id) source_count FROM devices d LEFT JOIN teams t ON t.team_id=d.team_id LEFT JOIN users u ON u.user_id=d.assigned_user_id WHERE d.organization_id=? ORDER BY d.last_seen_at DESC",(org,))
+   now=now_ms()
+   for x in its:x['online_status']='online' if x.get('status')=='active' and now-int(x.get('last_seen_at') or 0)<=300000 else 'offline'
    return h.sendj({'ok':True,'items':its}) or True
+  if ident and action=='history' and m=='GET':
+   if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备读取权限',403)
+   with db.tx(False) as c:
+    if not one(c,'SELECT 1 ok FROM devices WHERE device_id=? AND organization_id=?',(ident,org)):return bad(h,'NOT_FOUND','设备不存在',404)
+    its=rows(c,"SELECT da.*,u.display_name assigned_user,t.name team_name FROM device_assignments da LEFT JOIN users u ON u.user_id=da.assigned_user_id LEFT JOIN teams t ON t.team_id=da.team_id WHERE da.device_id=? ORDER BY da.assigned_at DESC",(ident,))
+   return h.sendj({'ok':True,'items':its}) or True
+  if ident and action=='assign' and m=='POST':
+   if not (platform(db,a) or manage(db,a,'device.bind',org)):return bad(h,'FORBIDDEN','无设备分配权限',403)
+   b=h.body();tid=str(b.get('teamId') or '').strip();uid=str(b.get('assignedUserId') or '').strip();reason=str(b.get('reason') or '').strip()
+   if not tid or not uid or not reason:return bad(h,'INVALID_INPUT','团队、用户和操作原因必填')
+   with db.tx() as c:
+    old=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
+    if not old:return bad(h,'NOT_FOUND','设备不存在',404)
+    if not one(c,"SELECT 1 ok FROM users u JOIN team_memberships tm ON tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active' JOIN teams t ON t.team_id=tm.team_id WHERE u.user_id=? AND u.organization_id=? AND u.status='active' AND t.organization_id=? AND t.status='active'",(tid,uid,org,org)):return bad(h,'USER_TEAM_MISMATCH','用户不是目标团队的有效成员',409)
+    now=now_ms();c.execute('UPDATE device_assignments SET released_at=? WHERE device_id=? AND released_at IS NULL',(now,ident));c.execute('INSERT INTO device_assignments(assignment_id,device_id,assigned_user_id,team_id,assigned_at,released_at) VALUES(?,?,?,?,?,NULL)',('asn_'+secrets.token_hex(12),ident,uid,tid,now));c.execute('UPDATE devices SET team_id=?,assigned_user_id=? WHERE device_id=?',(tid,uid,ident));new=one(c,'SELECT * FROM devices WHERE device_id=?',(ident,));audit_in_tx(c,a,'assign','device',ident,old,new,reason,old.get('workspace_id'))
+   return h.sendj({'ok':True,'item':new}) or True
+  if ident and not action and m=='GET':
+   if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备读取权限',403)
+   with db.tx(False) as c:item=one(c,"SELECT d.*,t.name team_name,u.display_name assigned_user FROM devices d LEFT JOIN teams t ON t.team_id=d.team_id LEFT JOIN users u ON u.user_id=d.assigned_user_id WHERE d.device_id=? AND d.organization_id=?",(ident,org))
+   if not item:return bad(h,'NOT_FOUND','设备不存在',404)
+   item['display_name']=item.get('admin_device_name') or item.get('user_device_alias') or item.get('system_device_name') or ident
+   return h.sendj({'ok':True,'item':item}) or True
   if ident and m=='PATCH':
    if not manage(db,a,'device.disable',org):return bad(h,'FORBIDDEN','无资源管理权限',403)
-   b=h.body()
+   b=h.body();reason=str(b.get('reason') or '').strip()
+   if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
    with db.tx() as c:
     old=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
     if not old:return bad(h,'NOT_FOUND','资源不存在',404)
     c.execute('UPDATE devices SET admin_device_name=?,admin_computer_name=?,status=? WHERE device_id=?',(str(b.get('deviceName') if b.get('deviceName') is not None else old.get('admin_device_name') or ''),str(b.get('computerName') if b.get('computerName') is not None else old.get('admin_computer_name') or ''),clean_status(b.get('status')) or old['status'],ident));new=one(c,'SELECT * FROM devices WHERE device_id=?',(ident,))
-    audit_in_tx(c,a,'update','device',ident,old,new,b.get('reason'),old.get('workspace_id'))
+    audit_in_tx(c,a,'update','device',ident,old,new,reason,old.get('workspace_id'))
    return h.sendj({'ok':True,'item':new}) or True
-  if ident and action=='binding_code' and m=='POST':
-   if not (platform(db,a) or manage(db,a,'device.bind',org)):return bad(h,'FORBIDDEN','无设备绑定权限',403)
-   with db.tx() as c:
-    old=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
-    if not old:return bad(h,'NOT_FOUND','资源不存在',404)
-    code=secrets.token_hex(4).upper();exp=now_ms()+3600*1000
-    c.execute('UPDATE devices SET binding_code=?,binding_code_expires_at=? WHERE device_id=?',(code,exp,ident));new=one(c,'SELECT * FROM devices WHERE device_id=?',(ident,))
-    audit_in_tx(c,a,'generate_binding_code','device',ident,old,{'binding_code':code,'binding_code_expires_at':exp},'生成设备绑定码',old.get('workspace_id'))
-   return h.sendj({'ok':True,'bindingCode':code,'expiresAt':exp}) or True
   if ident and not action and m=='DELETE':
    if not (platform(db,a) or manage(db,a,'device.disable',org)):return bad(h,'FORBIDDEN','无设备删除权限',403)
    with db.tx() as c:

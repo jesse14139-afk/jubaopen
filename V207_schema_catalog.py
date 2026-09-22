@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Schema 208 只读数据字典：合并运行时 SQLite 元数据与中文业务释义。"""
+"""Schema 212 只读数据字典：合并运行时 SQLite 元数据与中文业务释义。"""
 from V207_version import SCHEMA_VERSION, PRODUCT_VERSION, CATALOG_VERSION
 
 CATEGORIES={
@@ -42,6 +42,9 @@ TABLES={
  'source_devices':('channel','来源设备关系表','记录来源出现在哪些设备及其活动统计。'),
  'devices':('device','设备表','保存安装实例、系统名称、用户别名、管理员名称及归属。'),
  'device_assignments':('device','设备分配记录表','记录设备分配给用户和团队的时间历史。'),
+ 'device_enrollments':('device','设备接入邀请表','保存管理员创建的设备接入邀请、预分配归属、绑定码摘要、有效期、核销设备及撤销状态。'),
+ 'channel_types':('channel','渠道类型定义表','定义不同平台支持的渠道形态、收发方向、启用状态和排序规则，供渠道账号与来源统一引用。'),
+ 'source_type_definitions':('source','来源类型定义表','维护直接访问、广告、推荐、导入等来源类型标准字典，统一来源识别、筛选和归因口径。'),
  'contacts':('contact','联系人表','保存联系人观测资料、人工资料、业务状态、来源和软删除信息。'),
  'tags':('contact','标签定义表','定义工作区可用于联系人分类的标签。'),
  'contact_tags':('contact','联系人标签关系表','建立联系人和标签的多对多关系。'),
@@ -107,12 +110,17 @@ SPECIAL={
  'source_links.to_source_id':'关系终点的来源节点，指向 sources.source_id。',
  'source_links.link_type':'关系类型，如父子、跳转、合并或业务链路。'}
 
+LABELS.update({
+ 'enrollment_id':'设备接入邀请 ID','binding_code_hash':'绑定码摘要','consumed_at':'核销时间','consumed_device_id':'核销设备 ID',
+ 'created_by':'创建人','revoked_by':'撤销人','channel_type_id':'渠道类型 ID','channel_type_code':'渠道类型编码',
+ 'source_type_id':'来源类型 ID','source_type_code':'来源类型编码','direction':'收发方向','is_active':'是否启用','sort_order':'排序顺序'
+})
 SENSITIVE={'password_hash','salt','access_token_hash','identity_value','observed_phone','manual_phone','payload_json','before_json','after_json','result_json','ip','user_agent'}
 JSON_FIELDS={x for x in LABELS if x.endswith('_json')}|{'items_json'}
 TIME_FIELDS={x for x in LABELS if x.endswith('_at')}
 
 LOGICAL_RELATIONS=[
- ('organizations','organization_id','teams','organization_id','企业拥有团队'),('organizations','organization_id','users','organization_id','企业拥有用户'),('organizations','organization_id','workspaces','organization_id','企业拥有工作区'),('users','user_id','user_credentials','user_id','用户拥有认证凭证'),('users','user_id','sessions','user_id','用户产生登录会话'),('users','user_id','organization_memberships','user_id','用户加入企业'),('roles','role_id','organization_memberships','role_id','企业成员使用角色'),('users','user_id','team_memberships','user_id','用户加入团队'),('teams','team_id','team_memberships','team_id','团队包含成员'),('roles','role_id','team_memberships','role_id','团队成员使用角色'),('roles','role_id','role_permissions','role_id','角色包含权限'),('permissions','permission_key','role_permissions','permission_key','权限授予角色'),('organizations','organization_id','channel_accounts','organization_id','企业管理渠道账号'),('channel_accounts','channel_account_id','channel_account_identities','channel_account_id','账号包含外部身份'),('teams','team_id','team_channel_accounts','team_id','团队获得账号授权'),('channel_accounts','channel_account_id','team_channel_accounts','channel_account_id','账号授权给团队'),('channel_accounts','channel_account_id','sources','channel_account_id','来源归并到账号'),('sources','source_id','source_devices','source_id','来源出现于设备'),('devices','device_id','source_devices','device_id','设备观测来源'),('sources','source_id','contacts','source_id','来源产生联系人'),('devices','device_id','contacts','last_observed_device_id','设备最后观测联系人'),('contacts','contact_id','contact_tags','contact_id','联系人拥有标签'),('tags','tag_id','contact_tags','tag_id','标签关联联系人'),('contacts','contact_id','contact_custom_values','contact_id','联系人拥有扩展值'),('devices','device_id','device_assignments','device_id','设备具有分配历史')]
+ ('organizations','organization_id','teams','organization_id','企业拥有团队'),('organizations','organization_id','users','organization_id','企业拥有用户'),('organizations','organization_id','workspaces','organization_id','企业拥有工作区'),('users','user_id','user_credentials','user_id','用户拥有认证凭证'),('users','user_id','sessions','user_id','用户产生登录会话'),('users','user_id','organization_memberships','user_id','用户加入企业'),('roles','role_id','organization_memberships','role_id','企业成员使用角色'),('users','user_id','team_memberships','user_id','用户加入团队'),('teams','team_id','team_memberships','team_id','团队包含成员'),('roles','role_id','role_permissions','role_id','角色包含权限'),('permissions','permission_key','role_permissions','permission_key','权限授予角色'),('organizations','organization_id','channel_accounts','organization_id','企业管理渠道账号'),('channel_accounts','channel_account_id','channel_account_identities','channel_account_id','账号包含外部身份'),('teams','team_id','team_channel_accounts','team_id','团队获得账号授权'),('channel_accounts','channel_account_id','team_channel_accounts','channel_account_id','账号授权给团队'),('channel_accounts','channel_account_id','sources','channel_account_id','来源归并到账号'),('sources','source_id','source_devices','source_id','来源出现于设备'),('devices','device_id','source_devices','device_id','设备观测来源'),('sources','source_id','contacts','source_id','来源产生联系人'),('devices','device_id','contacts','last_observed_device_id','设备最后观测联系人'),('contacts','contact_id','contact_tags','contact_id','联系人拥有标签'),('tags','tag_id','contact_tags','tag_id','标签关联联系人'),('contacts','contact_id','contact_custom_values','contact_id','联系人拥有扩展值'),('devices','device_id','device_assignments','device_id','设备具有分配历史'),('organizations','organization_id','device_enrollments','organization_id','企业创建设备接入邀请'),('workspaces','workspace_id','device_enrollments','workspace_id','工作区承载设备接入邀请'),('teams','team_id','device_enrollments','team_id','团队预分配设备接入邀请'),('users','user_id','device_enrollments','assigned_user_id','用户被预分配设备'),('devices','device_id','device_enrollments','consumed_device_id','正式设备核销接入邀请'),('platforms','platform_id','channel_types','platform_id','平台定义渠道类型'),('source_type_definitions','source_type_id','sources','source_type_id','来源引用标准类型')]
 
 # 物理外键通用语义映射：(fromField, toTable) -> 关系动作描述
 FK_REL_DESCRIPTIONS={

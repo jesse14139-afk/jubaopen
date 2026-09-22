@@ -1,7 +1,7 @@
 ﻿@echo off
 chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
-title Jubaopen V207.8.1 Launcher
+title Jubaopen V207.8.3 Launcher
 set "APP_DIR=%~dp0"
 set "DB_FILE=%APP_DIR%data\jubaopen-v207.db"
 set "LOG_DIR=%APP_DIR%logs"

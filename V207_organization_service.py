@@ -53,9 +53,10 @@ def _entity(db,a,org,m,kind,ident,q,b):
     elif kind=='business-lines':
      c.execute('INSERT INTO business_lines(business_line_id,organization_id,parent_business_line_id,name,code,description,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',(eid,org,parent,name,code,str(b.get('description') or ''),'active',n,n))
     else:
-     mt=str(b.get('marketType') or 'country');
+     mt=str(b.get('marketType') or b.get('market_type') or 'country');tz=str(b.get('timezone') or '').strip()
      if mt not in MARKET_TYPES:return _err('INVALID_MARKET_TYPE','市场类型无效')
-     c.execute('INSERT INTO markets(market_id,organization_id,parent_market_id,name,code,market_type,country_code,region_code,timezone,description,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(eid,org,parent,name,code,mt,str(b.get('countryCode') or '').upper(),str(b.get('regionCode') or ''),str(b.get('timezone') or ''),str(b.get('description') or ''),'active',n,n))
+     if tz and ('/' not in tz and tz!='UTC'):return _err('INVALID_TIMEZONE','时区必须使用 IANA 标识，例如 Asia/Shanghai')
+     c.execute('INSERT INTO markets(market_id,organization_id,parent_market_id,name,code,market_type,country_code,region_code,timezone,description,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(eid,org,parent,name,code,mt,str(b.get('countryCode') or b.get('country_code') or '').upper(),str(b.get('regionCode') or b.get('region_code') or ''),tz,str(b.get('description') or ''),'active',n,n))
     item=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(eid,));aw=(default_workspace_id(c,org),);
     if not aw[0]:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
     _audit(c,a,'create',kind,eid,{},item,aw[0])

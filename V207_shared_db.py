@@ -117,10 +117,11 @@ def ensure_v207_1(c):
   c.execute('PRAGMA legacy_alter_table=OFF')
  execute_sql_script(c,V207_1_SCHEMA)
  for table,fields in {
-  'channel_accounts':[('platform_id','TEXT'),('account_type',"TEXT NOT NULL DEFAULT 'business_account'"),('metadata_json',"TEXT NOT NULL DEFAULT '{}'")],
+  'platforms':[('platform_abbr','TEXT')],
+  'channel_accounts':[('platform_id','TEXT'),('channel_type_id','TEXT'),('account_type',"TEXT NOT NULL DEFAULT 'business_account'"),('metadata_json',"TEXT NOT NULL DEFAULT '{}'")],
   'channel_account_identities':[('platform_id','TEXT'),('is_primary','INTEGER NOT NULL DEFAULT 0'),('status',"TEXT NOT NULL DEFAULT 'active'"),('valid_from','INTEGER'),('valid_to','INTEGER'),('metadata_json',"TEXT NOT NULL DEFAULT '{}'")],
   'user_credentials':[('failed_attempts','INTEGER NOT NULL DEFAULT 0'),('locked_until','INTEGER'),('last_failed_at','INTEGER')],
-   'sources':[('platform_id','TEXT'),('source_type',"TEXT NOT NULL DEFAULT 'unknown'"),('source_subtype','TEXT'),('direction',"TEXT NOT NULL DEFAULT 'inbound'"),('initiated_by',"TEXT NOT NULL DEFAULT 'unknown'"),('campaign_id','TEXT'),('parent_source_id','TEXT'),('external_key','TEXT'),('landing_url','TEXT'),('tracking_code','TEXT'),('updated_at','INTEGER')]
+   'sources':[('platform_id','TEXT'),('channel_type_id','TEXT'),('source_type',"TEXT NOT NULL DEFAULT 'unknown'"),('source_subtype','TEXT'),('direction',"TEXT NOT NULL DEFAULT 'inbound'"),('initiated_by',"TEXT NOT NULL DEFAULT 'unknown'"),('campaign_id','TEXT'),('parent_source_id','TEXT'),('external_key','TEXT'),('landing_url','TEXT'),('tracking_code','TEXT'),('updated_at','INTEGER')]
  }.items():
   for col,decl in fields:_add(c,table,col,decl)
  seed=[('whatsapp','WhatsApp','messaging'),('instagram','Instagram','social'),('facebook','Facebook','social'),('messenger','Messenger','messaging'),('telegram','Telegram','messaging'),('line','LINE','messaging'),('tiktok','TikTok','social'),('google','Google','search'),('website','企业官网','owned'),('offline','线下','offline'),('google_ads','Google Ads','advertising'),('meta_ads','Meta Ads','advertising'),('import','数据导入','import')]
@@ -138,7 +139,7 @@ def ensure_v207_1(c):
  if existing and existing[0]!=checksum:raise RuntimeError('MIGRATION_CHECKSUM_MISMATCH: V207_100_channel_attribution')
  if not existing:
   c.execute("INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES('V207_100_channel_attribution','渠道平台、来源触点与客户归因兼容升级',?,?,?,?)",(checksum,t,'system',dumps({'status':'success'})))
- c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version','207.1.0')")
+ c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version','207.8.2')")
 
 V207_101_SCHEMA=r"""
 CREATE UNIQUE INDEX IF NOT EXISTS uq_contact_identity_primary
@@ -278,7 +279,7 @@ def ensure_v207_301(c):
 
 def ensure_v207(c,fresh=False):
  execute_sql_script(c,V207_SCHEMA)
- for table,fields in {'workspaces':[('organization_id','TEXT')],'sources':[('organization_id','TEXT'),('team_id','TEXT'),('channel_account_id','TEXT')],'devices':[('organization_id','TEXT'),('team_id','TEXT'),('assigned_user_id','TEXT'),('system_device_name','TEXT'),('system_computer_name','TEXT'),('user_device_alias','TEXT'),('user_computer_alias','TEXT'),('admin_device_name','TEXT'),('admin_computer_name','TEXT'),('binding_code','TEXT'),('binding_code_expires_at','INTEGER')],'contacts':[('organization_id','TEXT'),('team_id','TEXT')],'events':[('user_id','TEXT') ]}.items():
+ for table,fields in {'workspaces':[('organization_id','TEXT')],'sources':[('organization_id','TEXT'),('team_id','TEXT'),('channel_account_id','TEXT')],'devices':[('organization_id','TEXT'),('team_id','TEXT'),('assigned_user_id','TEXT'),('system_device_name','TEXT'),('system_computer_name','TEXT'),('user_device_alias','TEXT'),('user_computer_alias','TEXT'),('admin_device_name','TEXT'),('admin_computer_name','TEXT')],'contacts':[('organization_id','TEXT'),('team_id','TEXT')],'events':[('user_id','TEXT') ]}.items():
   for col,decl in fields:_add(c,table,col,decl)
  # 已有库只做严格预检；禁止推断、回填或创建任何默认租户。
  if not fresh:
@@ -824,6 +825,21 @@ def ensure_v211(c):
  t=now_ms()
  if not old:c.execute('INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES(?,?,?,?,?,?)',(V211_MIGRATION_ID,'Schema 211 成员权限分离与主工作区约束',checksum,t,'system',dumps({'status':'success'})))
 
+# Schema 212：全新安装基线，不提供旧数据库升级路径。
+def ensure_v212(c):
+ c.execute("""CREATE TABLE IF NOT EXISTS device_enrollments(
+  enrollment_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, workspace_id TEXT NOT NULL, team_id TEXT NOT NULL,
+  assigned_user_id TEXT, admin_device_name TEXT NOT NULL DEFAULT '', admin_computer_name TEXT NOT NULL DEFAULT '',
+  binding_code_hash TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','consumed','expired','revoked')),
+  expires_at INTEGER NOT NULL, consumed_at INTEGER, consumed_device_id TEXT, created_by TEXT NOT NULL, created_at INTEGER NOT NULL,
+  revoked_at INTEGER, revoked_by TEXT, reason TEXT NOT NULL,
+  FOREIGN KEY(organization_id) REFERENCES organizations(organization_id), FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id),
+  FOREIGN KEY(team_id) REFERENCES teams(team_id), FOREIGN KEY(assigned_user_id) REFERENCES users(user_id),
+  FOREIGN KEY(consumed_device_id) REFERENCES devices(device_id), FOREIGN KEY(created_by) REFERENCES users(user_id), FOREIGN KEY(revoked_by) REFERENCES users(user_id)
+ )""")
+ c.execute('CREATE INDEX IF NOT EXISTS idx_device_enrollment_org_status ON device_enrollments(organization_id,status,expires_at)')
+ c.execute('CREATE INDEX IF NOT EXISTS idx_device_enrollment_team ON device_enrollments(team_id,status)')
+
 def _read_existing_schema_version(path):
  """只读识别现有数据库；不猜测、升级或修改未知结构。"""
  c=_connect_strict_readonly(path)
@@ -834,24 +850,27 @@ def _read_existing_schema_version(path):
   return str(row[0]).strip() if row and row[0] is not None else None
  finally:c.close()
 
-def validate_schema211_readonly(path):
- """Schema 211 重启路径：严格只读校验，绝不重放历史迁移。"""
+def validate_schema212_readonly(path):
+ """Schema 212 重启路径：严格只读校验，绝不重放历史迁移。"""
  c=_connect_strict_readonly(path);c.row_factory=sqlite3.Row
  try:
   required_tables={
    'meta','schema_migrations','organizations','workspaces','teams','users',
    'user_credentials','roles','permissions','role_permissions','role_bindings',
-   'team_memberships','audit_logs','sessions'
+   'team_memberships','audit_logs','sessions','device_enrollments','channel_types','source_type_definitions'
   }
   actual={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
   missing=sorted(required_tables-actual)
-  if missing:raise RuntimeError('SCHEMA_211_INVALID: missing tables: '+','.join(missing))
+  if missing:raise RuntimeError('SCHEMA_212_INVALID: missing tables: '+','.join(missing))
   cols={r[1] for r in c.execute('PRAGMA table_info(team_memberships)')}
   required_cols={'user_id','team_id','membership_type','is_primary','status','joined_at','left_at','created_at','updated_at'}
   missing_cols=sorted(required_cols-cols)
-  if missing_cols:raise RuntimeError('SCHEMA_211_INVALID: team_memberships missing columns: '+','.join(missing_cols))
-  if 'role_id' in cols:raise RuntimeError('SCHEMA_211_INVALID: legacy team_memberships.role_id exists')
-  # 固定 Schema 211 约束基线：防止结构可读但关键业务约束已被误删。
+  if missing_cols:raise RuntimeError('SCHEMA_212_INVALID: team_memberships missing columns: '+','.join(missing_cols))
+  if 'role_id' in cols:raise RuntimeError('SCHEMA_212_INVALID: legacy team_memberships.role_id exists')
+  device_cols={r[1] for r in c.execute('PRAGMA table_info(devices)')}
+  legacy_device_cols=sorted({'binding_code','binding_code_expires_at','binding_code_hash'} & device_cols)
+  if legacy_device_cols:raise RuntimeError('SCHEMA_212_INVALID: legacy devices columns exist: '+','.join(legacy_device_cols))
+  # 固定 Schema 212 约束基线：防止结构可读但关键业务约束已被误删。
   required_indexes={
    'idx_attribution_contact',
    'idx_attribution_contact_rule',
@@ -872,6 +891,7 @@ def validate_schema211_readonly(path):
    'idx_tags_workspace_kind',
    'idx_team_bl_org_line',
    'idx_team_markets_org_market',
+   'idx_device_enrollment_org_status','idx_device_enrollment_team',
    'idx_team_memberships_team',
    'idx_team_memberships_user',
    'idx_touchpoint_contact_occurred',
@@ -897,7 +917,7 @@ def validate_schema211_readonly(path):
   }
   indexes={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'")}
   missing_indexes=sorted(required_indexes-indexes)
-  if missing_indexes:raise RuntimeError('SCHEMA_211_INVALID: missing indexes: '+','.join(missing_indexes))
+  if missing_indexes:raise RuntimeError('SCHEMA_212_INVALID: missing indexes: '+','.join(missing_indexes))
   required_triggers={
    'trg_business_line_cycle_insert',
    'trg_business_line_cycle_update',
@@ -928,11 +948,11 @@ def validate_schema211_readonly(path):
   }
   triggers={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
   missing_triggers=sorted(required_triggers-triggers)
-  if missing_triggers:raise RuntimeError('SCHEMA_211_INVALID: missing triggers: '+','.join(missing_triggers))
+  if missing_triggers:raise RuntimeError('SCHEMA_212_INVALID: missing triggers: '+','.join(missing_triggers))
   qc=c.execute('PRAGMA quick_check').fetchone()[0]
-  if qc!='ok':raise RuntimeError('SCHEMA_211_INVALID: quick_check: '+str(qc))
+  if qc!='ok':raise RuntimeError('SCHEMA_212_INVALID: quick_check: '+str(qc))
   fk=list(c.execute('PRAGMA foreign_key_check'))
-  if fk:raise RuntimeError('SCHEMA_211_INVALID: foreign_key_check: '+str(len(fk)))
+  if fk:raise RuntimeError('SCHEMA_212_INVALID: foreign_key_check: '+str(len(fk)))
   validate_registered_migration_checksums(path)
   return True
  finally:c.close()
@@ -948,12 +968,12 @@ class Database:
   except Exception:c.execute('ROLLBACK');raise
   finally:c.close()
  def initialize(self,bootstrap=None):
-  """全新安装创建 Schema 211；现有 Schema 211 仅只读校验，拒绝旧库自动迁移。"""
+  """全新安装创建 Schema 212；现有 Schema 212 仅只读校验，拒绝旧库自动迁移。"""
   fresh=not self.path.exists() or not self.path.stat().st_size
   if not fresh:
    version=_read_existing_schema_version(self.path)
    if version==str(SCHEMA_VERSION):
-    validate_schema211_readonly(self.path)
+    validate_schema212_readonly(self.path)
     return
    if version and version.isdigit() and int(version)<SCHEMA_VERSION:
     raise RuntimeError('LEGACY_SCHEMA_NOT_SUPPORTED: detected Schema '+version+', require fresh Schema '+str(SCHEMA_VERSION))
@@ -966,7 +986,7 @@ class Database:
    c.execute('PRAGMA foreign_keys=OFF')
    c.execute('BEGIN IMMEDIATE')
    if fresh:execute_sql_script(c,BASE_SCHEMA)
-   ensure_v207(c,fresh=fresh);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c);ensure_v211_030(c);ensure_v211_040(c);ensure_v211_050(c)
+   ensure_v207(c,fresh=fresh);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c);ensure_v211_030(c);ensure_v211_040(c);ensure_v211_050(c);ensure_v212(c)
    if fresh:bootstrap_fresh_database(c,b)
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)",(str(SCHEMA_VERSION),))
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version',?)",(PRODUCT_VERSION,))

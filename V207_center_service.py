@@ -81,7 +81,6 @@ class H(BaseHTTPRequestHandler):
   if not p.startswith('/api/v207/'):return self.sendj({'ok':False,'code':'NOT_FOUND'},404)
   a=self.actor()
   if not a:return self.sendj({'ok':False,'code':'UNAUTHORIZED','message':'请登录或重新登录'},401)
-  if a.get('must_change') and p not in ('/api/v207/admin/profile','/api/v207/admin/change-password','/api/v207/auth/logout'):return self.sendj({'ok':False,'code':'PASSWORD_CHANGE_REQUIRED','message':'首次登录必须先修改密码'},403)
   if p.startswith('/api/v207/admin/') and p!='/api/v207/admin/channel-accounts' and admin_dispatch(self,m,p,q,a,DB):return
   if p=='/api/v207/session/context' and m=='GET':r,s=session_context(DB,a);return self.sendj(r,s)
   if p=='/api/v207/auth/logout' and m=='POST':

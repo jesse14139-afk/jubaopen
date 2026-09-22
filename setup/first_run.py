@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Jubaopen V207.8.1 first-run initialization and P1 preset seeding."""
+"""Jubaopen V207.8.2 first-run initialization and P1 preset seeding."""
 import argparse
 import os
 import sys
@@ -15,7 +15,7 @@ from setup.seed_organization import seed_p1
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Initialize Jubaopen V207.8.1")
+    parser = argparse.ArgumentParser(description="Initialize Jubaopen V207.8.2")
     parser.add_argument('--db', default=str(ROOT / 'data' / 'jubaopen-v207.db'))
     parser.add_argument('--admin-password', default=os.environ.get('JUBAOPEN_INITIAL_ADMIN_PASSWORD'))
     args = parser.parse_args()
