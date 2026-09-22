@@ -11,7 +11,7 @@ from V207_security import login,actor_from_token,can,canonical,password_strong,g
 from V207_admin_api import dispatch as admin_dispatch
 from V207_core import session_context,resolve_account,register_device,rename_device,graph,ok,err
 from V206_core_compat import (list_contacts,get_contact,changes,apply_event,delete_preview,get_workspace,update_workspace,list_sources,list_tags,save_tag,delete_tag,list_field_definitions,save_field_definition,delete_field_definition,admin_contact_lifecycle,admin_logs,admin_schema)
-VERSION=PRODUCT_VERSION;DB=None;ADMIN=open(os.path.join(ROOT,'admin_v207.html'),'rb').read();ECHARTS=open(os.path.join(ROOT,'echarts.min.js'),'rb').read()
+VERSION=PRODUCT_VERSION;DB=None;WEB_ROOT=os.path.join(ROOT,'web');ADMIN=open(os.path.join(WEB_ROOT,'admin.html'),'rb').read();ECHARTS=open(os.path.join(WEB_ROOT,'echarts.min.js'),'rb').read()
 READ_PERM={'/api/v207/contacts':'contact.read','/api/v207/changes':'contact.read','/api/v207/admin/graph':'organization.read'}
 class H(BaseHTTPRequestHandler):
  server_version='Jubaopen/'+PRODUCT_VERSION

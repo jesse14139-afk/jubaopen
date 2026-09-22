@@ -11,7 +11,7 @@
 from V207_shared_db import hash_password, now_ms
 from V207_security import grant_binding_in_tx
 
-P1_PASSWORD = 'P1-user-Change1'
+P1_PASSWORD = 'jubaopen518518'
 P1_WORKSPACE_ID = 'ws-global'
 
 READ_PERMS = (

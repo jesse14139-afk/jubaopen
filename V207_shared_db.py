@@ -1056,7 +1056,7 @@ def ensure_v211_030(c):
     t = now_ms()
     if not old:
         # 插入预设渠道类型数据
-        from V207_p1_dict import CHANNEL_TYPES_SEED, ensure_dictionary_platforms, resolve_platform_id
+        from setup.seed_dictionaries import CHANNEL_TYPES_SEED, ensure_dictionary_platforms, resolve_platform_id
         ensure_dictionary_platforms(c, t)
         for row in CHANNEL_TYPES_SEED:
             ct_id, platform_id, ct_code, name, desc, direction, sort_order = row
@@ -1067,7 +1067,7 @@ def ensure_v211_030(c):
             """, (ct_id, resolve_platform_id(c, platform_id), ct_code, name, desc or '', direction, sort_order, t, t))
 
         # 插入预设来源类型数据
-        from V207_p1_dict import SOURCE_TYPES_SEED
+        from setup.seed_dictionaries import SOURCE_TYPES_SEED
         for row in SOURCE_TYPES_SEED:
             st_id, st_code, name, desc, sort_order = row
             c.execute("""

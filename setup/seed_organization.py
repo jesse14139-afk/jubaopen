@@ -25,13 +25,13 @@ P1 企业预设初始化脚本 - 聚宝盆公司组织架构预设
 import argparse, sys, os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from V207_shared_db import Database, now_ms
-from V207_p1_dict import CHANNEL_TYPES_SEED, SOURCE_TYPES_SEED, seed_channel_and_source_types
-from V207_p1_users import P1_USERS, seed_p1_people
+from setup.seed_dictionaries import CHANNEL_TYPES_SEED, SOURCE_TYPES_SEED, seed_channel_and_source_types
+from setup.seed_users_roles import P1_USERS, seed_p1_people
 
 
 def _configure_output():
