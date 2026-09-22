@@ -32,6 +32,14 @@ if str(ROOT) not in sys.path:
 from V207_shared_db import Database, now_ms, dumps
 
 
+def _configure_output():
+    """让 Windows 默认控制台也能稳定输出初始化进度。"""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure:
+            reconfigure(encoding='utf-8', errors='replace')
+
+
 def seed_p1(db_path, org_id='jubaopen'):
     """执行 P1 组织预设初始化。"""
     db = Database(str(db_path))
@@ -86,8 +94,8 @@ def seed_p1(db_path, org_id='jubaopen'):
             ).fetchone()
             if not existing:
                 c.execute(
-                    "INSERT INTO departments(department_id,organization_id,name,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,'P1预设部门',?,?,?,?)",
-                    (dept_id, org_id, dept_name, 'active', sort_order, n, n)
+                    "INSERT INTO departments(department_id,organization_id,name,code,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,'P1预设部门',?,?,?,?)",
+                    (dept_id, org_id, dept_name, dept_id, 'active', sort_order, n, n)
                 )
                 print(f"✓ 创建部门：{dept_id} - {dept_name}")
             else:
@@ -101,7 +109,7 @@ def seed_p1(db_path, org_id='jubaopen'):
     ]
     
     with db.tx() as c:
-        for team_id, team_name, ws_id, dept_id in teams:
+        for team_index, (team_id, team_name, ws_id, dept_id) in enumerate(teams):
             existing = c.execute(
                 "SELECT team_id FROM teams WHERE team_id=?",
                 (team_id,)
@@ -112,8 +120,8 @@ def seed_p1(db_path, org_id='jubaopen'):
                     (team_id, org_id, ws_id, dept_id, team_name, n, n)
                 )
                 c.execute(
-                    "INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,'primary',1,'manage','active',?,?)",
-                    (ws_id, team_id, n, n)
+                    "INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,? ,?,'manage','active',?,?)",
+                    (ws_id, team_id, org_id, 'primary' if team_index == 0 else 'collaborator', 1 if team_index == 0 else 0, n, n)
                 )
                 print(f"✓ 创建团队：{team_id} - {team_name}")
             else:
@@ -126,19 +134,19 @@ def seed_p1(db_path, org_id='jubaopen'):
     ]
     
     with db.tx() as c:
-        for bl_id, bl_name, sort_order in business_lines:
+        for bl_index, (bl_id, bl_name, sort_order) in enumerate(business_lines):
             existing = c.execute(
                 "SELECT business_line_id FROM business_lines WHERE business_line_id=?",
                 (bl_id,)
             ).fetchone()
             if not existing:
                 c.execute(
-                    "INSERT INTO business_lines(business_line_id,organization_id,name,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,'P1预设业务线',?,?,?,?)",
-                    (bl_id, org_id, bl_name, 'active', sort_order, n, n)
+                    "INSERT INTO business_lines(business_line_id,organization_id,name,code,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,'P1预设业务线',?,?,?,?)",
+                    (bl_id, org_id, bl_name, bl_id, 'active', sort_order, n, n)
                 )
                 c.execute(
-                    "INSERT INTO workspace_business_lines(workspace_id,business_line_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,'active',1,'active',?,?)",
-                    (WS_GLOBAL_ID, bl_id, n, n)
+                    "INSERT INTO workspace_business_lines(workspace_id,business_line_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,?,'active',?,?)",
+                    (WS_GLOBAL_ID, bl_id, org_id, 1 if bl_index == 0 else 0, n, n)
                 )
                 print(f"✓ 创建业务线：{bl_id} - {bl_name}")
             else:
@@ -173,8 +181,8 @@ def seed_p1(db_path, org_id='jubaopen'):
             ).fetchone()
             if not existing:
                 c.execute(
-                    "INSERT INTO markets(market_id,organization_id,parent_market_id,name,code,currency_code,language_code,timezone,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,'active',?,?)",
-                    (mkt_id, org_id, parent_id, mkt_name, code, currency, language, tz, n, n)
+                    "INSERT INTO markets(market_id,organization_id,parent_market_id,name,code,market_type,country_code,region_code,timezone,description,status,created_at,updated_at) VALUES(?,?,?,?,?,'country',?,?,?,?,'active',?,?)",
+                    (mkt_id, org_id, parent_id, mkt_name, code, code if len(code) == 2 else '', code if len(code) > 2 else '', tz, 'P1预设市场', n, n)
                 )
                 print(f"✓ 创建市场：{mkt_id} - {mkt_name}")
             else:
@@ -190,8 +198,8 @@ def seed_p1(db_path, org_id='jubaopen'):
             ).fetchone()
             if not existing:
                 c.execute(
-                    "INSERT INTO workspace_markets(workspace_id,market_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,'active',0,'active',?,?)",
-                    (WS_GLOBAL_ID, mkt_id, n, n)
+                    "INSERT INTO workspace_markets(workspace_id,market_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,0,'active',?,?)",
+                    (WS_GLOBAL_ID, mkt_id, org_id, n, n)
                 )
                 print(f"✓ 关联市场到工作区：{mkt_id} -> {WS_GLOBAL_ID}")
             # 跳过已存在的情况
@@ -221,8 +229,8 @@ def seed_p1(db_path, org_id='jubaopen'):
             ).fetchone()
             if not existing:
                 c.execute(
-                    "INSERT INTO positions(position_id,organization_id,department_id,name,code,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,'P1预设职位',?,?,?,?,?)",
-                    (pos_id, org_id, dept_id, pos_name, pos_code, 'active', sort_order, n, n)
+                    "INSERT INTO positions(position_id,organization_id,department_id,name,code,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,'P1预设职位','active',?,?,?)",
+                    (pos_id, org_id, dept_id, pos_name, pos_code, sort_order, n, n)
                 )
                 print(f"✓ 创建职位：{pos_id} - {pos_name}")
             else:
@@ -240,6 +248,7 @@ def seed_p1(db_path, org_id='jubaopen'):
 
 
 def main():
+    _configure_output()
     p = argparse.ArgumentParser(description="P1 企业组织预设初始化")
     p.add_argument('--db', default=str(ROOT / 'data' / 'jubaopen-v207.db'))
     args = p.parse_args()

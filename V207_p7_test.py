@@ -24,6 +24,14 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+
+def _configure_output():
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure:
+            reconfigure(encoding='utf-8', errors='replace')
+
+
 from V207_shared_db import Database
 
 def test_p1_org_structure(db):
@@ -169,6 +177,7 @@ def test_schema_migrations(db):
                 print(f"  ❌ 缺少迁移：{req}")
 
 def main():
+    _configure_output()
     p = argparse.ArgumentParser(description="P7 综合测试")
     p.add_argument('--db', default=str(ROOT / 'data' / 'jubaopen-v207.db'))
     args = p.parse_args()

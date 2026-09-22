@@ -75,6 +75,8 @@ class H(BaseHTTPRequestHandler):
    self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(ADMIN)));self.security_headers();self.end_headers();return self.wfile.write(ADMIN)
   if p=='/api/v207/auth/login' and m=='POST':
    b=self.body();r,s=login(DB,str(b.get('organizationId') or ''),str(b.get('loginName') or ''),str(b.get('password') or ''),self.client_address[0],self.headers.get('User-Agent',''));return self.sendj(r,s)
+  if p=='/api/v207/center/user' and m=='POST':
+   return self.sendj({'ok':False,'code':'DEPRECATED','message':'用户创建请使用 POST /api/v207/admin/users（支持职位、团队、角色独立管理）'},410)
   if p.startswith('/api/v205/') or p.startswith('/api/v206/'):
    return self.sendj({'ok':False,'code':'CLIENT_READ_ONLY','message':'V207 迁移期已冻结旧客户端写入；请升级 V207 客户端'},426)
   if not p.startswith('/api/v207/'):return self.sendj({'ok':False,'code':'NOT_FOUND'},404)

@@ -22,6 +22,14 @@ from collections import defaultdict
 
 ROOT = Path(__file__).resolve().parent
 
+
+def _configure_output():
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure:
+            reconfigure(encoding='utf-8', errors='replace')
+
+
 def check_api_response_format():
     """检查 API 响应格式是否标准化。"""
     issues = []
@@ -161,6 +169,7 @@ def generate_report(api_issues, naming_issues, db_issues):
     return total
 
 def main():
+    _configure_output()
     print("正在扫描代码规范...")
     
     api_issues = check_api_response_format()
