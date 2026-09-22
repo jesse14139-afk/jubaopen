@@ -118,7 +118,7 @@ def ensure_v207_1(c):
    'sources':[('platform_id','TEXT'),('source_type',"TEXT NOT NULL DEFAULT 'unknown'"),('source_subtype','TEXT'),('direction',"TEXT NOT NULL DEFAULT 'inbound'"),('initiated_by',"TEXT NOT NULL DEFAULT 'unknown'"),('campaign_id','TEXT'),('parent_source_id','TEXT'),('external_key','TEXT'),('landing_url','TEXT'),('tracking_code','TEXT'),('updated_at','INTEGER')]
  }.items():
   for col,decl in fields:_add(c,table,col,decl)
- seed=[('whatsapp','WhatsApp','messaging'),('instagram','Instagram','social'),('facebook','Facebook','social'),('messenger','Messenger','messaging'),('telegram','Telegram','messaging'),('line','LINE','messaging'),('tiktok','TikTok','social'),('website','企业官网','owned'),('offline','线下','offline'),('google_ads','Google Ads','advertising'),('meta_ads','Meta Ads','advertising'),('import','数据导入','import')]
+ seed=[('whatsapp','WhatsApp','messaging'),('instagram','Instagram','social'),('facebook','Facebook','social'),('messenger','Messenger','messaging'),('telegram','Telegram','messaging'),('line','LINE','messaging'),('tiktok','TikTok','social'),('google','Google','search'),('website','企业官网','owned'),('offline','线下','offline'),('google_ads','Google Ads','advertising'),('meta_ads','Meta Ads','advertising'),('import','数据导入','import')]
  for code,name,kind in seed:c.execute("INSERT OR IGNORE INTO platforms(platform_id,platform_code,platform_name,platform_kind,status,created_at,updated_at) VALUES(?,?,?,?,'active',?,?)",('plt_'+code,code,name,kind,t,t))
  c.execute("UPDATE channel_accounts SET platform_id=COALESCE(platform_id,'plt_'||channel)")
  c.execute("UPDATE channel_account_identities SET platform_id=COALESCE(platform_id,(SELECT platform_id FROM channel_accounts a WHERE a.channel_account_id=channel_account_id)),valid_from=COALESCE(valid_from,created_at)")
@@ -1051,14 +1051,15 @@ def ensure_v211_030(c):
     t = now_ms()
     if not old:
         # 插入预设渠道类型数据
-        from V207_p1_dict import CHANNEL_TYPES_SEED
+        from V207_p1_dict import CHANNEL_TYPES_SEED, ensure_dictionary_platforms, resolve_platform_id
+        ensure_dictionary_platforms(c, t)
         for row in CHANNEL_TYPES_SEED:
             ct_id, platform_id, ct_code, name, desc, direction, sort_order = row
             c.execute("""
                 INSERT OR IGNORE INTO channel_types
                 (channel_type_id, platform_id, channel_type_code, name, description, direction, is_active, sort_order, created_at, updated_at)
                 VALUES(?,?,?,?,?,?,1,?,?,?)
-            """, (ct_id, platform_id, ct_code, name, desc or '', direction, sort_order, t, t))
+            """, (ct_id, resolve_platform_id(c, platform_id), ct_code, name, desc or '', direction, sort_order, t, t))
 
         # 插入预设来源类型数据
         from V207_p1_dict import SOURCE_TYPES_SEED

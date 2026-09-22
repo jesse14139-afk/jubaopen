@@ -29,7 +29,8 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from V207_shared_db import Database, now_ms, dumps
+from V207_shared_db import Database, now_ms
+from V207_p1_dict import CHANNEL_TYPES_SEED, SOURCE_TYPES_SEED, seed_channel_and_source_types
 
 
 def _configure_output():
@@ -53,6 +54,10 @@ def seed_p1(db_path, org_id='jubaopen'):
         ).fetchone()
         if not org:
             raise RuntimeError(f"企业 {org_id} 不存在，请先运行 V207_first_run.py 完成基础初始化")
+        c.execute(
+            "UPDATE organizations SET name='聚宝盆公司', updated_at=? WHERE organization_id=? AND name='聚宝盆企业'",
+            (n, org_id)
+        )
     
     # ===== 1. 工作区 =====
     WS_GLOBAL_ID = 'ws-global'
@@ -120,7 +125,7 @@ def seed_p1(db_path, org_id='jubaopen'):
                     (team_id, org_id, ws_id, dept_id, team_name, n, n)
                 )
                 c.execute(
-                    "INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,? ,?,'manage','active',?,?)",
+                    "INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,?,?,'manage','active',?,?)",
                     (ws_id, team_id, org_id, 'primary' if team_index == 0 else 'collaborator', 1 if team_index == 0 else 0, n, n)
                 )
                 print(f"✓ 创建团队：{team_id} - {team_name}")
@@ -180,9 +185,10 @@ def seed_p1(db_path, org_id='jubaopen'):
                 (mkt_id,)
             ).fetchone()
             if not existing:
+                market_type = 'country' if len(code) == 2 else 'region'
                 c.execute(
-                    "INSERT INTO markets(market_id,organization_id,parent_market_id,name,code,market_type,country_code,region_code,timezone,description,status,created_at,updated_at) VALUES(?,?,?,?,?,'country',?,?,?,?,'active',?,?)",
-                    (mkt_id, org_id, parent_id, mkt_name, code, code if len(code) == 2 else '', code if len(code) > 2 else '', tz, 'P1预设市场', n, n)
+                    "INSERT INTO markets(market_id,organization_id,parent_market_id,name,code,market_type,country_code,region_code,timezone,currency_code,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?)",
+                    (mkt_id, org_id, parent_id, mkt_name, code, market_type, code if market_type == 'country' else '', code if market_type == 'region' else '', tz, currency, 'P1预设市场', 0, n, n)
                 )
                 print(f"✓ 创建市场：{mkt_id} - {mkt_name}")
             else:
@@ -198,8 +204,8 @@ def seed_p1(db_path, org_id='jubaopen'):
             ).fetchone()
             if not existing:
                 c.execute(
-                    "INSERT INTO workspace_markets(workspace_id,market_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,0,'active',?,?)",
-                    (WS_GLOBAL_ID, mkt_id, org_id, n, n)
+                    "INSERT INTO workspace_markets(workspace_id,market_id,organization_id,is_primary,scope_type,status,created_at,updated_at) VALUES(?,?,?,?,'direct','active',?,?)",
+                    (WS_GLOBAL_ID, mkt_id, org_id, 1 if mkt_id == 'MKT-GLOBAL' else 0, n, n)
                 )
                 print(f"✓ 关联市场到工作区：{mkt_id} -> {WS_GLOBAL_ID}")
             # 跳过已存在的情况
@@ -235,6 +241,18 @@ def seed_p1(db_path, org_id='jubaopen'):
                 print(f"✓ 创建职位：{pos_id} - {pos_name}")
             else:
                 print(f"○ 职位已存在：{pos_id} - {pos_name}，跳过")
+
+    # ===== 8. 渠道类型与来源类型字典 =====
+    dictionary = seed_channel_and_source_types(db, n)
+    print(
+        "✓ 字典预设：渠道类型 {created}/{total} 新增，来源类型 {source_created}/{source_total} 新增，平台关联修正 {relinked} 条".format(
+            created=dictionary['channel_types_created'],
+            total=len(CHANNEL_TYPES_SEED),
+            source_created=dictionary['source_types_created'],
+            source_total=len(SOURCE_TYPES_SEED),
+            relinked=dictionary['channel_types_relinked'],
+        )
+    )
     
     print("\n✓ P1 组织预设初始化完成")
     print("  企业：ORG-JBP 聚宝盆公司")

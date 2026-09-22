@@ -135,6 +135,39 @@ SOURCE_TYPES_SEED = [
 ]
 
 
+PLATFORM_CODE_ALIASES = {
+    'google': 'google',
+}
+
+DICTIONARY_PLATFORMS = (
+    ('google', 'Google', 'search'),
+)
+
+
+def ensure_dictionary_platforms(c, n):
+    """补齐渠道字典引用的平台，避免渠道类型悬挂在不存在的平台代码上。"""
+    for code, name, kind in DICTIONARY_PLATFORMS:
+        c.execute(
+            """INSERT OR IGNORE INTO platforms
+               (platform_id, platform_code, platform_name, platform_kind, status, created_at, updated_at)
+               VALUES(?,?,?,?,'active',?,?)""",
+            ('plt_' + code, code, name, kind, n, n)
+        )
+
+
+def resolve_platform_id(c, raw):
+    """把种子里的平台代码解析为 platforms.platform_id。"""
+    if raw is None or not str(raw).strip():
+        return None
+    raw = str(raw).strip()
+    if raw.startswith('plt_'):
+        found = c.execute('SELECT platform_id FROM platforms WHERE platform_id=?', (raw,)).fetchone()
+        return found[0] if found else None
+    code = PLATFORM_CODE_ALIASES.get(raw, raw)
+    found = c.execute('SELECT platform_id FROM platforms WHERE platform_code=?', (code,)).fetchone()
+    return found[0] if found else None
+
+
 def seed_channel_and_source_types(db, n=None):
     """
     初始化渠道类型和来源类型字典。
@@ -147,15 +180,18 @@ def seed_channel_and_source_types(db, n=None):
     results = {
         'channel_types_created': 0,
         'channel_types_existed': 0,
+        'channel_types_relinked': 0,
         'source_types_created': 0,
         'source_types_existed': 0,
     }
 
     with db.tx() as c:
+        ensure_dictionary_platforms(c, n)
         for row in CHANNEL_TYPES_SEED:
-            ct_id, platform_id, ct_code, name, desc, direction, sort_order = row
+            ct_id, raw_platform_id, ct_code, name, desc, direction, sort_order = row
+            platform_id = resolve_platform_id(c, raw_platform_id)
             existing = c.execute(
-                "SELECT channel_type_id FROM channel_types WHERE channel_type_id=?",
+                "SELECT channel_type_id, platform_id FROM channel_types WHERE channel_type_id=?",
                 (ct_id,)
             ).fetchone()
             if not existing:
@@ -167,6 +203,13 @@ def seed_channel_and_source_types(db, n=None):
                 )
                 results['channel_types_created'] += 1
             else:
+                current_platform_id = existing[1]
+                if platform_id and current_platform_id in (None, '', raw_platform_id) and current_platform_id != platform_id:
+                    c.execute(
+                        "UPDATE channel_types SET platform_id=?, updated_at=? WHERE channel_type_id=?",
+                        (platform_id, n, ct_id)
+                    )
+                    results['channel_types_relinked'] = results.get('channel_types_relinked', 0) + 1
                 results['channel_types_existed'] += 1
 
         for row in SOURCE_TYPES_SEED:
