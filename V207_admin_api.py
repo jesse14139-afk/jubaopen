@@ -327,98 +327,222 @@ def dispatch(h,m,p,q,a,db):
   return h.sendj({'auditTrend':trend,'ok':True,'counts':counts,'channelDistribution':channel,'deviceStatus':status,'recentAudit':recent,'database':db.quick_check(),'schemaVersion':SCHEMA_VERSION,'version':PRODUCT_VERSION,'contactTrend':contact_trend,'sourceTrend':source_trend,'sourceDistribution':source_dist,'teamDistribution':team_dist}) or True
  # teams
  if root=='teams':
-  if m=='GET':
-   with db.tx(False) as c:its=rows(c,"SELECT t.*,w.name workspace_name,(SELECT count(*) FROM team_memberships tm WHERE tm.team_id=t.team_id AND tm.status='active') member_count,(SELECT count(*) FROM team_channel_accounts x WHERE x.team_id=t.team_id) account_count,(SELECT group_concat(bl.name) FROM team_business_lines tbl JOIN business_lines bl ON bl.business_line_id=tbl.business_line_id WHERE tbl.team_id=t.team_id AND tbl.status='active') business_lines,(SELECT group_concat(m.name) FROM team_markets tm JOIN markets m ON m.market_id=tm.market_id WHERE tm.team_id=t.team_id AND tm.status='active') markets FROM teams t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.organization_id=? ORDER BY t.created_at",(org,))
+  # 关键修复：子资源路由必须先于集合/单条资源路由匹配，
+  # 否则 /teams/{id}/members 会被前导 if m=='GET' 截获并返回全部团队。
+  # 1) 子资源：成员候选
+  if ident and action=='member-candidates' and m=='GET':
+   term=str(q.get('q') or '').strip()
+   if not term:return bad(h,'SEARCH_KEYWORD_REQUIRED','成员搜索关键词不能为空',400)
+   like='%'+term.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+   with db.tx(False) as c:
+       if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+       its=rows(c,"""SELECT u.user_id,u.login_name,u.display_name,u.status user_status,
+        (SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,
+        (SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name
+        FROM users u WHERE u.organization_id=? AND u.status='active'
+        AND NOT EXISTS(SELECT 1 FROM team_memberships tm WHERE tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active')
+        AND (u.display_name LIKE ? ESCAPE '\' OR u.login_name LIKE ? ESCAPE '\'
+         OR EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.status='active' AND (p.name LIKE ? ESCAPE '\' OR d.name LIKE ? ESCAPE '\')))
+        ORDER BY u.display_name,u.login_name LIMIT 50""",(org,ident,like,like,like,like))
+   return h.sendj({'ok':True,'items':its,'query':term}) or True
+  # 2) 子资源：成员列表 / 添加 / 移出
+  if ident and action=='members':
+   if m=='GET':
+       with db.tx(False) as c:
+           if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+           its=rows(c,"""SELECT tm.*,u.login_name,u.display_name,u.status user_status,
+            (SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,
+            (SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name,
+            (SELECT group_concat(DISTINCT r.name) FROM role_bindings rb JOIN roles r ON r.role_id=rb.role_id WHERE rb.user_id=u.user_id AND rb.organization_id=t.organization_id AND rb.status='active') role_names
+            FROM team_memberships tm JOIN users u ON u.user_id=tm.user_id JOIN teams t ON t.team_id=tm.team_id
+            WHERE tm.team_id=? AND t.organization_id=? AND tm.status='active'
+            ORDER BY tm.is_primary DESC,u.display_name,u.login_name""",(ident,org))
+       return h.sendj({'ok':True,'items':its}) or True
+   if m=='POST':
+       if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无成员管理权限',403)
+       b=h.body();uid=str(b.get('userId') or '').strip();kind=str(b.get('membershipType') or 'member');primary=1 if str(b.get('isPrimary') or '0').lower() in ('1','true') else 0;reason=str(b.get('reason') or '').strip()
+       if not uid:return bad(h,'USER_REQUIRED','必须选择用户')
+       if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
+       if kind not in ('member','manager','operator','support'):return bad(h,'INVALID_MEMBERSHIP_TYPE','成员类型无效')
+       with db.tx() as c:
+           user=one(c,'SELECT user_id,display_name,login_name FROM users WHERE user_id=? AND organization_id=? AND status=\'active\'',(uid,org))
+           if not user:return bad(h,'USER_NOT_FOUND','用户不存在、已停用或不属于目标企业',404)
+           team=one(c,'SELECT team_id,name FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
+           if not team:return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+           old=one(c,'SELECT * FROM team_memberships WHERE user_id=? AND team_id=?',(uid,ident)) or {}
+           n=now_ms()
+           if primary:c.execute("UPDATE team_memberships SET is_primary=0,updated_at=? WHERE user_id=? AND team_id<>? AND status='active'",(n,uid,ident))
+           c.execute("INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,?, 'active',?,NULL,?,?) ON CONFLICT(user_id,team_id) DO UPDATE SET membership_type=excluded.membership_type,is_primary=excluded.is_primary,status='active',left_at=NULL,updated_at=excluded.updated_at",(uid,ident,kind,primary,n,n,n))
+           newrow=one(c,'SELECT * FROM team_memberships WHERE user_id=? AND team_id=?',(uid,ident))
+           audit_in_tx(c,a,'upsert','team_membership',uid,old,newrow,reason)
+       return h.sendj({'ok':True,'item':newrow}) or True
+   if m=='DELETE':
+       if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无成员管理权限',403)
+       b=h.body();uid=str(b.get('userId') or '').strip();reason=str(b.get('reason') or '').strip()
+       if not uid:return bad(h,'USER_REQUIRED','必须指定用户')
+       if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
+       with db.tx() as c:
+           if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+           old=one(c,"SELECT * FROM team_memberships WHERE user_id=? AND team_id=? AND status='active'",(uid,ident))
+           if not old:return bad(h,'MEMBER_NOT_FOUND','该用户不是当前团队的有效成员',404)
+           if int(old.get('is_primary') or 0):return bad(h,'PRIMARY_TEAM_TRANSFER_REQUIRED','请先为该用户转移主团队，再执行移出',409)
+           n=now_ms();cur=c.execute("UPDATE team_memberships SET status='disabled',is_primary=0,left_at=?,updated_at=? WHERE user_id=? AND team_id=? AND status='active'",(n,n,uid,ident))
+           if cur.rowcount!=1:raise RuntimeError('TEAM_MEMBER_UPDATE_RACE')
+           audit_in_tx(c,a,'remove','team_membership',uid,old,{},reason)
+       return h.sendj({'ok':True}) or True
+   return bad(h,'METHOD_NOT_ALLOWED','成员接口支持 GET/POST/DELETE',405)
+  # 3) 子资源：业务线关系（GET 列表 / PUT 替换）
+  if ident and action=='business-lines' and m in ('GET','PUT','PATCH'):
+   if m in ('PUT','PATCH') and not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队管理权限',403)
+   with db.tx() as c:
+       if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+       if m=='GET':
+           its=rows(c,"""SELECT tbl.team_id,tbl.business_line_id,tbl.is_primary,tbl.status,tbl.created_at,tbl.updated_at,bl.name,bl.code
+             FROM team_business_lines tbl JOIN business_lines bl ON bl.business_line_id=tbl.business_line_id
+             WHERE tbl.team_id=? AND tbl.organization_id=? ORDER BY tbl.is_primary DESC,bl.name""",(ident,org))
+           return h.sendj({'ok':True,'items':its}) or True
+       b=h.body();items=list(b.get('items') or []);reason=str(b.get('reason') or '').strip()
+       if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
+       seen=set();primary_count=0;cleaned=[]
+       for it in items:
+           bid=str(it.get('businessLineId') or it.get('business_line_id') or '').strip()
+           if not bid or bid in seen:continue
+           if not c.execute('SELECT 1 FROM business_lines WHERE business_line_id=? AND organization_id=?',(bid,org)).fetchone():
+               return bad(h,'BUSINESS_LINE_NOT_FOUND','业务线不存在或不属于当前企业',404)
+           seen.add(bid)
+           primary=1 if str(it.get('isPrimary') or '0').lower() in ('1','true') else 0
+           if primary:primary_count+=1
+           status=clean_status(it.get('status')) or 'active'
+           cleaned.append((bid,primary,status))
+       if primary_count>1:return bad(h,'PRIMARY_BUSINESS_LINE_UNIQUE','业务线只能设置一个主要关系',409)
+       old=rows(c,"SELECT * FROM team_business_lines WHERE team_id=? AND organization_id=?",(ident,org))
+       n=now_ms()
+       c.execute("DELETE FROM team_business_lines WHERE team_id=?",(ident,))
+       for bid,primary,status in cleaned:
+           c.execute("INSERT INTO team_business_lines(team_id,business_line_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",(ident,bid,org,primary,status,n,n))
+       new=rows(c,"SELECT * FROM team_business_lines WHERE team_id=? AND organization_id=?",(ident,org))
+       audit_in_tx(c,a,'replace','team_business_lines',ident,old,new,reason)
+   return h.sendj({'ok':True,'items':new}) or True
+  # 4) 子资源：市场关系（GET 列表 / PUT 替换）
+  if ident and action=='markets' and m in ('GET','PUT','PATCH'):
+   if m in ('PUT','PATCH') and not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队管理权限',403)
+   with db.tx() as c:
+       if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+       if m=='GET':
+           its=rows(c,"""SELECT tmt.team_id,tmt.market_id,tmt.is_primary,tmt.scope_type,tmt.status,tmt.created_at,tmt.updated_at,m.name,m.code
+             FROM team_markets tmt JOIN markets m ON m.market_id=tmt.market_id
+             WHERE tmt.team_id=? AND tmt.organization_id=? ORDER BY tmt.is_primary DESC,m.name""",(ident,org))
+           return h.sendj({'ok':True,'items':its}) or True
+       b=h.body();items=list(b.get('items') or []);reason=str(b.get('reason') or '').strip()
+       if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
+       seen=set();primary_count=0;cleaned=[]
+       for it in items:
+           mid=str(it.get('marketId') or it.get('market_id') or '').strip()
+           if not mid or mid in seen:continue
+           if not c.execute('SELECT 1 FROM markets WHERE market_id=? AND organization_id=?',(mid,org)).fetchone():
+               return bad(h,'MARKET_NOT_FOUND','市场不存在或不属于当前企业',404)
+           seen.add(mid)
+           primary=1 if str(it.get('isPrimary') or '0').lower() in ('1','true') else 0
+           if primary:primary_count+=1
+           status=clean_status(it.get('status')) or 'active'
+           scope=str(it.get('scopeType') or it.get('scope_type') or 'direct').strip().lower()
+           if scope not in ('direct','descendants'):return bad(h,'INVALID_SCOPE_TYPE','市场范围必须是 direct 或 descendants',400)
+           cleaned.append((mid,primary,scope,status))
+       if primary_count>1:return bad(h,'PRIMARY_MARKET_UNIQUE','市场只能设置一个主要关系',409)
+       old=rows(c,"SELECT * FROM team_markets WHERE team_id=? AND organization_id=?",(ident,org))
+       n=now_ms()
+       c.execute("DELETE FROM team_markets WHERE team_id=?",(ident,))
+       for mid,primary,scope,status in cleaned:
+           c.execute("INSERT INTO team_markets(team_id,market_id,organization_id,is_primary,scope_type,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",(ident,mid,org,primary,scope,status,n,n))
+       new=rows(c,"SELECT * FROM team_markets WHERE team_id=? AND organization_id=?",(ident,org))
+       audit_in_tx(c,a,'replace','team_markets',ident,old,new,reason)
+   return h.sendj({'ok':True,'items':new}) or True
+  # 5) 子资源：综合配置（业务线+市场+成员概览）
+  if ident and action=='config' and m=='GET':
+   with db.tx(False) as c:
+       if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
+       team=one(c,"SELECT t.*,w.name workspace_name FROM teams t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.team_id=? AND t.organization_id=?",(ident,org))
+       bl=rows(c,"""SELECT tbl.business_line_id,tbl.is_primary,tbl.status,bl.name,bl.code FROM team_business_lines tbl JOIN business_lines bl ON bl.business_line_id=tbl.business_line_id WHERE tbl.team_id=? AND tbl.organization_id=? ORDER BY tbl.is_primary DESC,bl.name""",(ident,org))
+       mk=rows(c,"""SELECT tmt.market_id,tmt.is_primary,tmt.scope_type,tmt.status,m.name,m.code FROM team_markets tmt JOIN markets m ON m.market_id=tmt.market_id WHERE tmt.team_id=? AND tmt.organization_id=? ORDER BY tmt.is_primary DESC,m.name""",(ident,org))
+       member_count=c.execute("""SELECT COUNT(DISTINCT tm.user_id)
+         FROM team_memberships tm
+         JOIN users u ON u.user_id=tm.user_id AND u.organization_id=t.organization_id
+         JOIN teams t ON t.team_id=tm.team_id
+         WHERE tm.team_id=? AND tm.status='active'""",(ident,)).fetchone()[0]
+   return h.sendj({'ok':True,'team':team,'businessLines':bl,'markets':mk,'memberCount':member_count}) or True
+  # 6) 单个团队 PATCH：名称 / 状态 / 所属工作区（同一事务、必填原因）
+  if ident and not action and m=='PATCH':
+   if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队管理权限',403)
+   b=h.body();reason=str(b.get('reason') or '').strip()
+   if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
+   with db.tx() as c:
+       old=one(c,'SELECT * FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
+       if not old:return bad(h,'NOT_FOUND','团队不存在',404)
+       new_name=str(b.get('name') or old['name']).strip()
+       new_status=clean_status(b.get('status')) or old['status']
+       new_workspace=str(b.get('workspaceId') or b.get('workspace_id') or old['workspace_id']).strip()
+       if new_workspace!=old['workspace_id']:
+           if not c.execute("SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=? AND status='active'",(new_workspace,org)).fetchone():
+               return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在或已停用',404)
+       if not new_name:return bad(h,'NAME_REQUIRED','团队名称不能为空')
+       n=now_ms()
+       c.execute('UPDATE teams SET name=?,status=?,workspace_id=?,updated_at=? WHERE team_id=?',(new_name,new_status,new_workspace,n,ident))
+       if new_workspace!=old['workspace_id']:
+           c.execute("DELETE FROM workspace_teams WHERE team_id=? AND workspace_id<>?",(ident,new_workspace))
+           c.execute("INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,'primary',1,'manage','active',?,?) ON CONFLICT(workspace_id,team_id) DO UPDATE SET status='active',updated_at=excluded.updated_at",(new_workspace,ident,org,n,n))
+       new=one(c,'SELECT * FROM teams WHERE team_id=?',(ident,))
+       audit_in_tx(c,a,'update','team',ident,old,new,reason,old['workspace_id'])
+   return h.sendj({'ok':True,'item':new}) or True
+  # 7) 单个团队 GET
+  if ident and not action and m=='GET':
+   with db.tx(False) as c:
+       team=one(c,"""SELECT t.*,w.name workspace_name,
+         (SELECT COUNT(DISTINCT tm.user_id) FROM team_memberships tm JOIN users u ON u.user_id=tm.user_id AND u.organization_id=t.organization_id WHERE tm.team_id=t.team_id AND tm.status='active') member_count,
+         (SELECT count(*) FROM team_channel_accounts x WHERE x.team_id=t.team_id) account_count,
+         (SELECT group_concat(bl.name) FROM team_business_lines tbl JOIN business_lines bl ON bl.business_line_id=tbl.business_line_id WHERE tbl.team_id=t.team_id AND tbl.status='active') business_lines,
+         (SELECT group_concat(m.name) FROM team_markets tm JOIN markets m ON m.market_id=tm.market_id WHERE tm.team_id=t.team_id AND tm.status='active') markets
+         FROM teams t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.team_id=? AND t.organization_id=?""",(ident,org))
+       if not team:return bad(h,'NOT_FOUND','团队不存在',404)
+   return h.sendj({'ok':True,'item':team}) or True
+  # 8) 单个团队 DELETE
+  if ident and not action and m=='DELETE':
+   if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队删除权限',403)
+   with db.tx() as c:
+       old=one(c,'SELECT * FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
+       if not old:return bad(h,'NOT_FOUND','团队不存在',404)
+       refs={'members':c.execute("SELECT count(*) FROM team_memberships WHERE team_id=? AND status='active'",(ident,)).fetchone()[0],'bindings':c.execute('SELECT count(*) FROM role_bindings WHERE organization_id=? AND scope_type=\'team\' AND scope_id=? AND status=\'active\'',(org,ident)).fetchone()[0],'channelGrants':c.execute('SELECT count(*) FROM team_channel_accounts WHERE team_id=?',(ident,)).fetchone()[0],'positions':c.execute('SELECT count(*) FROM positions WHERE team_id=?',(ident,)).fetchone()[0],'sources':c.execute('SELECT count(*) FROM sources WHERE team_id=? AND status=\'active\'',(ident,)).fetchone()[0]}
+       refs={k:v for k,v in refs.items() if v}
+       if refs:return bad(h,'TEAM_IN_USE','团队仍被业务对象引用，无法删除',409,references=refs)
+       c.execute('DELETE FROM workspace_teams WHERE team_id=?',(ident,))
+       c.execute('DELETE FROM team_memberships WHERE team_id=?',(ident,))
+       c.execute('DELETE FROM team_business_lines WHERE team_id=?',(ident,))
+       c.execute('DELETE FROM team_markets WHERE team_id=?',(ident,))
+       c.execute('DELETE FROM teams WHERE team_id=?',(ident,))
+       audit_in_tx(c,a,'delete','team',ident,old,{},old['workspace_id'])
+   return h.sendj({'ok':True}) or True
+  # 9) 团队集合 GET：成员数为企业内去重统计
+  if not ident and m=='GET':
+   with db.tx(False) as c:
+       its=rows(c,"""SELECT t.*,w.name workspace_name,
+         (SELECT COUNT(DISTINCT tm.user_id) FROM team_memberships tm JOIN users u ON u.user_id=tm.user_id AND u.organization_id=t.organization_id WHERE tm.team_id=t.team_id AND tm.status='active') member_count,
+         (SELECT count(*) FROM team_channel_accounts x WHERE x.team_id=t.team_id) account_count,
+         (SELECT group_concat(bl.name) FROM team_business_lines tbl JOIN business_lines bl ON bl.business_line_id=tbl.business_line_id WHERE tbl.team_id=t.team_id AND tbl.status='active') business_lines,
+         (SELECT group_concat(m.name) FROM team_markets tm JOIN markets m ON m.market_id=tm.market_id WHERE tm.team_id=t.team_id AND tm.status='active') markets
+         FROM teams t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.organization_id=? ORDER BY t.created_at""",(org,))
    return h.sendj({'ok':True,'items':its}) or True
-  if m=='POST':
+  # 10) 团队集合 POST
+  if not ident and m=='POST':
    if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队管理权限',403)
    b=h.body();name=str(b.get('name') or '').strip();wid=str(b.get('workspaceId') or '').strip()
    if not name:return bad(h,'NAME_REQUIRED','团队名称不能为空')
    if not wid:return bad(h,'WORKSPACE_REQUIRED','必须选择所属工作区')
    n=now_ms();tid='team_'+uuid.uuid4().hex
    with db.tx() as c:
-    if not c.execute("SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=? AND status='active'",(wid,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在或已停用',404)
-    c.execute('INSERT INTO teams(team_id,organization_id,workspace_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(tid,org,wid,name,'active',n,n))
-    c.execute("INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,'primary',1,'manage','active',?,?)",(wid,tid,org,n,n))
-    audit_in_tx(c,a,'create','team',tid,{},b,wid=wid)
+       if not c.execute("SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=? AND status='active'",(wid,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在或已停用',404)
+       c.execute('INSERT INTO teams(team_id,organization_id,workspace_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(tid,org,wid,name,'active',n,n))
+       c.execute("INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,'primary',1,'manage','active',?,?)",(wid,tid,org,n,n))
+       audit_in_tx(c,a,'create','team',tid,{},b,wid=wid)
    return h.sendj({'ok':True,'teamId':tid,'workspaceId':wid},201) or True
-  if ident and not action and m=='PATCH':
-   if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队管理权限',403)
-   b=h.body();
-   with db.tx() as c:
-    old=one(c,'SELECT * FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
-    if not old:return bad(h,'NOT_FOUND','团队不存在',404)
-    c.execute('UPDATE teams SET name=?,status=?,updated_at=? WHERE team_id=?',(str(b.get('name') or old['name']),clean_status(b.get('status')) or old['status'],now_ms(),ident));new=one(c,'SELECT * FROM teams WHERE team_id=?',(ident,))
-    audit_in_tx(c,a,'update','team',ident,old,new,b.get('reason'),old['workspace_id'])
-   return h.sendj({'ok':True,'item':new}) or True
-  if ident and not action and m=='DELETE':
-   if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队删除权限',403)
-   with db.tx() as c:
-    old=one(c,'SELECT * FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
-    if not old:return bad(h,'NOT_FOUND','团队不存在',404)
-    refs={'members':c.execute("SELECT count(*) FROM team_memberships WHERE team_id=? AND status='active'",(ident,)).fetchone()[0],'bindings':c.execute('SELECT count(*) FROM role_bindings WHERE organization_id=? AND scope_type=\'team\' AND scope_id=? AND status=\'active\'',(org,ident)).fetchone()[0],'channelGrants':c.execute('SELECT count(*) FROM team_channel_accounts WHERE team_id=?',(ident,)).fetchone()[0],'positions':c.execute('SELECT count(*) FROM positions WHERE team_id=?',(ident,)).fetchone()[0],'sources':c.execute('SELECT count(*) FROM sources WHERE team_id=? AND status=\'active\'',(ident,)).fetchone()[0]}
-    refs={k:v for k,v in refs.items() if v}
-    if refs:return bad(h,'TEAM_IN_USE','团队仍被业务对象引用，无法删除',409,references=refs)
-    c.execute('DELETE FROM workspace_teams WHERE team_id=?',(ident,))
-    c.execute('DELETE FROM teams WHERE team_id=?',(ident,))
-    audit_in_tx(c,a,'delete','team',ident,old,{},old['workspace_id'])
-   return h.sendj({'ok':True}) or True
-  if ident and action=='member-candidates' and m=='GET':
-   term=str(q.get('q') or '').strip();like='%'+term.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
-   with db.tx(False) as c:
-    if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
-    its=rows(c,"""SELECT u.user_id,u.login_name,u.display_name,u.status user_status,
-     (SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,
-     (SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name
-     FROM users u WHERE u.organization_id=? AND u.status='active'
-     AND NOT EXISTS(SELECT 1 FROM team_memberships tm WHERE tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active')
-     AND (?='' OR u.display_name LIKE ? ESCAPE '\' OR u.login_name LIKE ? ESCAPE '\'
-      OR EXISTS(SELECT 1 FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.status='active' AND (p.name LIKE ? ESCAPE '\' OR d.name LIKE ? ESCAPE '\')))
-     ORDER BY u.display_name,u.login_name LIMIT 50""",(org,ident,term,like,like,like,like))
-   return h.sendj({'ok':True,'items':its,'query':term}) or True
-  if ident and action=='members':
-   if m=='GET':
-    with db.tx(False) as c:
-     its=rows(c,"""SELECT tm.*,u.login_name,u.display_name,u.status user_status,
-      (SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,
-      (SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name,
-      (SELECT group_concat(DISTINCT r.name) FROM role_bindings rb JOIN roles r ON r.role_id=rb.role_id WHERE rb.user_id=u.user_id AND rb.organization_id=t.organization_id AND rb.status='active') role_names
-      FROM team_memberships tm JOIN users u ON u.user_id=tm.user_id JOIN teams t ON t.team_id=tm.team_id
-      WHERE tm.team_id=? AND t.organization_id=? AND tm.status='active'
-      ORDER BY tm.is_primary DESC,u.display_name,u.login_name""",(ident,org))
-    return h.sendj({'ok':True,'items':its}) or True
-   if m=='POST':
-    if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无成员管理权限',403)
-    b=h.body();uid=str(b.get('userId') or '').strip();kind=str(b.get('membershipType') or 'member');primary=1 if str(b.get('isPrimary') or '0').lower() in ('1','true') else 0;reason=str(b.get('reason') or '').strip()
-    if not uid:return bad(h,'USER_REQUIRED','必须选择用户')
-    if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
-    if kind not in ('member','manager','operator','support'):return bad(h,'INVALID_MEMBERSHIP_TYPE','成员类型无效')
-    with db.tx() as c:
-     user=one(c,'SELECT user_id,display_name,login_name FROM users WHERE user_id=? AND organization_id=? AND status=\'active\'',(uid,org))
-     if not user:return bad(h,'USER_NOT_FOUND','用户不存在、已停用或不属于目标企业',404)
-     team=one(c,'SELECT team_id,name FROM teams WHERE team_id=? AND organization_id=?',(ident,org))
-     if not team:return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
-     old=one(c,'SELECT * FROM team_memberships WHERE user_id=? AND team_id=?',(uid,ident)) or {}
-     n=now_ms()
-     if primary:c.execute("UPDATE team_memberships SET is_primary=0,updated_at=? WHERE user_id=? AND team_id<>? AND status='active'",(n,uid,ident))
-     c.execute("INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,?, 'active',?,NULL,?,?) ON CONFLICT(user_id,team_id) DO UPDATE SET membership_type=excluded.membership_type,is_primary=excluded.is_primary,status='active',left_at=NULL,updated_at=excluded.updated_at",(uid,ident,kind,primary,n,n,n))
-     newrow=one(c,'SELECT * FROM team_memberships WHERE user_id=? AND team_id=?',(uid,ident))
-     audit_in_tx(c,a,'upsert','team_membership',uid,old,newrow,reason)
-    return h.sendj({'ok':True,'item':newrow}) or True
-   if m=='DELETE':
-    if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无成员管理权限',403)
-    b=h.body();uid=str(b.get('userId') or '').strip();reason=str(b.get('reason') or '').strip()
-    if not uid:return bad(h,'USER_REQUIRED','必须指定用户')
-    if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
-    with db.tx() as c:
-     if not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(ident,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
-     old=one(c,"SELECT * FROM team_memberships WHERE user_id=? AND team_id=? AND status='active'",(uid,ident))
-     if not old:return bad(h,'MEMBER_NOT_FOUND','该用户不是当前团队的有效成员',404)
-     if int(old.get('is_primary') or 0):return bad(h,'PRIMARY_TEAM_TRANSFER_REQUIRED','请先为该用户转移主团队，再执行移出',409)
-     n=now_ms();cur=c.execute("UPDATE team_memberships SET status='disabled',is_primary=0,left_at=?,updated_at=? WHERE user_id=? AND team_id=? AND status='active'",(n,n,uid,ident))
-     if cur.rowcount!=1:raise RuntimeError('TEAM_MEMBER_UPDATE_RACE')
-     audit_in_tx(c,a,'remove','team_membership',uid,old,{},reason)
-    return h.sendj({'ok':True}) or True
  # users
  if root=='users':
   if m=='GET':

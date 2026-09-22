@@ -72,7 +72,7 @@ async function api(path,opt={}){let method=opt.method||'GET',requestVersion=S.lo
 function toast(x,bad=false){let e=$('#toast');e.textContent=x;e.style.border='1px solid '+(bad?'var(--bad)':'var(--ok)');e.classList.remove('hide');setTimeout(()=>e.classList.add('hide'),2800)}
 function fmt(t){if(t===undefined||t===null||t==='')return '—';let n=Number(t);if(!Number.isFinite(n))return '—';if(n>0&&n<100000000000)n*=1000;const d=new Date(n);return Number.isNaN(d.getTime())?'—':d.toLocaleString()}
 function status(v){const raw=String(v??'unknown').toLowerCase(),m={active:'正常',enabled:'已启用',disabled:'已停用',pending:'待处理',draft:'草稿',planned:'已排期',paused:'已暂停',completed:'已完成',archived:'已归档',revoked:'已撤销',expired:'已过期',inactive:'未启用',locked:'已锁定',deleted:'已删除',unknown:'未知'};const cls=m[raw]?raw:'unknown';return `<span class="status ${cls}">${esc(m[raw]||v||'未知')}</span>`}
-function qp(){return '?organization_id='+encodeURIComponent(S.org)}
+function qp(extra){let s='?organization_id='+encodeURIComponent(S.org);if(extra&&typeof extra==='object'){for(const[k,v]of Object.entries(extra)){if(v===undefined||v===null||v==='')continue;s+='&'+encodeURIComponent(k)+'='+encodeURIComponent(v)}}return s}
 function sessionStatus(r){if(r.revoked_at)return status('revoked');if(Number(r.expires_at)<=Date.now())return status('expired');return status('active')}
 function head(title,desc,action=''){return `<div class="pagehead"><div><h2>${title}</h2><p>${desc}</p></div><span class="grow"></span>${action}</div>`}
 function cellValue(col,row){if(typeof col[1]==='function')return {html:true,value:col[1](row)};if(typeof col[2]==='function')return {html:true,value:col[2](row)};return {html:false,value:row[col[1]]}}
@@ -96,7 +96,28 @@ function navigate(p){const target=document.querySelector(`[data-page="${CSS.esca
 const PAGE_ALIAS={'rbac-matrix':'rbacMatrix','contact-identities':'contactIdentities','source-paths':'sourcePaths','campaign-kanban':'campaignKanban','database-preview':'databasePreview','channel-types':'channelTypes','source-types':'sourceTypes','security-events':'planned','browser-env':'planned','business-sessions':'planned','suppliers':'planned','campaign-resources':'planned','campaign-cost':'planned','continuous-conversations':'planned','cross-platform-transfer':'planned','conversions':'planned','revenue-attribution':'planned','refunds':'planned','roi':'planned','business-analysis':'planned','system-settings':'planned','todo':'planned','imports':'planned'};
 async function loadPage(){let version=++S.loadVersion,page=PAGE_ALIAS[S.page]||S.page,org=S.org,c=$('#content');c.innerHTML='<div class="panel empty">正在安全加载…</div>';try{await pages[page]();if(version!==S.loadVersion||page!==S.page||org!==S.org)return}catch(e){if(e.code==='STALE_CONTEXT'||version!==S.loadVersion||page!==S.page||org!==S.org)return;c.innerHTML=head('加载失败','接口拒绝或数据异常')+`<div class="panel error">${esc(e.message)}</div>`}}
 const editBtn=(kind,r,id,name)=>`<button class="btn secondary small" onclick='${kind==="users"?"editUserEnterprise("+JSON.stringify(id)+")":"editResource("+JSON.stringify(kind)+","+JSON.stringify(r)+","+JSON.stringify(id)+","+JSON.stringify(name)+")"}'>编辑</button>`;
-async function editResource(kind,r,id,name){openModal('编辑'+name,[{name:'name',label:'显示名称',value:r.name||r.display_name||r.source_name||r.admin_device_name||r.manual_name},{name:'status',label:'状态',type:'select',value:r.status,options:[{value:'active',label:'正常'},{value:'disabled',label:'停用'}]},{name:'reason',label:'操作原因'}],async o=>{let body={status:o.status,reason:o.reason};if(kind==='users')body.displayName=o.name;else if(kind==='accounts')body.displayName=o.name;else if(kind==='devices')body.deviceName=o.name;else body.name=o.name;await api(`/api/v207/admin/${kind}/${encodeURIComponent(id)}${qp()}`,{method:'PATCH',body})})}
+async function editResource(kind,r,id,name){
+ let extraFields=[];
+ if(kind==='teams'){
+  let wsOptions=S.cache.workspaces||[];
+  extraFields=[
+   {name:'workspaceId',label:'所属工作区',type:'select',value:r.workspace_id,options:wsOptions.map(x=>({value:x.workspace_id,label:x.name||x.workspace_id}))}
+  ];
+ }
+ openModal('编辑'+name,[
+  {name:'name',label:'显示名称',value:r.name||r.display_name||r.source_name||r.admin_device_name||r.manual_name},
+  ...extraFields,
+  {name:'status',label:'状态',type:'select',value:r.status,options:[{value:'active',label:'正常'},{value:'disabled',label:'停用'}]},
+  {name:'reason',label:'操作原因'}
+ ],async o=>{
+  let body={status:o.status,reason:o.reason};
+  if(kind==='users')body.displayName=o.name;
+  else if(kind==='accounts')body.displayName=o.name;
+  else if(kind==='devices')body.deviceName=o.name;
+  else body.name=o.name;
+  if(kind==='teams'&&o.workspaceId)body.workspaceId=o.workspaceId;
+  await api(`/api/v207/admin/${kind}/${encodeURIComponent(id)}${qp()}`,{method:'PATCH',body})
+})}
 async function createDeviceEnrollment(){
  try{
   const [wd,td,ud]=await Promise.all([
@@ -689,28 +710,29 @@ async function addTeamMember(tid,name){
  const uid=$('#memberUser')?.value,reason=$('#memberReason')?.value.trim();
  if(!uid){toast('请选择用户',1);return false}if(!reason){toast('请填写操作原因',1);return false}
  await api(`/api/v207/admin/teams/${encodeURIComponent(tid)}/members${qp()}`,{method:'POST',body:{userId:uid,membershipType:$('#memberType')?.value||'member',isPrimary:!!$('#memberPrimary')?.checked,reason}});
- toast('成员已添加');await members(tid,name);return true;
+ toast('成员已添加');await refreshTeamsCache();await members(tid,name);return true;
 }
 function editTeamMember(tid,name,row){
  openModal('编辑成员关系 — '+(row.display_name||row.login_name),[
   {name:'membershipType',label:'成员类型',type:'select',value:row.membership_type||'member',options:Object.entries(TEAM_MEMBER_TYPES).map(([value,label])=>({value,label}))},
   {name:'reason',label:'操作原因',required:true,placeholder:'请说明成员关系调整原因'}
- ],async o=>{await api(`/api/v207/admin/teams/${encodeURIComponent(tid)}/members${qp()}`,{method:'POST',body:{userId:row.user_id,membershipType:o.membershipType,isPrimary:!!row.is_primary,reason:o.reason}});setTimeout(()=>members(tid,name),0)},{reload:false})
+ ],async o=>{await api(`/api/v207/admin/teams/${encodeURIComponent(tid)}/members${qp()}`,{method:'POST',body:{userId:row.user_id,membershipType:o.membershipType,isPrimary:!!row.is_primary,reason:o.reason}});setTimeout(async()=>{await refreshTeamsCache();await members(tid,name)},0)},{reload:false})
 }
 function transferPrimaryTeam(tid,name,row){
  openConfirmModal('转移主团队',`<p>确认将 <strong>${esc(row.display_name||row.login_name)}</strong> 的主团队转移到“${esc(name)}”？</p><p class="sub">该用户原有主团队关系将自动取消。此操作独立记录审计日志。</p><div class="field"><label>操作原因</label><textarea id="primaryReason" required maxlength="300" placeholder="请说明主团队转移原因"></textarea></div>`,async()=>{
   const reason=$('#primaryReason')?.value.trim();if(!reason){toast('请填写操作原因',1);return false}
   await api(`/api/v207/admin/teams/${encodeURIComponent(tid)}/members${qp()}`,{method:'POST',body:{userId:row.user_id,membershipType:row.membership_type||'member',isPrimary:true,reason}});
-  setTimeout(()=>members(tid,name),0);
+  setTimeout(async()=>{await refreshTeamsCache();await members(tid,name)},0);
  },{confirmText:'确认转移',successMessage:'主团队已转移',reload:false})
 }
 function removeTeamMember(tid,name,row){
  openConfirmModal('移出团队成员',`<p>确认将 <strong>${esc(row.display_name||row.login_name)}</strong> 移出当前团队？</p><div class="field"><label>操作原因</label><textarea id="removeMemberReason" required maxlength="300" placeholder="请说明移出原因"></textarea></div>`,async()=>{
   const reason=$('#removeMemberReason')?.value.trim();if(!reason){toast('请填写操作原因',1);return false}
   await api(`/api/v207/admin/teams/${encodeURIComponent(tid)}/members${qp()}`,{method:'DELETE',body:{userId:row.user_id,reason}});
-  setTimeout(()=>members(tid,name).catch(e=>toast(e.message||'刷新成员列表失败',1)),0);
+  setTimeout(async()=>{await refreshTeamsCache();await members(tid,name).catch(e=>toast(e.message||'刷新成员列表失败',1))},0);
  },{confirmText:'确认移出',successMessage:'成员已移出',reload:false})
 }
+async function refreshTeamsCache(){try{const d=await api('/api/v207/admin/teams'+qp());S.cache.teams=d.items||[];if(typeof S.tableRefresh?.teams==='function')S.tableRefresh.teams()}catch(e){console.warn('refreshTeamsCache failed:',e)}}
 const WS_TABS={basic:'基本信息',teams:'团队',business:'业务线',markets:'市场',resources:'资源概览'};
 function wsBool(v){return v===true||v===1||v==='1'||v==='true'}
 function wsCurrent(){return S.cache.workspaceConsole||null}

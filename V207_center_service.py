@@ -189,11 +189,11 @@ class H(BaseHTTPRequestHandler):
    c.execute('INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,account_type,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?)',(aid,a['organization_id'],ch,str(b.get('displayName') or identity),'active',n,n,pid,str(b.get('accountType') or 'business_account'),'{}'));c.execute('INSERT INTO channel_account_identities(identity_id,channel_account_id,identity_type,identity_value,canonical_value,created_at,platform_id,is_primary,status,valid_from,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(iid,aid,str(b.get('identityType') or 'login'),str(b.get('identity')),identity,n,pid,1,'active',n,'{}'));c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team,aid,a['user_id'],n));c.execute("INSERT INTO sources(source_id,workspace_id,channel,account_identity,source_name,status,first_seen_at,last_seen_at,metadata_json,organization_id,team_id,channel_account_id) VALUES(?,?,?,?,?,'active',?,?,'{}',?,?,?)",(sid,t['workspace_id'],ch,str(b.get('identity')),str(b.get('sourceName') or b.get('displayName') or identity),n,n,a['organization_id'],team,aid))
   self.audit(a,'create','channel_account',aid,{},dict(b,workspace_id=t['workspace_id']));return self.sendj({'ok':True,'channelAccountId':aid,'sourceId':sid},201)
  def create_team(self,a):
-  if not can(DB,a,'team.manage'):return self.sendj({'ok':False,'code':'FORBIDDEN'},403)
-  b=self.body();tid='team_'+uuid.uuid4().hex;wid='ws_'+uuid.uuid4().hex;n=now_ms();name=str(b.get('name') or '').strip()
-  if not name:return self.sendj({'ok':False,'code':'NAME_REQUIRED'},400)
-  with DB.tx() as c:c.execute('INSERT INTO workspaces(workspace_id,name,status,created_at,updated_at,organization_id) VALUES(?,?,\'active\',?,?,?)',(wid,name,n,n,a['organization_id']));c.execute('INSERT INTO workspace_configs(workspace_id,revision,items_json,updated_at,updated_by) VALUES(?,0,\'[]\',?,?)',(wid,n,a['user_id']));c.execute('INSERT INTO teams(team_id,organization_id,workspace_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(tid,a['organization_id'],wid,name,'active',n,n))
-  return self.sendj({'ok':True,'teamId':tid,'workspaceId':wid},201)
+  # [P0 收口] 旧团队创建入口已废弃。Schema 212 要求所有团队创建统一走新管理 API：
+  #   POST /api/v207/admin/teams
+  # 旧实现会忽略前端选择的工作区并自动创建新工作区，制造孤立工作区与团队漂移。
+  # 此路由仅返回弃用错误，避免后续请求继续产生错误数据。
+  self.sendj({'ok':False,'code':'DEPRECATED','message':'团队创建请使用 POST /api/v207/admin/teams（必须显式选择所属工作区）'},410)
  def create_user(self,a):
   # [P0 收口] 旧用户创建入口已废弃。Schema 211 要求所有用户创建统一走新管理 API：
   #   POST /api/v207/admin/users
