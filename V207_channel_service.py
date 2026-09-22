@@ -111,23 +111,55 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
   return _err('METHOD_NOT_ALLOWED','不支持的账号授权操作',405)
  if method=='GET' and account_id is None:
   with db.tx(False) as c:
-   items=_rows(c,"SELECT ca.*,group_concat(DISTINCT i.identity_value) identities,group_concat(DISTINCT t.name) teams,(SELECT count(*) FROM sources s WHERE s.channel_account_id=ca.channel_account_id) source_count FROM channel_accounts ca LEFT JOIN channel_account_identities i ON i.channel_account_id=ca.channel_account_id LEFT JOIN team_channel_accounts x ON x.channel_account_id=ca.channel_account_id LEFT JOIN teams t ON t.team_id=x.team_id WHERE ca.organization_id=? GROUP BY ca.channel_account_id ORDER BY ca.created_at",(org,))
+   # P2: 关联 platforms 表，返回完整平台信息
+   items=_rows(c,"""SELECT ca.*,
+     p.platform_code, p.platform_name,
+     group_concat(DISTINCT i.identity_value) identities,
+     group_concat(DISTINCT t.name) teams,
+     (SELECT count(*) FROM sources s WHERE s.channel_account_id=ca.channel_account_id) source_count 
+   FROM channel_accounts ca 
+   LEFT JOIN platforms p ON p.platform_id=ca.platform_id
+   LEFT JOIN channel_account_identities i ON i.channel_account_id=ca.channel_account_id 
+   LEFT JOIN team_channel_accounts x ON x.channel_account_id=ca.channel_account_id 
+   LEFT JOIN teams t ON t.team_id=x.team_id 
+   WHERE ca.organization_id=? 
+   GROUP BY ca.channel_account_id 
+   ORDER BY ca.created_at""",(org,))
   return {'ok':True,'items':items},200
  if method=='GET' and account_id:
-  with db.tx(False) as c:item=_account(c,org,account_id)
+  with db.tx(False) as c:
+   # P2: 关联 platforms 表返回完整平台信息
+   item=_one(c,"""SELECT ca.*, p.platform_code, p.platform_name, p.platform_kind
+     FROM channel_accounts ca 
+     LEFT JOIN platforms p ON p.platform_id=ca.platform_id
+     WHERE ca.channel_account_id=? AND ca.organization_id=?""",(account_id,org))
   return ({'ok':True,'item':item},200) if item else _err('ACCOUNT_NOT_FOUND','账号不存在',404)
  if method=='POST' and account_id is None:
-  ch=str(body.get('channel') or '').strip().lower();pid=str(body.get('platformId') or '').strip();team_id=str(body.get('teamId') or '');idata,e=_identity({'identityType':body.get('identityType','login'),'identityValue':body.get('identity'),'metadata':body.get('identityMetadata',{})})
-  if e or not ch:return _err('INVALID_ACCOUNT','平台代码或身份无效')
+  # P2: platform_id 必填，channel 仅用于兼容
+  pid=str(body.get('platformId') or '').strip()
+  if not pid:return _err('PLATFORM_ID_REQUIRED','platform_id is required')
+  
+  team_id=str(body.get('teamId') or '')
+  idata,e=_identity({'identityType':body.get('identityType','login'),'identityValue':body.get('identity'),'metadata':body.get('identityMetadata',{})})
+  if e:return e
+  
   meta=body.get('metadata',{})
   if not isinstance(meta,dict):return _err('INVALID_METADATA','metadata 必须是对象')
+  
   with db.tx() as c:
    team=_one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(team_id,org))
    if not team:return _err('TEAM_NOT_FOUND','团队不存在',404)
-   platform=_one(c,"SELECT * FROM platforms WHERE status='active' AND (platform_id=? OR (?='' AND platform_code=?))",(pid,pid,ch))
-   if not platform:return _err('PLATFORM_NOT_FOUND','平台不存在或未启用',404)
-   if pid and platform['platform_code']!=ch:return _err('PLATFORM_MISMATCH','平台 ID 与平台代码不一致',409)
-   n=now_ms();aid='acc_'+uuid.uuid4().hex;iid='idn_'+uuid.uuid4().hex;sid='src_'+uuid.uuid4().hex;pid=platform['platform_id'];ch=platform['platform_code']
+   
+   # P2: 验证 platform_id 存在且激活
+   platform=_one(c,"SELECT * FROM platforms WHERE platform_id=? AND status='active'",(pid,))
+   if not platform:return _err('INVALID_PLATFORM','Platform not found or inactive',404)
+   
+   n=now_ms()
+   aid='acc_'+uuid.uuid4().hex
+   iid='idn_'+uuid.uuid4().hex
+   sid='src_'+uuid.uuid4().hex
+   ch=platform['platform_code'].lower()  # channel 字段仅用于向后兼容
+   
    c.execute('INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,account_type,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?)',(aid,org,ch,str(body.get('displayName') or idata['value']).strip(), 'active',n,n,pid,str(body.get('accountType') or 'business_account'),dumps(meta)))
    c.execute('INSERT INTO channel_account_identities(identity_id,channel_account_id,identity_type,identity_value,canonical_value,created_at,platform_id,is_primary,status,valid_from,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(iid,aid,idata['type'],idata['value'],idata['canonical'],n,pid,1,'active',n,dumps(idata['metadata'])))
    c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team_id,aid,actor['user_id'],n))

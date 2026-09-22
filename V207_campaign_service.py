@@ -37,7 +37,7 @@ def handle(db,a,org,m,ident,q,b):
  if not (allowed(db,a,org,perm) or (m=='GET' and allowed(db,a,org,'campaign.manage'))):return err('FORBIDDEN','无活动读取权限' if m=='GET' else '无活动管理权限',403)
  if m=='GET':
   with db.tx(False) as c:
-   base='SELECT c.*,p.platform_name,ca.display_name account_name,w.name workspace_name FROM campaigns c LEFT JOIN platforms p ON p.platform_id=c.platform_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=c.channel_account_id LEFT JOIN workspaces w ON w.workspace_id=c.workspace_id'
+   base='SELECT c.*,p.platform_name,ca.display_name account_name,w.name workspace_name,bl.name business_line_name,mk.name market_name FROM campaigns c LEFT JOIN platforms p ON p.platform_id=c.platform_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=c.channel_account_id LEFT JOIN workspaces w ON w.workspace_id=c.workspace_id LEFT JOIN business_lines bl ON bl.business_line_id=c.business_line_id LEFT JOIN markets mk ON mk.market_id=c.market_id'
    if ident:
     x=one(c,base+' WHERE c.campaign_id=? AND c.organization_id=?',(ident,org));return ({'ok':True,'item':x},200) if x else err('CAMPAIGN_NOT_FOUND','活动不存在',404)
    wh=['c.organization_id=?'];args=[org]
@@ -46,6 +46,7 @@ def handle(db,a,org,m,ident,q,b):
    return {'ok':True,'items':rows(c,base+' WHERE '+' AND '.join(wh)+' ORDER BY c.created_at DESC',args)},200
  if m=='POST' and not ident:
   wid=str(b.get('workspaceId') or b.get('workspace_id') or '').strip();name=str(b.get('name') or b.get('campaignName') or '').strip();code=str(b.get('code') or b.get('campaignCode') or '').strip() or None;typ=str(b.get('type') or 'marketing');status=str(b.get('status') or 'draft');platform=str(b.get('platformId') or '').strip() or None;account=str(b.get('channelAccountId') or '').strip() or None
+  bl_id=str(b.get('businessLineId') or b.get('business_line_id') or '').strip() or None;mk_id=str(b.get('marketId') or b.get('market_id') or '').strip() or None
   if not wid:return err('WORKSPACE_REQUIRED','workspaceId 必填')
   if not name or len(name)>128:return err('INVALID_CAMPAIGN_NAME','活动名称不能为空且不得超过 128 字符')
   if code and len(code)>128:return err('INVALID_CAMPAIGN_CODE','活动代码不得超过 128 字符')
@@ -60,8 +61,10 @@ def handle(db,a,org,m,ident,q,b):
     vr=validate(c,org,wid,platform,account)
     if isinstance(vr,tuple) and len(vr)==3 and isinstance(vr[2],int):return err(*vr)
     platform,_=vr
+    if bl_id and not one(c,'SELECT 1 FROM workspace_business_lines WHERE workspace_id=? AND business_line_id=? AND status=?',(wid,bl_id,'active')):return err('BUSINESS_LINE_NOT_IN_WORKSPACE','业务线未关联到目标工作区',404)
+    if mk_id and not one(c,'SELECT 1 FROM workspace_markets WHERE workspace_id=? AND market_id=? AND status=?',(wid,mk_id,'active')):return err('MARKET_NOT_IN_WORKSPACE','市场未关联到目标工作区',404)
     if code and one(c,'SELECT 1 FROM campaigns WHERE organization_id=? AND workspace_id=? AND campaign_code=?',(org,wid,code)):return err('CAMPAIGN_CODE_CONFLICT','活动代码在目标工作区已存在',409)
-    cid='cmp_'+uuid.uuid4().hex;n=now_ms();c.execute('INSERT INTO campaigns(campaign_id,organization_id,workspace_id,platform_id,channel_account_id,campaign_code,campaign_name,campaign_type,status,start_at,end_at,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(cid,org,wid,platform,account,code,name,typ,status,start,end,dumps(meta),n,n));new=one(c,'SELECT * FROM campaigns WHERE campaign_id=?',(cid,));audit(c,a,'create',cid,{},new,wid,b.get('reason'))
+    cid='cmp_'+uuid.uuid4().hex;n=now_ms();c.execute('INSERT INTO campaigns(campaign_id,organization_id,workspace_id,platform_id,channel_account_id,campaign_code,campaign_name,campaign_type,status,start_at,end_at,business_line_id,market_id,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(cid,org,wid,platform,account,code,name,typ,status,start,end,bl_id,mk_id,dumps(meta),n,n));new=one(c,'SELECT * FROM campaigns WHERE campaign_id=?',(cid,));audit(c,a,'create',cid,{},new,wid,b.get('reason'))
    return {'ok':True,'campaignId':cid,'item':new},201
   except (ValueError,TypeError):return err('INVALID_CAMPAIGN_PERIOD','活动时间必须为整数时间戳')
   except sqlite3.IntegrityError:return err('CAMPAIGN_CONFLICT','活动数据冲突',409)

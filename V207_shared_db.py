@@ -961,7 +961,7 @@ class Database:
    c.execute('PRAGMA foreign_keys=OFF')
    c.execute('BEGIN IMMEDIATE')
    if fresh:execute_sql_script(c,BASE_SCHEMA)
-   ensure_v207(c,fresh=fresh);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c)
+   ensure_v207(c,fresh=fresh);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c);ensure_v211_030(c);ensure_v211_040(c);ensure_v211_050(c)
    if fresh:bootstrap_fresh_database(c,b)
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)",(str(SCHEMA_VERSION),))
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version',?)",(PRODUCT_VERSION,))
@@ -1002,3 +1002,262 @@ class Database:
 
 # V207.3.0-dev 更新说明（2026-09-19）：保持 Schema 207，新增部门、业务线、市场、工作区多团队/业务线/市场关联，回填旧团队主工作区关系，并扩展审计作用域字段。
 # V207.4.0-dev 更新说明（2026-09-20）：采用严格迁移校验与完整性门禁；删除启动时隐式删除、重归属数据的修复逻辑；所有连接强制启用物理外键。
+
+# V211.0.1 更新说明（2026-09-22）：P1 扩展 - 渠道类型与来源类型独立字典表。
+V211_030_MIGRATION_ID = 'V211_030_channel_and_source_types'
+V211_030_SIGNATURE = 'channel_types,source_type_definitions,platform_id,channel_type_code,source_type_code'
+
+def ensure_v211_030(c):
+    """创建渠道类型和来源类型独立字典表。幂等迁移。"""
+    checksum = hashlib.sha256(V211_030_SIGNATURE.encode()).hexdigest()
+    old = c.execute("SELECT checksum FROM schema_migrations WHERE migration_id=?", (V211_030_MIGRATION_ID,)).fetchone()
+    if old and old[0] != checksum:
+        raise RuntimeError('MIGRATION_CHECKSUM_MISMATCH: ' + V211_030_MIGRATION_ID)
+
+    # 渠道类型表
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS channel_types(
+            channel_type_id    TEXT PRIMARY KEY,
+            platform_id        TEXT,
+            channel_type_code  TEXT NOT NULL UNIQUE,
+            name               TEXT NOT NULL,
+            description        TEXT,
+            direction          TEXT NOT NULL DEFAULT 'bidirectional'
+                              CHECK(direction IN ('inbound','outbound','bidirectional')),
+            is_active          INTEGER NOT NULL DEFAULT 1,
+            sort_order         INTEGER NOT NULL DEFAULT 0,
+            created_at         INTEGER NOT NULL,
+            updated_at         INTEGER NOT NULL
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_channel_type_platform ON channel_types(platform_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_channel_type_active ON channel_types(is_active)")
+
+    # 来源类型表
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS source_type_definitions(
+            source_type_id    TEXT PRIMARY KEY,
+            source_type_code  TEXT NOT NULL UNIQUE,
+            name              TEXT NOT NULL,
+            description       TEXT,
+            is_active         INTEGER NOT NULL DEFAULT 1,
+            sort_order        INTEGER NOT NULL DEFAULT 0,
+            created_at        INTEGER NOT NULL,
+            updated_at        INTEGER NOT NULL
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_source_type_active ON source_type_definitions(is_active)")
+
+    t = now_ms()
+    if not old:
+        # 插入预设渠道类型数据
+        from V207_p1_dict import CHANNEL_TYPES_SEED
+        for row in CHANNEL_TYPES_SEED:
+            ct_id, platform_id, ct_code, name, desc, direction, sort_order = row
+            c.execute("""
+                INSERT OR IGNORE INTO channel_types
+                (channel_type_id, platform_id, channel_type_code, name, description, direction, is_active, sort_order, created_at, updated_at)
+                VALUES(?,?,?,?,?,?,1,?,?,?)
+            """, (ct_id, platform_id, ct_code, name, desc or '', direction, sort_order, t, t))
+
+        # 插入预设来源类型数据
+        from V207_p1_dict import SOURCE_TYPES_SEED
+        for row in SOURCE_TYPES_SEED:
+            st_id, st_code, name, desc, sort_order = row
+            c.execute("""
+                INSERT OR IGNORE INTO source_type_definitions
+                (source_type_id, source_type_code, name, description, is_active, sort_order, created_at, updated_at)
+                VALUES(?,?,?,?,1,?,?,?)
+            """, (st_id, st_code, name, desc or '', sort_order, t, t))
+
+        c.execute("""
+            INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json)
+            VALUES(?,?,?,?,?,?)
+        """, (
+            V211_030_MIGRATION_ID,
+            '渠道类型与来源类型独立字典表',
+            checksum,
+            t,
+            'system',
+            dumps({'status': 'success', 'channel_types': len(CHANNEL_TYPES_SEED), 'source_types': len(SOURCE_TYPES_SEED)})
+        ))
+
+# P3: sources 表添加 source_type_id 外键
+V211_040_MIGRATION_ID = 'V211_040_sources_type_id'
+V211_040_SIGNATURE = 'sources.source_type_id,FK:source_type_definitions'
+
+def ensure_v211_040(c):
+    """为 sources 表添加 source_type_id 外键。幂等迁移。"""
+    checksum = hashlib.sha256(V211_040_SIGNATURE.encode()).hexdigest()
+    old = c.execute("SELECT checksum FROM schema_migrations WHERE migration_id=?", (V211_040_MIGRATION_ID,)).fetchone()
+    if old and old[0] != checksum:
+        raise RuntimeError('MIGRATION_CHECKSUM_MISMATCH: ' + V211_040_MIGRATION_ID)
+    
+    # 检查列是否已存在
+    cols = [r[1] for r in c.execute("PRAGMA table_info(sources)")]
+    if 'source_type_id' in cols:
+        if not old:
+            t = now_ms()
+            c.execute("""
+                INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json)
+                VALUES(?,?,?,?,?,?)
+            """, (V211_040_MIGRATION_ID, 'sources表添加source_type_id外键', checksum, t, 'system', dumps({'status': 'skip', 'reason': 'column exists'})))
+        return
+    
+    # 添加列并建立外键
+    c.execute("ALTER TABLE sources ADD COLUMN source_type_id TEXT")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_sources_type ON sources(source_type_id)")
+    
+    if not old:
+        t = now_ms()
+        c.execute("""
+            INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json)
+            VALUES(?,?,?,?,?,?)
+        """, (V211_040_MIGRATION_ID, 'sources表添加source_type_id外键', checksum, t, 'system', dumps({'status': 'success'})))
+
+# P4: source_touchpoints 添加 channel_type_id，campaigns 添加 business_line_id
+V211_050_MIGRATION_ID = 'V211_050_touchpoints_campaigns_enhance'
+V211_050_SIGNATURE = 'source_touchpoints.channel_type_id,campaigns.business_line_id,campaigns.market_id'
+
+def ensure_v211_050(c):
+    """为 source_touchpoints 和 campaigns 添加字典外键。幂等迁移。"""
+    checksum = hashlib.sha256(V211_050_SIGNATURE.encode()).hexdigest()
+    old = c.execute("SELECT checksum FROM schema_migrations WHERE migration_id=?", (V211_050_MIGRATION_ID,)).fetchone()
+    if old and old[0] != checksum:
+        raise RuntimeError('MIGRATION_CHECKSUM_MISMATCH: ' + V211_050_MIGRATION_ID)
+    
+    changed = []
+    
+    # 1. source_touchpoints 添加 channel_type_id
+    tp_cols = [r[1] for r in c.execute("PRAGMA table_info(source_touchpoints)")]
+    if 'channel_type_id' not in tp_cols:
+        c.execute("ALTER TABLE source_touchpoints ADD COLUMN channel_type_id TEXT")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_touchpoints_channel_type ON source_touchpoints(channel_type_id)")
+        changed.append('source_touchpoints.channel_type_id')
+    
+    # 2. campaigns 添加 business_line_id 和 market_id
+    camp_cols = [r[1] for r in c.execute("PRAGMA table_info(campaigns)")]
+    if 'business_line_id' not in camp_cols:
+        c.execute("ALTER TABLE campaigns ADD COLUMN business_line_id TEXT")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_campaigns_business_line ON campaigns(business_line_id)")
+        changed.append('campaigns.business_line_id')
+    if 'market_id' not in camp_cols:
+        c.execute("ALTER TABLE campaigns ADD COLUMN market_id TEXT")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_campaigns_market ON campaigns(market_id)")
+        changed.append('campaigns.market_id')
+    
+    if not old:
+        t = now_ms()
+        c.execute("""
+            INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json)
+            VALUES(?,?,?,?,?,?)
+        """, (V211_050_MIGRATION_ID, '触点渠道类型与活动业务线市场关联', checksum, t, 'system', dumps({'status': 'success', 'changed': changed})))
+
+def ensure_v211_040_p2(c):
+    """
+    P2-1: platform_id 必填，channel 降级为兼容字段
+    P2-2: 添加平台验证触发器
+    """
+    migration_id = 'v211-040-p2-platform-required'
+    old = c.execute("SELECT 1 FROM schema_migrations WHERE migration_id=?", (migration_id,)).fetchone()
+    if old:
+        return
+    
+    t = now_ms()
+    
+    # 1. 确保所有平台已注册
+    platforms_map = {
+        'whatsapp': ('PLT-WHATSAPP', 'WHATSAPP', 'WhatsApp', 'messaging'),
+        'instagram': ('PLT-INSTAGRAM', 'INSTAGRAM', 'Instagram', 'social'),
+        'facebook': ('PLT-FACEBOOK', 'FACEBOOK', 'Facebook', 'social'),
+        'messenger': ('PLT-MESSENGER', 'MESSENGER', 'Messenger', 'messaging'),
+        'telegram': ('PLT-TELEGRAM', 'TELEGRAM', 'Telegram', 'messaging')
+    }
+    
+    for channel, (platform_id, code, name, kind) in platforms_map.items():
+        existing = c.execute("SELECT 1 FROM platforms WHERE platform_id=?", (platform_id,)).fetchone()
+        if not existing:
+            c.execute("""
+                INSERT INTO platforms(platform_id, platform_code, platform_name, platform_kind, status, created_at, updated_at)
+                VALUES(?,?,?,?,?,?,?)
+            """, (platform_id, code, name, kind, 'active', t, t))
+    
+    # 2. 迁移 channel_accounts.channel → platform_id
+    accounts = c.execute("SELECT channel_account_id, channel, platform_id FROM channel_accounts").fetchall()
+    migrated_count = 0
+    for account_id, channel, current_platform_id in accounts:
+        if not current_platform_id and channel in platforms_map:
+            mapped_platform_id = platforms_map[channel][0]
+            c.execute("UPDATE channel_accounts SET platform_id=?, updated_at=? WHERE channel_account_id=?",
+                     (mapped_platform_id, t, account_id))
+            migrated_count += 1
+    
+    # 3. 迁移 sources.platform_id（通过 channel_account_id 关联）
+    sources_to_migrate = c.execute("""
+        SELECT s.source_id, ca.platform_id
+        FROM sources s
+        LEFT JOIN channel_accounts ca ON s.channel_account_id = ca.channel_account_id
+        WHERE s.platform_id IS NULL AND ca.platform_id IS NOT NULL
+    """).fetchall()
+    
+    source_migrated = 0
+    for source_id, platform_id in sources_to_migrate:
+        c.execute("UPDATE sources SET platform_id=?, updated_at=? WHERE source_id=?",
+                 (platform_id, t, source_id))
+        source_migrated += 1
+    
+    # 4. 创建验证触发器
+    c.execute("""
+        CREATE TRIGGER IF NOT EXISTS trg_channel_accounts_platform_required_insert
+        BEFORE INSERT ON channel_accounts
+        WHEN NEW.platform_id IS NULL
+        BEGIN
+            SELECT RAISE(ABORT, 'PLATFORM_ID_REQUIRED: platform_id is required for all channel accounts');
+        END
+    """)
+    
+    c.execute("""
+        CREATE TRIGGER IF NOT EXISTS trg_channel_accounts_platform_required_update
+        BEFORE UPDATE ON channel_accounts
+        WHEN NEW.platform_id IS NULL
+        BEGIN
+            SELECT RAISE(ABORT, 'PLATFORM_ID_REQUIRED: platform_id cannot be set to NULL');
+        END
+    """)
+    
+    c.execute("""
+        CREATE TRIGGER IF NOT EXISTS trg_channel_accounts_platform_valid_insert
+        BEFORE INSERT ON channel_accounts
+        WHEN NEW.platform_id IS NOT NULL
+        BEGIN
+            SELECT CASE 
+                WHEN (SELECT COUNT(*) FROM platforms WHERE platform_id=NEW.platform_id AND status='active') = 0
+                THEN RAISE(ABORT, 'INVALID_PLATFORM: platform_id does not exist or is inactive')
+            END;
+        END
+    """)
+    
+    c.execute("""
+        CREATE TRIGGER IF NOT EXISTS trg_channel_accounts_platform_valid_update
+        BEFORE UPDATE OF platform_id ON channel_accounts
+        WHEN NEW.platform_id IS NOT NULL
+        BEGIN
+            SELECT CASE 
+                WHEN (SELECT COUNT(*) FROM platforms WHERE platform_id=NEW.platform_id AND status='active') = 0
+                THEN RAISE(ABORT, 'INVALID_PLATFORM: platform_id does not exist or is inactive')
+            END;
+        END
+    """)
+    
+    # 5. 记录迁移
+    c.execute("""
+        INSERT INTO schema_migrations(migration_id, migration_name, checksum, applied_at, applied_by, result_json)
+        VALUES(?,?,?,?,?,?)
+    """, (
+        migration_id,
+        'P2: Platform ID required, channel field legacy',
+        'sha256:p2-platform-migration-v1',
+        t,
+        'system',
+        dumps({'accounts_migrated': migrated_count, 'sources_migrated': source_migrated, 'triggers_created': 4})
+    ))

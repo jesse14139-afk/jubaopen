@@ -195,14 +195,11 @@ class H(BaseHTTPRequestHandler):
   with DB.tx() as c:c.execute('INSERT INTO workspaces(workspace_id,name,status,created_at,updated_at,organization_id) VALUES(?,?,\'active\',?,?,?)',(wid,name,n,n,a['organization_id']));c.execute('INSERT INTO workspace_configs(workspace_id,revision,items_json,updated_at,updated_by) VALUES(?,0,\'[]\',?,?)',(wid,n,a['user_id']));c.execute('INSERT INTO teams(team_id,organization_id,workspace_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(tid,a['organization_id'],wid,name,'active',n,n))
   return self.sendj({'ok':True,'teamId':tid,'workspaceId':wid},201)
  def create_user(self,a):
-  if not can(DB,a,'user.manage'):return self.sendj({'ok':False,'code':'FORBIDDEN'},403)
-  b=self.body();uid='usr_'+uuid.uuid4().hex;n=now_ms();pwd=str(b.get('password') or '');loginname=str(b.get('loginName') or '').strip();team=str(b.get('teamId') or '');role=str(b.get('roleId') or 'role_operator')
-  if not password_strong(pwd) or not loginname:return self.sendj({'ok':False,'code':'WEAK_OR_INVALID_CREDENTIAL'},400)
-  h,salt,it=hash_password(pwd)
-  try:
-   with DB.tx() as c:c.execute('INSERT INTO users(user_id,organization_id,login_name,display_name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(uid,a['organization_id'],loginname,str(b.get('displayName') or loginname),'active',n,n));c.execute('INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,?,?)',(uid,h,salt,it,1,n));grant_binding_in_tx(c,uid,role,a['organization_id'],'team',team,a['user_id'])
-  except Exception:return self.sendj({'ok':False,'code':'USER_CREATE_FAILED'},409)
-  return self.sendj({'ok':True,'userId':uid},201)
+  # [P0 收口] 旧用户创建入口已废弃。Schema 211 要求所有用户创建统一走新管理 API：
+  #   POST /api/v207/admin/users
+  # 新接口支持：职位（可选）、团队（可选）、角色权限（可选）、多团队成员关系。
+  # 此路由仅返回弃用错误，不再产生旧结构数据。
+  self.sendj({'ok':False,'code':'DEPRECATED','message':'用户创建请使用 POST /api/v207/admin/users（支持职位、团队、角色独立管理）'},410)
 def main():
  global DB
  ap=argparse.ArgumentParser();ap.add_argument('--db',default='jubaopen-v207.db');ap.add_argument('--host',default='127.0.0.1');ap.add_argument('--port',type=int,default=8765)

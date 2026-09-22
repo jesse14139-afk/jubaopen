@@ -54,17 +54,18 @@ def handle(db,a,org,m,ident,q,b):
  if m=='GET':
   with db.tx(False) as c:
    if ident:
-    x=one(c,'SELECT s.*,t.name team_name,w.name workspace_name,ca.display_name account_name,p.platform_name FROM sources s LEFT JOIN teams t ON t.team_id=s.team_id LEFT JOIN workspaces w ON w.workspace_id=s.workspace_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=s.channel_account_id LEFT JOIN platforms p ON p.platform_id=s.platform_id WHERE s.source_id=? AND s.organization_id=?',(ident,org))
+    x=one(c,'SELECT s.*,t.name team_name,w.name workspace_name,ca.display_name account_name,p.platform_name,st.name source_type_name,st.source_type_code FROM sources s LEFT JOIN teams t ON t.team_id=s.team_id LEFT JOIN workspaces w ON w.workspace_id=s.workspace_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=s.channel_account_id LEFT JOIN platforms p ON p.platform_id=s.platform_id LEFT JOIN source_type_definitions st ON st.source_type_id=s.source_type_id WHERE s.source_id=? AND s.organization_id=?',(ident,org))
     return ({'ok':True,'item':x},200) if x else err('SOURCE_NOT_FOUND','来源不存在',404)
    where=['s.organization_id=?'];args=[org]
-   mapping={'workspace_id':'s.workspace_id','workspaceId':'s.workspace_id','team_id':'s.team_id','teamId':'s.team_id','platform_id':'s.platform_id','platformId':'s.platform_id','channel_account_id':'s.channel_account_id','channelAccountId':'s.channel_account_id','status':'s.status','source_type':'s.source_type','sourceType':'s.source_type'}
+   mapping={'workspace_id':'s.workspace_id','workspaceId':'s.workspace_id','team_id':'s.team_id','teamId':'s.team_id','platform_id':'s.platform_id','platformId':'s.platform_id','channel_account_id':'s.channel_account_id','channelAccountId':'s.channel_account_id','status':'s.status','source_type':'s.source_type','sourceType':'s.source_type','source_type_id':'s.source_type_id','sourceTypeId':'s.source_type_id'}
    for k,col in mapping.items():
     if q.get(k) not in (None,''):where.append(col+'=?');args.append(str(q[k]))
-   its=rows(c,'SELECT s.*,t.name team_name,w.name workspace_name,ca.display_name account_name,p.platform_name FROM sources s LEFT JOIN teams t ON t.team_id=s.team_id LEFT JOIN workspaces w ON w.workspace_id=s.workspace_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=s.channel_account_id LEFT JOIN platforms p ON p.platform_id=s.platform_id WHERE '+' AND '.join(where)+' ORDER BY s.last_seen_at DESC',args)
+   its=rows(c,'SELECT s.*,t.name team_name,w.name workspace_name,ca.display_name account_name,p.platform_name,st.name source_type_name,st.source_type_code FROM sources s LEFT JOIN teams t ON t.team_id=s.team_id LEFT JOIN workspaces w ON w.workspace_id=s.workspace_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=s.channel_account_id LEFT JOIN platforms p ON p.platform_id=s.platform_id LEFT JOIN source_type_definitions st ON st.source_type_id=s.source_type_id WHERE '+' AND '.join(where)+' ORDER BY s.last_seen_at DESC',args)
    return {'ok':True,'items':its},200
  if m=='POST' and not ident:
   wid=str(b.get('workspaceId') or b.get('workspace_id') or '').strip();team=str(b.get('teamId') or b.get('team_id') or '').strip() or None;account=str(b.get('channelAccountId') or b.get('channel_account_id') or '').strip() or None;platform=str(b.get('platformId') or b.get('platform_id') or '').strip() or None
   name=str(b.get('name') or b.get('sourceName') or '').strip();channel=str(b.get('channel') or '').strip().lower();identity=str(b.get('accountIdentity') or b.get('account_identity') or '').strip()
+  type_id=str(b.get('sourceTypeId') or b.get('source_type_id') or '').strip() or None
   if not wid:return err('WORKSPACE_REQUIRED','workspaceId 必填')
   if not name or len(name)>128:return err('INVALID_SOURCE_NAME','来源名称不能为空且不得超过 128 字符')
   if not channel or len(channel)>64:return err('INVALID_CHANNEL','渠道代码无效')
@@ -80,8 +81,11 @@ def handle(db,a,org,m,ident,q,b):
    with db.tx() as c:
     platform,acc=scope(c,org,wid,team,account,platform,b.get('campaignId'),b.get('parentSourceId'))
     if acc and acc['channel']!=channel:return err('CHANNEL_MISMATCH','来源渠道必须与账号渠道一致',409)
+    if type_id:
+     st=one(c,'SELECT * FROM source_type_definitions WHERE source_type_id=? AND is_active=1',(type_id,))
+     if not st:return err('INVALID_SOURCE_TYPE_ID','来源类型不存在或未启用',404)
     sid='src_'+uuid.uuid4().hex;n=now_ms()
-    c.execute('INSERT INTO sources(source_id,workspace_id,channel,account_identity,source_name,status,first_seen_at,last_seen_at,metadata_json,organization_id,team_id,channel_account_id,platform_id,source_type,source_subtype,direction,initiated_by,campaign_id,parent_source_id,external_key,landing_url,tracking_code,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(sid,wid,channel,identity,name,status,n,n,dumps(metadata),org,team,account,platform,typ,b.get('sourceSubtype'),direction,initiated,b.get('campaignId'),b.get('parentSourceId'),b.get('externalKey'),b.get('landingUrl'),b.get('trackingCode'),n))
+    c.execute('INSERT INTO sources(source_id,workspace_id,channel,account_identity,source_name,status,first_seen_at,last_seen_at,metadata_json,organization_id,team_id,channel_account_id,platform_id,source_type,source_subtype,direction,initiated_by,campaign_id,parent_source_id,external_key,landing_url,tracking_code,source_type_id,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(sid,wid,channel,identity,name,status,n,n,dumps(metadata),org,team,account,platform,typ,b.get('sourceSubtype'),direction,initiated,b.get('campaignId'),b.get('parentSourceId'),b.get('externalKey'),b.get('landingUrl'),b.get('trackingCode'),type_id,n))
     new=one(c,'SELECT * FROM sources WHERE source_id=?',(sid,));audit(c,a,'create',sid,{},new,wid,b.get('reason'))
    return {'ok':True,'sourceId':sid,'item':new},201
   except LookupError as e:return err(*e.args[0])

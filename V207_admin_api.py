@@ -8,6 +8,7 @@ from V207_version import PRODUCT_VERSION,SCHEMA_VERSION
 from V207_scope import resolve_scope, require_platform, require_account_grant
 from V207_platform_service import handle as handle_platform
 from V207_channel_service import handle as handle_channel
+from V207_dict_service import handle_channel_type, handle_source_type
 from V207_source_service import handle as handle_source
 from V207_campaign_service import handle as handle_campaign
 from V207_contact_identity_service import handle as handle_contact_identity
@@ -684,6 +685,47 @@ def dispatch(h,m,p,q,a,db):
  if root=='platforms':
   body=h.body() if m in ('POST','PUT','PATCH','DELETE') else {}
   payload,status=handle_platform(db,a,m,ident,q,body)
+  return h.sendj(payload,status) or True
+
+ # P2 字典摘要 API
+ if root=='dictionaries' and m=='GET':
+  if not org_ok(db,a,org):return bad(h,'FORBIDDEN','无权限',403)
+  with db.tx(False) as c:
+   # 如果请求特定子资源
+   if ident=='platform-channels':
+    # 返回平台与渠道类型的关联
+    platform_channels={}
+    platforms=rows(c,"SELECT platform_id, platform_name FROM platforms WHERE status='active' ORDER BY platform_code")
+    for p in platforms:
+     channels=rows(c,"""SELECT channel_type_id, channel_type_code, name 
+       FROM channel_types 
+       WHERE platform_id=? AND is_active=1 
+       ORDER BY sort_order, name""",(p['platform_id'],))
+     platform_channels[p['platform_id']]={'platform_name':p['platform_name'],'channel_types':channels}
+    return h.sendj({'ok':True,'data':platform_channels}) or True
+   
+   # 默认返回所有字典摘要
+   platforms_count=c.execute("SELECT count(*) FROM platforms").fetchone()[0]
+   platforms_active=c.execute("SELECT count(*) FROM platforms WHERE status='active'").fetchone()[0]
+   channels_count=c.execute("SELECT count(*) FROM channel_types").fetchone()[0]
+   channels_active=c.execute("SELECT count(*) FROM channel_types WHERE is_active=1").fetchone()[0]
+   sources_count=c.execute("SELECT count(*) FROM source_type_definitions").fetchone()[0]
+   sources_active=c.execute("SELECT count(*) FROM source_type_definitions WHERE is_active=1").fetchone()[0]
+   
+   return h.sendj({'ok':True,'dictionaries':{
+    'platforms':{'count':platforms_count,'active':platforms_active},
+    'channel_types':{'count':channels_count,'active':channels_active},
+    'source_types':{'count':sources_count,'active':sources_active}
+   }}) or True
+
+ # P1 字典 API：渠道类型与来源类型
+ if root=='channel-types':
+  body=h.body() if m in ('POST','PUT','PATCH','DELETE') else {}
+  payload,status=handle_channel_type(db,a,org,m,ident,q,body)
+  return h.sendj(payload,status) or True
+ if root=='source-types':
+  body=h.body() if m in ('POST','PUT','PATCH','DELETE') else {}
+  payload,status=handle_source_type(db,a,org,m,ident,q,body)
   return h.sendj(payload,status) or True
  if root=='campaigns':
   body=h.body() if m in ('POST','PUT','PATCH','DELETE') else {}
