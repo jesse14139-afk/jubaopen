@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """V207 企业综合管理 API。Schema 211；所有范围与写入均由服务端校验。"""
 import json, uuid, os, sqlite3, secrets
-from V207_shared_db import now_ms,dumps,loads,hash_password
+from V207_shared_db import now_ms,dumps,loads,hash_password,default_workspace_id
 from V207_security import can,permissions,verify_password,password_strong,is_platform_admin,grant_binding_in_tx,revoke_sessions_in_tx,revoke_session_in_tx,issue_confirmation,consume_confirmation
 from V207_schema_catalog import build_schema_catalog
 from V207_version import PRODUCT_VERSION,SCHEMA_VERSION
@@ -37,9 +37,9 @@ def _audit_workspace(c,a,wid=None):
  if wid:
   row=c.execute("SELECT workspace_id FROM workspaces WHERE workspace_id=? AND organization_id=?",(wid,a['organization_id'])).fetchone()
   if row:return row[0]
- row=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at,workspace_id LIMIT 1",(a['organization_id'],)).fetchone()
- if not row:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
- return row[0]
+ wid=default_workspace_id(c,a['organization_id'])
+ if not wid:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
+ return wid
 def audit(db,a,op,typ,eid,before,after,reason=None,wid=None):
  with db.tx() as c:audit_in_tx(c,a,op,typ,eid,before,after,reason,wid)
 def audit_in_tx(c,a,op,typ,eid,before,after,reason=None,wid=None):
@@ -178,7 +178,7 @@ def dispatch(h,m,p,q,a,db):
  # session/security
  if root=='profile' and m=='GET':
   with db.tx(False) as c:
-   org=one(c,'SELECT * FROM organizations WHERE organization_id=?',(a['organization_id'],)); cr=one(c,'SELECT must_change,updated_at FROM user_credentials WHERE user_id=?',(a['user_id'],)); pa=one(c,'SELECT is_builtin,onboarding_completed FROM platform_administrators WHERE user_id=?',(a['user_id'],)); ws=one(c,"SELECT * FROM workspaces WHERE organization_id=? ORDER BY created_at LIMIT 1",(a['organization_id'],)); tm=one(c,"SELECT * FROM teams WHERE organization_id=? ORDER BY created_at LIMIT 1",(a['organization_id'],))
+   org=one(c,'SELECT * FROM organizations WHERE organization_id=?',(a['organization_id'],)); cr=one(c,'SELECT must_change,updated_at FROM user_credentials WHERE user_id=?',(a['user_id'],)); pa=one(c,'SELECT is_builtin,onboarding_completed FROM platform_administrators WHERE user_id=?',(a['user_id'],)); ws=one(c,"SELECT * FROM workspaces WHERE organization_id=? ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(a['organization_id'],)); tm=one(c,"SELECT * FROM teams WHERE organization_id=? ORDER BY created_at LIMIT 1",(a['organization_id'],))
   return h.sendj({'ok':True,'user':{k:a[k] for k in ('user_id','login_name','display_name','organization_id')},'organization':org,'platformAdmin':platform(db,a),'permissions':sorted(permissions(db,a['user_id'])),'credential':cr,'platformIdentity':pa,'onboardingRequired':bool(pa and not pa['onboarding_completed']),'workspace':ws,'team':tm}) or True
  if root=='change-password' and m=='POST':
   b=h.body();old=str(b.get('oldPassword') or b.get('currentPassword') or b.get('current_password') or '');new=str(b.get('newPassword') or b.get('new_password') or '')
@@ -197,7 +197,7 @@ def dispatch(h,m,p,q,a,db):
   with db.tx() as c:
    pa=c.execute("SELECT onboarding_completed FROM platform_administrators WHERE user_id=?",(a['user_id'],)).fetchone()
    if not pa:return bad(h,'FORBIDDEN','平台管理员身份不存在',403)
-   w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY created_at LIMIT 1",(a['organization_id'],)).fetchone()
+   w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(a['organization_id'],)).fetchone()
    if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
    t=c.execute('SELECT team_id FROM teams WHERE organization_id=? ORDER BY created_at LIMIT 1',(a['organization_id'],)).fetchone(); n=now_ms()
    c.execute('UPDATE organizations SET name=?,updated_at=? WHERE organization_id=?',(org_name,n,a['organization_id'])); c.execute('UPDATE users SET display_name=?,updated_at=? WHERE user_id=?',(display,n,a['user_id']))
@@ -331,7 +331,7 @@ def dispatch(h,m,p,q,a,db):
  # teams
  if root=='teams':
   if m=='GET':
-   with db.tx(False) as c:its=rows(c,"SELECT t.*,w.name workspace_name,(SELECT count(*) FROM team_memberships tm WHERE tm.team_id=t.team_id AND tm.status='active') member_count,(SELECT count(*) FROM team_channel_accounts x WHERE x.team_id=t.team_id) account_count FROM teams t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.organization_id=? ORDER BY t.created_at",(org,))
+   with db.tx(False) as c:its=rows(c,"SELECT t.*,w.name workspace_name,(SELECT count(*) FROM team_memberships tm WHERE tm.team_id=t.team_id AND tm.status='active') member_count,(SELECT count(*) FROM team_channel_accounts x WHERE x.team_id=t.team_id) account_count,(SELECT group_concat(bl.name) FROM team_business_lines tbl JOIN business_lines bl ON bl.business_line_id=tbl.business_line_id WHERE tbl.team_id=t.team_id AND tbl.status='active') business_lines,(SELECT group_concat(m.name) FROM team_markets tm JOIN markets m ON m.market_id=tm.market_id WHERE tm.team_id=t.team_id AND tm.status='active') markets FROM teams t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.organization_id=? ORDER BY t.created_at",(org,))
    return h.sendj({'ok':True,'items':its}) or True
   if m=='POST':
    if not manage(db,a,'team.manage',org):return bad(h,'FORBIDDEN','无团队管理权限',403)
@@ -391,20 +391,23 @@ def dispatch(h,m,p,q,a,db):
  # users
  if root=='users':
   if m=='GET':
-   with db.tx(False) as c:its=rows(c,"SELECT u.*,(SELECT group_concat(t.name) FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=u.user_id AND tm.status='active') teams,(SELECT group_concat(r.name) FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=u.user_id AND b.organization_id=u.organization_id AND b.status='active') roles,(SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name FROM users u WHERE u.organization_id=? ORDER BY u.created_at",(org,))
+   with db.tx(False) as c:its=rows(c,"SELECT u.*,(SELECT group_concat(t.name) FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=u.user_id AND tm.status='active') teams,(SELECT group_concat(r.name) FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=u.user_id AND b.organization_id=u.organization_id AND b.status='active') roles,(SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,(SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name FROM users u WHERE u.organization_id=? ORDER BY u.created_at",(org,))
    return h.sendj({'ok':True,'items':its}) or True
   if m=='POST':
    if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无用户管理权限',403)
-   b=h.body();ln=str(b.get('loginName') or '').strip();pwd=str(b.get('password') or '');team=str(b.get('teamId') or '').strip();role=str(b.get('roleId') or 'role_operator');position=str(b.get('positionId') or '').strip();kind=str(b.get('membershipType') or 'member')
+   b=h.body();ln=str(b.get('loginName') or '').strip();pwd=str(b.get('password') or '');team=str(b.get('teamId') or '').strip();role=str(b.get('roleId') or 'role_operator');position=str(b.get('positionId') or '').strip();kind=str(b.get('membershipType') or 'member');workspace=str(b.get('workspaceId') or '').strip()
    if not ln or not password_strong(pwd):return bad(h,'INVALID_USER','登录名必填；密码至少 12 位且必须同时包含字母和数字')
    if kind not in ('member','manager','operator','support'):return bad(h,'INVALID_MEMBERSHIP_TYPE','成员类型无效')
    with db.tx() as c:
     rr=c.execute("SELECT scope_level FROM roles WHERE role_id=? AND status='active' AND (organization_id IS NULL OR organization_id=?)",(role,org)).fetchone()
-    if not rr or rr[0] not in ('organization','team'):return bad(h,'INVALID_ROLE','角色不存在、已停用或范围不适用于企业用户',400)
+    if not rr or rr[0] not in ('organization','workspace','team'):return bad(h,'INVALID_ROLE','角色不存在、已停用或范围不适用于企业用户',400)
     if team and not c.execute('SELECT 1 FROM teams WHERE team_id=? AND organization_id=?',(team,org)).fetchone():return bad(h,'TEAM_NOT_FOUND','团队不存在',404)
     if rr[0]=='team' and not team:return bad(h,'TEAM_REQUIRED','团队级角色必须选择团队',400)
+    if not workspace:workspace=default_workspace_id(c,org) or ''
+    if workspace and not c.execute("SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=? AND status='active'",(workspace,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在或已停用',404)
+    if rr[0]=='workspace' and not workspace:return bad(h,'WORKSPACE_REQUIRED','工作区级角色必须选择工作区',400)
     if position and not c.execute("SELECT 1 FROM positions WHERE position_id=? AND organization_id=? AND status='active'",(position,org)).fetchone():return bad(h,'POSITION_NOT_FOUND','职位不存在或已停用',404)
-    scope_type=rr[0];scope_id=org if scope_type=='organization' else team;uid='usr_'+uuid.uuid4().hex;n=now_ms();ph,salt,it=hash_password(pwd)
+    scope_type=rr[0];scope_id=org if scope_type=='organization' else (workspace if scope_type=='workspace' else team);uid='usr_'+uuid.uuid4().hex;n=now_ms();ph,salt,it=hash_password(pwd)
     try:
      c.execute('INSERT INTO users(user_id,organization_id,login_name,display_name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(uid,org,ln,str(b.get('displayName') or ln),'active',n,n))
      c.execute('INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,?,?)',(uid,ph,salt,it,1,n))
@@ -469,7 +472,7 @@ def dispatch(h,m,p,q,a,db):
    pid='pos_'+uuid.uuid4().hex; n=now_ms()
    try:
     with db.tx() as c:
-     w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY created_at LIMIT 1",(org,)).fetchone()
+     w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
      if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
      c.execute("INSERT INTO positions(position_id,organization_id,department_id,name,code,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,'active',?,?,?)",(pid,org,dep,name,code,str(b.get('description') or ''),int(b.get('sortOrder') or 0),n,n))
      audit_in_tx(c,a,'create','position',pid,{},b,wid=w[0])
@@ -481,7 +484,7 @@ def dispatch(h,m,p,q,a,db):
    with db.tx() as c:
     old=one(c,'SELECT * FROM positions WHERE position_id=? AND organization_id=?',(ident,org))
     if not old:return bad(h,'NOT_FOUND','职位不存在',404)
-    w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY created_at LIMIT 1",(org,)).fetchone()
+    w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
     if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
     status=str(b.get('status') if b.get('status') is not None else old['status']).strip().lower()
     if status=='inactive':status='disabled'
@@ -515,7 +518,7 @@ def dispatch(h,m,p,q,a,db):
    if not consume_confirmation(db,a,'binding.grant',h.headers.get('X-RBAC-Confirmation',''),ctx):return bad(h,'CONFIRMATION_REQUIRED','高风险确认凭证无效或已过期',428)
    try:
     with db.tx() as c:
-     w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at LIMIT 1",(org,)).fetchone()
+     w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
      if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
      active_sessions=c.execute("SELECT count(*) FROM sessions WHERE user_id=? AND revoked_at IS NULL AND expires_at>?",(user_id,now_ms())).fetchone()[0]
      bid=grant_binding_in_tx(c,user_id,role_id,org,scope_type,scope_id,a['user_id'])
@@ -533,7 +536,7 @@ def dispatch(h,m,p,q,a,db):
    with db.tx() as c:
     current=one(c,"SELECT * FROM role_bindings WHERE binding_id=? AND organization_id=? AND scope_type<>'platform' AND status='active'",(ident,org))
     if not current:return bad(h,'BINDING_CHANGED','授权已变更或撤销，请刷新后重试',409)
-    w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at LIMIT 1",(org,)).fetchone()
+    w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
     if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
     revoked=revoke_sessions_in_tx(c,current['user_id'],a['user_id'],'authorization_changed')
     c.execute("UPDATE role_bindings SET status='archived',updated_at=? WHERE binding_id=? AND status='active'",(now_ms(),ident));after=one(c,'SELECT * FROM role_bindings WHERE binding_id=?',(ident,));audit_in_tx(c,a,'revoke','role_binding',ident,current,after,reason,w[0])
@@ -579,7 +582,7 @@ def dispatch(h,m,p,q,a,db):
     with db.tx() as c:
      valid={x[0] for x in c.execute('SELECT permission_key FROM permissions')}
      if any(x not in valid for x in perms):return bad(h,'INVALID_PERMISSION','包含不存在的权限')
-     w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at LIMIT 1",(org,)).fetchone()
+     w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
      if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
      c.execute("INSERT INTO roles(role_id,organization_id,name,scope_level,status,role_code,description,is_system) VALUES(?,?,?,?,?,?,?,0)",(rid,org,name,scope,'active',code or rid,desc))
      c.executemany('INSERT INTO role_permissions(role_id,permission_key) VALUES(?,?)',[(rid,x) for x in perms])
@@ -597,7 +600,7 @@ def dispatch(h,m,p,q,a,db):
     with db.tx() as c:
      src=one(c,'SELECT * FROM roles WHERE role_id=? AND (organization_id IS NULL OR organization_id=?)',(ident,org))
      if not src:return bad(h,'NOT_FOUND','源角色不存在',404)
-     scope=src['scope_level'] if src['scope_level']!='platform' else 'organization';w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at LIMIT 1",(org,)).fetchone()
+     scope=src['scope_level'] if src['scope_level']!='platform' else 'organization';w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
      if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
      c.execute("INSERT INTO roles(role_id,organization_id,name,scope_level,status,role_code,description,is_system) VALUES(?,?,?,?,?,?,?,0)",(rid,org,name,scope,'active',rid,str(src.get('description') or '')))
      c.execute('INSERT INTO role_permissions(role_id,permission_key) SELECT ?,permission_key FROM role_permissions WHERE role_id=?',(rid,ident));item=one(c,'SELECT * FROM roles WHERE role_id=?',(rid,));audit_in_tx(c,a,'copy','role',rid,src,item,wid=w[0])
@@ -616,7 +619,7 @@ def dispatch(h,m,p,q,a,db):
     with db.tx() as c:
      valid={x[0] for x in c.execute('SELECT permission_key FROM permissions')}
      if any(x not in valid for x in perms):return bad(h,'INVALID_PERMISSION','包含不存在的权限')
-     w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at LIMIT 1",(org,)).fetchone()
+     w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
      c.execute('UPDATE roles SET name=?,scope_level=?,status=?,description=? WHERE role_id=?',(name,scope,status,desc,ident));c.execute('DELETE FROM role_permissions WHERE role_id=?',(ident,));c.executemany('INSERT INTO role_permissions(role_id,permission_key) VALUES(?,?)',[(ident,x) for x in perms])
      affected=0
      for u in c.execute("SELECT DISTINCT user_id FROM role_bindings WHERE role_id=? AND status='active'",(ident,)).fetchall():affected+=revoke_sessions_in_tx(c,u[0],a['user_id'],'role_permissions_changed')
@@ -632,7 +635,7 @@ def dispatch(h,m,p,q,a,db):
     if not old:return bad(h,'ROLE_IMMUTABLE','角色不存在或系统角色不可删除',403)
     cnt=c.execute("SELECT count(*) FROM role_bindings WHERE role_id=? AND status='active'",(ident,)).fetchone()[0]
     if cnt:return bad(h,'ROLE_IN_USE','角色仍有有效授权，不能删除',409)
-    w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at LIMIT 1",(org,)).fetchone();c.execute('DELETE FROM role_permissions WHERE role_id=?',(ident,));c.execute('DELETE FROM roles WHERE role_id=?',(ident,));audit_in_tx(c,a,'delete','role',ident,old,{},wid=w[0] if w else None)
+    w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone();c.execute('DELETE FROM role_permissions WHERE role_id=?',(ident,));c.execute('DELETE FROM roles WHERE role_id=?',(ident,));audit_in_tx(c,a,'delete','role',ident,old,{},wid=w[0] if w else None)
    return h.sendj({'ok':True}) or True
  # workspaces
  if root=='workspaces':
@@ -859,13 +862,19 @@ def dispatch(h,m,p,q,a,db):
   with db.tx(False) as c:
    data={
     'organizations':rows(c,'SELECT * FROM organizations WHERE organization_id=?',(org,)),
+    'departments':rows(c,'SELECT * FROM departments WHERE organization_id=?',(org,)),
+    'businessLines':rows(c,'SELECT * FROM business_lines WHERE organization_id=?',(org,)),
+    'markets':rows(c,'SELECT * FROM markets WHERE organization_id=?',(org,)),
     'teams':rows(c,'SELECT * FROM teams WHERE organization_id=?',(org,)),
     'users':rows(c,'SELECT user_id,display_name,login_name,status FROM users WHERE organization_id=?',(org,)),
     'workspaces':rows(c,'SELECT * FROM workspaces WHERE organization_id=?',(org,)),
     'accounts':rows(c,'SELECT * FROM channel_accounts WHERE organization_id=?',(org,)),
     'sources':rows(c,'SELECT source_id,source_name,channel,team_id,workspace_id,channel_account_id,status FROM sources WHERE organization_id=?',(org,)),
     'devices':rows(c,'SELECT device_id,team_id,workspace_id,assigned_user_id,system_device_name,user_device_alias,admin_device_name,status FROM devices WHERE organization_id=?',(org,)),
-    'teamMemberships':rows(c,"SELECT b.binding_id,b.user_id,b.role_id,b.scope_id team_id,b.status,b.created_at,b.updated_at FROM role_bindings b WHERE b.organization_id=? AND b.scope_type='team'",(org,)),
+    'teamMemberships':rows(c,"SELECT tm.user_id,tm.team_id,tm.membership_type,tm.is_primary,tm.status FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE t.organization_id=? AND tm.status='active'",(org,)),
+    'userPositions':rows(c,"SELECT up.user_id,up.position_id,p.name position_name,p.department_id FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.organization_id=? AND up.status='active'",(org,)),
+    'teamBusinessLines':rows(c,"SELECT tbl.team_id,tbl.business_line_id,tbl.is_primary,bl.name FROM team_business_lines tbl JOIN business_lines bl ON bl.business_line_id=tbl.business_line_id WHERE tbl.organization_id=? AND tbl.status='active'",(org,)),
+    'teamMarkets':rows(c,"SELECT tm.team_id,tm.market_id,tm.is_primary,tm.scope_type,m.name FROM team_markets tm JOIN markets m ON m.market_id=tm.market_id WHERE tm.organization_id=? AND tm.status='active'",(org,)),
     'accountGrants':rows(c,'SELECT x.* FROM team_channel_accounts x JOIN teams t ON t.team_id=x.team_id WHERE t.organization_id=?',(org,)),
     'sourceDevices':rows(c,'SELECT sd.* FROM source_devices sd JOIN sources s ON s.source_id=sd.source_id WHERE s.organization_id=?',(org,))}
   return h.sendj({'ok':True,'graph':data}) or True
@@ -916,7 +925,7 @@ def dispatch(h,m,p,q,a,db):
    old=one(c,'SELECT s.*,u.organization_id FROM sessions s JOIN users u ON u.user_id=s.user_id WHERE s.session_id=?',(ident,))
    if not old or old['organization_id']!=org:return bad(h,'NOT_FOUND','会话不存在',404)
    revoke_session_in_tx(c,ident,a['user_id'],'admin_revocation',old['user_id'])
-   w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at LIMIT 1",(org,)).fetchone(); audit_in_tx(c,a,'revoke','session',ident,old,{},'管理员撤销会话',w[0] if w else None)
+   w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone(); audit_in_tx(c,a,'revoke','session',ident,old,{},'管理员撤销会话',w[0] if w else None)
   return h.sendj({'ok':True}) or True
  # tags management
  if root=='tags' and m=='GET':

@@ -4,3 +4,4 @@ backup/
 data/
 logs/
 jubaopen.zip
+*.zip

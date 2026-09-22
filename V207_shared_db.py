@@ -5,6 +5,11 @@ import contextlib, hashlib, json, sqlite3, time, secrets, shutil, re
 from pathlib import Path
 from V207_version import SCHEMA_VERSION, PRODUCT_VERSION, CATALOG_VERSION
 def now_ms(): return int(time.time()*1000)
+def default_workspace_id(c, organization_id):
+ """优先使用全球业务工作区作为默认审计与授权上下文。"""
+ row=c.execute("""SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active'
+  ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1""",(organization_id,)).fetchone()
+ return row[0] if row else None
 def dumps(v): return json.dumps(v,ensure_ascii=False,separators=(",",":"))
 def loads(v,default=None):
  try:return json.loads(v) if v else default

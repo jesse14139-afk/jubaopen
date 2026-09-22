@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """V207 身份、会话、登录锁定与 RBAC。"""
 import hashlib,hmac,secrets,json
-from V207_shared_db import now_ms,dumps
+from V207_shared_db import now_ms,dumps,default_workspace_id
 SESSION_MS=8*60*60*1000; LOCK_MS=15*60*1000; MAX_FAILURES=5
 def canonical(v):return ''.join(str(v or '').strip().lower().split())
 def _confirmation_context(v):return json.dumps(v or {},ensure_ascii=False,separators=(',',':'),sort_keys=True)
@@ -39,6 +39,8 @@ def _scope_context(c, actor, workspace_id=None, team_id=None, department_id=None
   r=c.execute("SELECT organization_id,workspace_id FROM teams WHERE team_id=? AND status='active'",(team_id,)).fetchone()
   if not r or r[0]!=org or (workspace_id and r[1]!=workspace_id):return None
   ctx['workspace_id']=ctx['workspace_id'] or r[1]
+ if not ctx['workspace_id']:
+  ctx['workspace_id']=default_workspace_id(c,org)
  if department_id:
   r=c.execute("SELECT organization_id FROM departments WHERE department_id=? AND status='active'",(department_id,)).fetchone()
   if not r or r[0]!=org:return None

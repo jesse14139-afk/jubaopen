@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
 
 from V207_shared_db import Database, now_ms
 from V207_p1_dict import CHANNEL_TYPES_SEED, SOURCE_TYPES_SEED, seed_channel_and_source_types
+from V207_p1_users import P1_USERS, seed_p1_people
 
 
 def _configure_output():
@@ -253,15 +254,27 @@ def seed_p1(db_path, org_id='jubaopen'):
             relinked=dictionary['channel_types_relinked'],
         )
     )
+
+    people = seed_p1_people(db, org_id, WS_GLOBAL_ID)
+    print(
+        "✓ 人员预设：角色 {roles} 新增，用户 {users}/{total} 新增，团队业务线 {bl} 条，团队市场 {mkt} 条".format(
+            roles=people['roles_created'],
+            users=people['users_created'],
+            total=len(P1_USERS),
+            bl=people['team_business_lines_created'],
+            mkt=people['team_markets_created'],
+        )
+    )
     
     print("\n✓ P1 组织预设初始化完成")
-    print("  企业：ORG-JBP 聚宝盆公司")
-    print("  工作区：WS-GLOBAL 全球业务工作区")
+    print("  企业：jubaopen 聚宝盆公司")
+    print("  工作区：ws-global 全球业务工作区")
     print("  部门：5个")
     print("  团队：3个")
     print("  业务线：2条")
     print("  市场：16个（含地域层级）")
     print("  职位：12个")
+    print("  模板用户：8个（不自动授予企业管理员）")
     return True
 
 

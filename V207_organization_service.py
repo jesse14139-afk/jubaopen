@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """V207.3 企业组织、业务线、市场及业务空间关系领域服务。"""
 import sqlite3, uuid
-from V207_shared_db import now_ms, dumps
+from V207_shared_db import now_ms, dumps, default_workspace_id
 from V207_security import can
 
 STATUS={'active','disabled'}
@@ -56,8 +56,8 @@ def _entity(db,a,org,m,kind,ident,q,b):
      mt=str(b.get('marketType') or 'country');
      if mt not in MARKET_TYPES:return _err('INVALID_MARKET_TYPE','市场类型无效')
      c.execute('INSERT INTO markets(market_id,organization_id,parent_market_id,name,code,market_type,country_code,region_code,timezone,description,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(eid,org,parent,name,code,mt,str(b.get('countryCode') or '').upper(),str(b.get('regionCode') or ''),str(b.get('timezone') or ''),str(b.get('description') or ''),'active',n,n))
-    item=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(eid,));aw=c.execute('SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY workspace_id LIMIT 1',(org,)).fetchone();
-    if not aw:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
+    item=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(eid,));aw=(default_workspace_id(c,org),);
+    if not aw[0]:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
     _audit(c,a,'create',kind,eid,{},item,aw[0])
    return ({'ok':True,'item':item},201)
   except sqlite3.IntegrityError:return _err('CONFLICT','编码、名称或 ID 已存在',409)
@@ -78,8 +78,8 @@ def _entity(db,a,org,m,kind,ident,q,b):
      c.execute('UPDATE markets SET parent_market_id=?,name=?,code=?,market_type=?,country_code=?,region_code=?,timezone=?,description=?,status=?,updated_at=? WHERE market_id=?',(parent,name,code,mt,str(b.get('countryCode',old['country_code'])),str(b.get('regionCode',old['region_code'])),str(b.get('timezone',old['timezone'])),str(b.get('description',old['description'])),status,now_ms(),ident))
     else:
      c.execute(f'UPDATE {table} SET {parent_col}=?,name=?,code=?,description=?,status=?,updated_at=? WHERE {key}=?',(parent,name,code,str(b.get('description',old['description'])),status,now_ms(),ident))
-    new=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(ident,));aw=c.execute('SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY workspace_id LIMIT 1',(org,)).fetchone();
-    if not aw:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
+    new=_one(c,f'SELECT * FROM {table} WHERE {key}=?',(ident,));aw=(default_workspace_id(c,org),);
+    if not aw[0]:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
     _audit(c,a,'update',kind,ident,old,new,aw[0],b.get('reason'))
    return _ok(item=new)
   except sqlite3.IntegrityError:return _err('CONFLICT','编码或名称已存在',409)
@@ -103,8 +103,8 @@ def _entity(db,a,org,m,kind,ident,q,b):
     rel_count=c.execute('SELECT count(*) FROM workspace_markets WHERE market_id=?',(ident,)).fetchone()[0]
     if child_count:return _err('IN_USE','市场仍有下级，无法删除',409,references={'children':child_count})
     if rel_count:return _err('IN_USE','市场仍被工作区关联，无法删除',409,references={'workspaces':rel_count})
-   aw=c.execute('SELECT workspace_id FROM workspaces WHERE organization_id=? ORDER BY workspace_id LIMIT 1',(org,)).fetchone();
-   if not aw:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
+   aw=(default_workspace_id(c,org),);
+   if not aw[0]:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
    c.execute(f'DELETE FROM {table} WHERE {key}=?',(ident,))
    _audit(c,a,'delete',kind,ident,old,{},aw[0],b.get('reason'))
   return _ok()

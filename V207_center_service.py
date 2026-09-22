@@ -5,7 +5,7 @@ import argparse,json,os,sys,uuid
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.parse import urlparse,parse_qs,unquote
 ROOT=os.path.dirname(os.path.abspath(__file__));sys.path.insert(0,ROOT)
-from V207_shared_db import Database,now_ms,dumps,hash_password
+from V207_shared_db import Database,now_ms,dumps,hash_password,default_workspace_id
 from V207_version import PRODUCT_VERSION,SCHEMA_VERSION
 from V207_security import login,actor_from_token,can,canonical,password_strong,grant_binding_in_tx,revoke_token_session_in_tx
 from V207_admin_api import dispatch as admin_dispatch
@@ -47,9 +47,8 @@ class H(BaseHTTPRequestHandler):
   wid=next((x for x in candidates if x),None)
   with DB.tx() as c:
    if not wid:
-    default_ws=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at,workspace_id LIMIT 1",(a['organization_id'],)).fetchone()
-    if not default_ws:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
-    wid=default_ws['workspace_id']
+    wid=default_workspace_id(c,a['organization_id'])
+    if not wid:raise RuntimeError('AUDIT_WORKSPACE_REQUIRED')
    scope=c.execute('SELECT organization_id FROM workspaces WHERE workspace_id=?',(wid,)).fetchone()
    if not scope or scope['organization_id']!=a['organization_id']:raise RuntimeError('AUDIT_SCOPE_MISMATCH')
    c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at,organization_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms(),a['organization_id']))
