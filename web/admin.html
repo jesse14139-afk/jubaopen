@@ -7,11 +7,39 @@
 
 .password-modal{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:20px;background:#000b}.password-modal.hide{display:none!important}.password-card{width:min(460px,96vw);padding:26px;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.password-card h2{font-size:21px}.password-card .sub{margin:7px 0 20px}.password-card .btn{width:100%;margin-top:8px}
 
-.role-actions{white-space:nowrap}.risk-legend{display:flex;align-items:center;gap:8px;margin:0 0 14px}.risk{display:inline-flex;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid}.risk.normal{color:var(--ok);background:#16a34a18}.risk.sensitive{color:#d97706;background:#f59e0b18}.risk.high{color:var(--bad);background:#ef444418}.permission-matrix{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:10px}.permission-group{border-bottom:1px solid var(--line);padding:8px 0}.permission-group:last-child{border-bottom:0}.permission-group h4{margin:0 0 7px}.permission-item{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:start;padding:7px;border-radius:8px}.permission-item:hover{background:var(--hover)}.permission-item input{margin-top:3px}.permission-key{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted)}.role-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.role-form-grid .wide{grid-column:1/-1}.confirm-note{padding:10px;border:1px solid #ef444466;background:#ef444411;border-radius:10px;color:var(--text)}@media(max-width:700px){.role-form-grid{grid-template-columns:1fr}.role-form-grid .wide{grid-column:auto}.role-actions{white-space:normal}}
+.role-actions{white-space:nowrap}.risk-legend{display:flex;align-items:center;gap:8px;margin:0 0 14px}.risk{display:inline-flex;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid}.risk.normal{color:var(--ok);background:#16a34a18}.risk.sensitive{color:#d97706;background:#f59e0b18}.risk.high{color:var(--bad);background:#ef444418}.permission-matrix{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:10px}.permission-group{border-bottom:1px solid var(--line);padding:8px 0}.permission-group:last-child{border-bottom:0}.permission-group h4{margin:0 0 7px}.permission-item{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:7px 9px;border-radius:8px}.permission-item:hover{background:var(--hover)}.permission-item input{margin:0;width:18px;height:18px;cursor:pointer;accent-color:var(--pink)}.permission-item input:disabled{cursor:not-allowed;appearance:none;-webkit-appearance:none;background:#ffffff22;border:1.5px solid #ffffff30;border-radius:3px}.permission-item input:disabled:checked{background:var(--warn);border-color:var(--warn);accent-color:#fff;box-shadow:0 0 0 1px #00000022 inset}
+/* 自定义 date 选择器（不依赖浏览器原生 picker） */
+.dt-picker{display:inline-flex;position:relative}
+.dt-trigger{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer;font:inherit;line-height:1.2;transition:border-color .15s,background .15s;min-width:200px}
+.dt-trigger:hover{border-color:var(--pink);background:var(--panel)}
+.dt-trigger .dt-ico{font-size:16px;line-height:1}
+.dt-trigger .dt-label{flex:1;text-align:left}
+.dt-trigger .dt-placeholder{color:var(--muted)}
+.calendar-popup{position:absolute;z-index:10000;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px #00000040,0 2px 6px #00000022;padding:12px;font:13px/1.4 system-ui,sans-serif;user-select:none;min-width:260px}
+.calendar-popup .cal-nav{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.calendar-popup .cal-nav button{flex:none;width:30px;height:30px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:14px}
+.calendar-popup .cal-nav button:hover{background:var(--hover);border-color:var(--pink)}
+.calendar-popup .cal-title{flex:1;text-align:center;font-weight:600;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.calendar-popup .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.calendar-popup .cal-dow{text-align:center;color:var(--muted);font-size:11px;padding:6px 0;border-bottom:1px solid var(--line);margin-bottom:4px}
+.calendar-popup .cal-day{aspect-ratio:1;text-align:center;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:var(--text);font:inherit}
+.calendar-popup .cal-day:hover{background:var(--hover)}
+.calendar-popup .cal-day.muted{color:var(--muted);opacity:.4}
+.calendar-popup .cal-day.today{outline:1px solid var(--line)}
+.calendar-popup .cal-day.selected{background:var(--pink);color:#fff}
+.calendar-popup .cal-day.selected:hover{background:var(--pink)}
+.calendar-popup .cal-foot{display:flex;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
+.calendar-popup .cal-foot button{flex:1;padding:6px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;font-size:12px}
+.calendar-popup .cal-foot button:hover{background:var(--hover)}
+.calendar-popup .cal-foot button.primary{background:var(--pink);border-color:var(--pink);color:#fff}
+.calendar-popup .cal-foot button.primary:hover{opacity:.9}.permission-key{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted)}.role-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.role-form-grid .wide{grid-column:1/-1}.confirm-note{padding:10px;border:1px solid #ef444466;background:#ef444411;border-radius:10px;color:var(--text)}@media(max-width:700px){.role-form-grid{grid-template-columns:1fr}.role-form-grid .wide{grid-column:auto}.role-actions{white-space:normal}}
 
-.mtx td,.mtx th{border:1px solid var(--border);padding:6px 10px;text-align:center;font-size:13px}
+.mtx td,.mtx th{border:1px solid var(--border);padding:8px 12px;text-align:center;font-size:13px;vertical-align:middle}
 .mtx .mtx-key{text-align:left;font-family:monospace}
 .mtx .mtx-head{cursor:pointer;background:var(--hover,rgba(0,0,0,.05))}
+.mtx input[type=checkbox]{width:18px;height:18px;cursor:pointer;accent-color:var(--pink);vertical-align:middle}
+.mtx input[type=checkbox]:disabled{cursor:not-allowed;appearance:none;-webkit-appearance:none;background:#ffffff22;border:1.5px solid #ffffff30;border-radius:3px}
+.mtx input[type=checkbox]:disabled:checked{background:var(--warn);border-color:var(--warn);accent-color:#fff;box-shadow:0 0 0 1px #00000022 inset}
 .mtx-group.fold tr:not(.mtx-head){display:none}
 .mtx-bar{position:sticky;bottom:12px;display:flex;align-items:center;gap:10px;background:var(--panel,#1e2430);border:1px solid var(--border);border-radius:10px;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,.25);margin-top:12px}
 
@@ -397,19 +425,6 @@ async campaignKanban(){
   <div class="sub" style="font-size:10px;margin-top:4px">${r.start_at?'开始：'+fmt(r.start_at):'未排期'}</div>
   <div style="margin-top:6px;display:flex;gap:4px"><button class="btn secondary small" onclick="event.stopPropagation();editCampaign('${r.campaign_id}')">编辑</button><button class="btn danger small" onclick="event.stopPropagation();deleteCampaign('${r.campaign_id}','${esc(r.campaign_name)}')">删除</button></div>
 </div>`).join('')||'<div class="sub" style="text-align:center;padding:20px 0;color:#94a3b8;font-size:12px">暂无</div>'}</div></div>`).join('')}`},
-editCampaign(id){
- let r=(S.cache.campaigns||[]).find(x=>x.campaign_id===id);if(!r){toast('活动不存在',1);return}
- let wsOpts=(S.cache.cmpWorkspaces||[]).map(w=>({value:w.workspace_id,label:w.name}));
- openModal('编辑营销活动',[
-  {name:'name',label:'活动名称',value:r.campaign_name||r.campaign_name||'',required:true},
-  {name:'code',label:'活动代码',value:r.campaign_code||''},
-  {name:'campaign_type',label:'活动类型',type:'select',value:r.campaign_type||'awareness',options:[{value:'awareness',label:'品牌认知'},{value:'consideration',label:'兴趣考虑'},{value:'conversion',label:'转化促进'},{value:'retention',label:'客户留存'},{value:'launch',label:'新品发布'},{value:'seasonal',label:'季节性促销'}]},
-  {name:'status',label:'活动状态',type:'select',value:r.status||'draft',options:[{value:'draft',label:'草稿'},{value:'planned',label:'排期'},{value:'active',label:'执行中'},{value:'paused',label:'已暂停'},{value:'completed',label:'已完成'},{value:'disabled',label:'已停用'}]},
-  {name:'start_at',label:'开始时间（Unix 秒）',type:'number',value:r.start_at||'',placeholder:'例：1750000000'},
-  {name:'end_at',label:'结束时间（Unix 秒）',type:'number',value:r.end_at||'',placeholder:'例：1752600000'},
-  {name:'reason',label:'操作原因'}
- ],o=>api('/api/v207/admin/campaigns/'+encodeURIComponent(id)+qp(),{method:'PATCH',body:{name:o.name||r.campaign_name,code:o.code||r.campaign_code,campaignType:o.campaign_type,status:o.status,startAt:o.start_at?Number(o.start_at):r.start_at,endAt:o.end_at?Number(o.end_at):r.end_at,reason:o.reason}}))
-},
 async structure(){let [deps,lines,mkts]=await Promise.all([api('/api/v207/admin/departments'+qp()),api('/api/v207/admin/business-lines'+qp()),api('/api/v207/admin/markets'+qp())]);window._orgData={deps:deps.items||[],lines:lines.items||[],mkts:mkts.items||[]};let activeDeps=(deps.items||[]).filter(r=>r.status==='active').length;let activeLines=(lines.items||[]).filter(r=>r.status==='active').length;let activeMkts=(mkts.items||[]).filter(r=>r.status==='active').length;let rootDeps=(deps.items||[]).filter(r=>!r.parent_department_id).length;let totalPositions=(deps.items||[]).length+(lines.items||[]).length+(mkts.items||[]).length;let countryCount=new Set((mkts.items||[]).map(r=>r.country_code).filter(Boolean)).size;$('#content').innerHTML=head('组织架构','部门、业务线与市场的树形管理 · 多维度可视化','<button class="btn" onclick="createDepartment()">＋ 新建部门</button> <button class="btn secondary" onclick="createBusinessLine()">＋ 新建业务线</button> <button class="btn secondary" onclick="createMarket()">＋ 新建市场</button> <button class="btn secondary" onclick="toggleOrgTree()">▦ 树状图</button> <button class="btn secondary" onclick="renderStructureCharts(window._orgData.deps,window._orgData.lines,window._orgData.mkts)">📊 刷新图表</button>')+`<div class="cards"><div class="card"><span>部门总数</span><b style="color:var(--blue)">${(deps.items||[]).length}</b></div><div class="card"><span>活跃部门</span><b style="color:var(--ok)">${activeDeps}</b></div><div class="card"><span>根部门</span><b>${rootDeps}</b></div><div class="card"><span>业务线</span><b style="color:var(--pink)">${(lines.items||[]).length}</b></div><div class="card"><span>活跃业务线</span><b>${activeLines}</b></div><div class="card"><span>市场</span><b style="color:var(--warn)">${(mkts.items||[]).length}</b></div><div class="card"><span>活跃市场</span><b>${activeMkts}</b></div><div class="card"><span>国家/地区</span><b>${countryCount}</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>部门层级深度分布</h3></div><div id="struDeptChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>业务线状态分布</h3></div><div id="struLineChart" style="width:100%;height:240px"></div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>市场类型分布</h3></div><div id="struTypeChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>国家/地区分布 Top 10</h3></div><div id="struCountryChart" style="width:100%;height:240px"></div></div></div><div class="panel" id="orgTreePanel" style="display:none"><h3>组织架构树状图</h3><div style="margin-bottom:8px"><button class="btn secondary" onclick="renderOrgTree(&apos;deps&apos;)">部门</button> <button class="btn secondary" onclick="renderOrgTree(&apos;lines&apos;)">业务线</button> <button class="btn secondary" onclick="renderOrgTree(&apos;mkts&apos;)">市场</button></div><div id="orgTreeChart" style="width:100%;height:420px"></div></div><div class="grid2"><div class="panel"><h3>部门</h3>${table([['名称','name'],['代码','code'],['父部门','parent_name'],['状态','status',r=>status(r.status)]],deps.items||[],r=>`<button class="btn secondary small" onclick="editDepartment('${r.department_id}')">编辑</button> <button class="btn danger small" onclick="deleteDepartment('${r.department_id}','${esc(r.name)}')">删除</button>`)}</div><div class="panel"><h3>业务线</h3>${table([['名称','name'],['代码','code'],['父业务线','parent_name'],['状态','status',r=>status(r.status)]],lines.items||[],r=>`<button class="btn secondary small" onclick="editBusinessLine('${r.business_line_id}')">编辑</button> <button class="btn danger small" onclick="deleteBusinessLine('${r.business_line_id}','${esc(r.name)}')">删除</button>`)}</div></div><div class="panel"><h3>市场</h3>${table([['名称','name'],['代码','code'],['市场类型','market_type'],['国家代码','country_code'],['时区','timezone'],['状态','status',r=>status(r.status)]],mkts.items||[],r=>`<button class="btn secondary small" onclick="editMarket('${r.market_id}')">编辑</button> <button class="btn danger small" onclick="deleteMarket('${r.market_id}','${esc(r.name)}')">删除</button>`)}</div>`;renderStructureCharts(window._orgData.deps,window._orgData.lines,window._orgData.mkts);},
 async journey(){let settled=await Promise.allSettled([api('/api/v207/admin/touchpoints'+qp()+'&pageSize=100'),api('/api/v207/admin/attributions'+qp()+'&pageSize=200'),api('/api/v207/admin/attribution-summary'+qp())]);let tp=settled[0].status==='fulfilled'?settled[0].value:{items:[]},attr=settled[1].status==='fulfilled'?settled[1].value:{items:[]},stats=settled[2].status==='fulfilled'?settled[2].value:{};let ast=stats||{},tpa=attr.items||[],tpi=tp.items||[];$('#content').innerHTML=head('客户旅程概览','触点事件、归因路径与转化分析','<button class="btn secondary" onclick="renderAttrCharts()">📊 刷新图表</button> <button class="btn secondary" onclick="recomputeAttribution()">重算归因</button>')+`<div class="cards"><div class="card"><span>触点总数</span><b>${tpi.length}</b></div><div class="card"><span>归因记录</span><b>${ast.totalAttributions||0}</b></div><div class="card"><span>触点-归因比</span><b>${ast.totalTouchpoints?((ast.totalAttributions||0)/(ast.totalTouchpoints||1)).toFixed(2):'—'}</b></div><div class="card"><span>归因类型分布</span><b>${(ast.typeDistribution||[]).length||0} 种</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>归因类型分布（饼图）</h3></div><div id="attrPieChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>来源贡献排行（Top 10）</h3></div><div id="attrBarChart" style="width:100%;height:240px"></div></div></div><div class="panel"><div class="panel-head"><h3>触点 → 归因 漏斗</h3></div><div id="attrFunnelChart" style="width:100%;height:280px"></div></div><div class="panel"><div class="panel-head"><h3>最近触点</h3></div>${table([['联系人','contact_name'],['触点类型','touchpoint_type'],['来源','source_name'],['发生时间',r=>fmt(r.occurred_at)],['方向','direction',r=>`<span class="status ${r.direction==='inbound'?'active':r.direction==='outbound'?'disabled':''}">${esc(r.direction||'—')}</span>`]],tpi)}`;S.cache.touchpoints=tpi;S.cache.attributions=tpa;S.cache.attrStats=ast;renderAttrCharts()},
 async recycle(){let d=await api('/api/v207/admin/contacts'+qp()+'&deleted=only&pageSize=100');$('#content').innerHTML=head('联系人回收站','已删除联系人的恢复与永久清理','<button class="btn secondary" onclick="loadPage()">刷新</button>')+`<div class="panel"><div class="toolbar"><span class="badge">共 ${d.pagination?.total||0} 条已删除记录</span></div>${table([['显示名',r=>r.manual_name||r.display_name],['电话',r=>r.manual_phone||r.observed_phone],['删除时间',r=>fmt(r.deleted_at)],['团队','team_name'],['版本','version']],d.items||[],r=>`<button class="btn secondary small" onclick="restoreContact('${r.contact_id}')">恢复</button> <button class="btn danger small" onclick="purgeContact('${r.contact_id}')">永久删除</button>`)}</div>`},
@@ -451,7 +466,7 @@ async rbacMatrix(){
   S.cache.rbacCur={};for(let k in S.cache.rbacOrig)S.cache.rbacCur[k]=new Set(S.cache.rbacOrig[k]);
   S.cache.rbacRoles=roles;S.cache.rbacPerms=perms;
   let builtin=r=>r.organization_id==null||Number(r.is_system)===1;
-  let permissionZh={account:'渠道账号',attribution:'归因',audit:'审计',campaign:'营销活动',contact:'联系人',device:'设备',organization:'企业组织',platform:'平台',role:'角色',source:'来源',team:'团队',touchpoint:'客户触点',user:'用户',workspace:'工作区',read:'查看',manage:'管理',create:'新建',update:'修改',delete:'删除',restore:'恢复',recalculate:'重新计算',disable:'停用',rename:'重命名',bind:'绑定',identity:'身份',export:'导出',path:'路径',structure:'组织架构',self:'本人',admin:'管理员'};let pkey=p=>p.permission_key||p.key||'';let plabel=p=>p.display_name||p.name||p.label||pkey(p).split('.').map(x=>permissionZh[x]||x).join(' · ');let groups={};perms.forEach(p=>{let raw=pkey(p).split('.')[0]||'other',g=permissionZh[raw]||raw;(groups[g]||(groups[g]=[])).push(p)});let cells=roles.map(r=>`<th>${esc(r.name)}${builtin(r)?'<div class="sub">内置只读</div>':''}</th>`).join('');let body='<tbody>'+Object.entries(groups).map(([g,ps])=>ps.map(p=>{let k=pkey(p);return `<tr><td><b>${esc(plabel(p))}</b><div class="sub">${esc(k)}</div></td>${roles.map(r=>`<td style="text-align:center"><input type="checkbox" ${S.cache.rbacCur[r.role_id]?.has(k)?'checked':''} ${builtin(r)?'disabled':''} onchange="mtxToggle(\'${esc(r.role_id)}\',\'${esc(k)}\',this.checked)"></td>`).join('')}</tr>`}).join('')).join('')+'</tbody>';let totalPerms=perms.length;let groupKeys=Object.keys(groups);let activeRoles=roles.filter(r=>r.status==='active').length;let builtinCount=roles.filter(builtin).length;
+  let permissionZh=PERMISSION_ZH;let pkey=p=>p.permission_key||p.key||'';let plabel=p=>p.display_name||p.name||p.label||pkey(p).split('.').map(x=>permissionZh[x]||x).join(' · ');let groups={};perms.forEach(p=>{let raw=pkey(p).split('.')[0]||'other',g=permissionZh[raw]||raw;(groups[g]||(groups[g]=[])).push(p)});let cells=roles.map(r=>`<th>${esc(r.name)}${builtin(r)?'<div class="sub">内置只读</div>':''}</th>`).join('');let body='<tbody>'+Object.entries(groups).map(([g,ps])=>ps.map(p=>{let k=pkey(p);return `<tr><td><b>${esc(plabel(p))}</b><div class="sub">${esc(k)}</div></td>${roles.map(r=>`<td style="text-align:center"><input type="checkbox" ${S.cache.rbacCur[r.role_id]?.has(k)?'checked':''} ${builtin(r)?'disabled':''} onchange="mtxToggle(\'${esc(r.role_id)}\',\'${esc(k)}\',this.checked)"></td>`).join('')}</tr>`}).join('')).join('')+'</tbody>';let totalPerms=perms.length;let groupKeys=Object.keys(groups);let activeRoles=roles.filter(r=>r.status==='active').length;let builtinCount=roles.filter(builtin).length;
   $('#content').innerHTML=head('权限矩阵','勾选即改 · 内置角色只读 · 变更写入审计日志',
     `<button class="btn secondary" onclick="navigate('roles')">返回角色列表</button> <button class="btn secondary" onclick="renderRbacCharts(S.cache.rbacRoles,S.cache.rbacPerms)">📊 刷新图表</button>`)
     +`<div class="cards"><div class="card"><span>角色总数</span><b style="color:var(--blue)">${roles.length}</b></div><div class="card"><span>内置角色</span><b>${builtinCount}</b></div><div class="card"><span>活跃角色</span><b style="color:var(--ok)">${activeRoles}</b></div><div class="card"><span>权限项</span><b style="color:var(--pink)">${totalPerms}</b></div><div class="card"><span>权限分组</span><b>${groupKeys.length}</b></div><div class="card"><span>角色成员总数</span><b>${roles.reduce((a,r)=>a+(r.member_count||0),0)}</b></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>角色 scope 等级分布</h3></div><div id="rbacScopeChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>权限组 Top 8</h3></div><div id="rbacGroupChart" style="width:100%;height:240px"></div></div></div><div class="grid2"><div class="panel"><div class="panel-head"><h3>角色成员数 Top 10</h3></div><div id="rbacMemberChart" style="width:100%;height:240px"></div></div><div class="panel"><div class="panel-head"><h3>成员数 vs 权限数（散点）</h3><span class="grow">气泡大小 = 权限数</span></div><div id="rbacScatter" style="width:100%;height:240px"></div></div></div>
@@ -830,7 +845,282 @@ function deleteIdentity(iid,val){
 }
 async function manageGrants(aid,name){let d=await api(`/api/v207/admin/accounts/${aid}/grants${qp()}`);let teams=S.cache.teams||[];showJson({账号:name,已授权团队:d.items||[],可选团队:teams.map(t=>({team_id:t.team_id,name:t.name}))})}
 function createPlatform(){openModal('新建平台',[{name:'platform_code',label:'平台代码',required:true,placeholder:'例：wechat'},{name:'platform_name',label:'平台名称',required:true,placeholder:'例：微信'},{name:'platform_abbr',label:'平台简写',required:true,placeholder:'例：WX'},{name:'platform_kind',label:'平台类型',type:'select',value:'messaging',options:[{value:'messaging',label:'即时通讯'},{value:'social',label:'社交媒体'},{value:'advertising',label:'广告'},{value:'owned',label:'自有渠道'},{value:'offline',label:'线下'}]}],o=>api('/api/v207/admin/platforms',{method:'POST',body:o}))}
-function createCampaign(){openModal('新建活动',[{name:'campaign_name',label:'活动名称',required:true,placeholder:'例：双11大促'},{name:'campaign_code',label:'活动代码',placeholder:'例：CMP-2026-001'},{name:'campaign_type',label:'活动类型',required:true,value:'awareness'},{name:'platform_id',label:'平台 ID',placeholder:'如：plt_meta_ads'},{name:'start_at',label:'开始时间（时间戳）',type:'number',placeholder:'例：1750000000',help:'Unix 秒级时间戳'},{name:'end_at',label:'结束时间（时间戳）',type:'number',placeholder:'例：1752600000',help:'Unix 秒级时间戳'}],o=>api('/api/v207/admin/campaigns'+qp(),{method:'POST',body:o}))}
+/* ===== 营销活动：统一的新建/编辑表单 ===== */
+const CAMPAIGN_TYPE_OPTIONS=[
+ {value:'marketing',label:'营销活动'},
+ {value:'awareness',label:'品牌认知'},
+ {value:'consideration',label:'兴趣考虑'},
+ {value:'conversion',label:'转化促进'},
+ {value:'retention',label:'客户留存'},
+ {value:'launch',label:'新品发布'},
+ {value:'seasonal',label:'季节性促销'},
+ {value:'reactivation',label:'客户召回'}
+];
+const CAMPAIGN_STATUS_OPTIONS=[
+ {value:'draft',label:'草稿'},
+ {value:'planned',label:'排期'},
+ {value:'active',label:'执行中'},
+ {value:'paused',label:'已暂停'},
+ {value:'completed',label:'已完成'},
+ {value:'archived',label:'已归档'},
+ {value:'disabled',label:'已停用'}
+];
+// 把毫秒时间戳转换为 <input type="datetime-local"> 需要的本地时间字符串
+function _tsToLocalInput(ts){
+ if(ts===undefined||ts===null||ts==='')return '';
+ let n=Number(ts);
+ if(!Number.isFinite(n)||n<=0)return '';
+ if(n<1e12)n*=1000; // 兼容历史秒级数据
+ const d=new Date(n);
+ if(Number.isNaN(d.getTime()))return '';
+ const pad=x=>String(x).padStart(2,'0');
+ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+// 解析 datetime-local 字符串为毫秒时间戳；空值返回 null
+function _localInputToTs(v){
+ if(v===undefined||v===null||v==='')return null;
+ const d=new Date(v);
+ const n=d.getTime();
+ return Number.isNaN(n)?null:n;
+}
+// 把毫秒时间戳转换为 <input type="date"> 需要的 YYYY-MM-DD 字符串
+function _tsToLocalDate(ts){
+ if(ts===undefined||ts===null||ts==='')return '';
+ let n=Number(ts);
+ if(!Number.isFinite(n)||n<=0)return '';
+ if(n<1e12)n*=1000;
+ const d=new Date(n);
+ if(Number.isNaN(d.getTime()))return '';
+ const pad=x=>String(x).padStart(2,'0');
+ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+// 自定义日历选择器（不依赖浏览器原生 picker，所有浏览器一致体验）
+function openCalendar(trigger,hidden){
+ const existing=document.getElementById('calendarPopup');
+ if(existing){existing.remove();document.removeEventListener('mousedown',_calOutside,true);document.removeEventListener('keydown',_calEsc,true)}
+ const pad=x=>String(x).padStart(2,'0');
+ const parse=v=>{const m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return null;return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]))};
+ const today=new Date();today.setHours(0,0,0,0);
+ let cur=parse(hidden.value)||new Date(today);
+ const sel=parse(hidden.value);
+ const popup=document.createElement('div');
+ popup.id='calendarPopup';popup.className='calendar-popup';
+ const render=()=>{
+  const y=cur.getFullYear(),m=cur.getMonth();
+  const first=new Date(y,m,1),last=new Date(y,m+1,0);
+  const startDow=first.getDay(); // 0=Sun
+  const prevLast=new Date(y,m,0).getDate();
+  const cells=[];
+  for(let i=startDow-1;i>=0;i--)cells.push({y:m===0?y-1:y,m:m===0?11:m-1,d:prevLast-i,muted:true});
+  for(let d=1;d<=last.getDate();d++)cells.push({y,m,d,muted:false});
+  while(cells.length%7!==0||cells.length<42){const n=cells.length-prevLast-(startDow-1);cells.push({y:m===11?y+1:y,m:m===11?0:m+1,d:n,muted:true})}
+  popup.innerHTML=`
+   <div class="cal-nav">
+    <button type="button" data-cal-prev-year aria-label="上一年">«</button>
+    <button type="button" data-cal-prev-month aria-label="上月">‹</button>
+    <div class="cal-title">${y} 年 ${pad(m+1)} 月</div>
+    <button type="button" data-cal-next-month aria-label="下月">›</button>
+    <button type="button" data-cal-next-year aria-label="下一年">»</button>
+   </div>
+   <div class="cal-grid">
+    ${['日','一','二','三','四','五','六'].map(x=>`<div class="cal-dow">${x}</div>`).join('')}
+    ${cells.map(c=>{
+     const dStr=`${c.y}-${pad(c.m+1)}-${pad(c.d)}`;
+     const isToday=dStr===`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+     const isSel=sel&&dStr===`${sel.getFullYear()}-${pad(sel.getMonth()+1)}-${pad(sel.getDate())}`;
+     return `<button type="button" class="cal-day${c.muted?' muted':''}${isToday?' today':''}${isSel?' selected':''}" data-d="${dStr}">${c.d}</button>`;
+    }).join('')}
+   </div>
+   <div class="cal-foot">
+    <button type="button" data-cal-today>今天</button>
+    <button type="button" data-cal-clear>清除</button>
+    <button type="button" class="primary" data-cal-close>关闭</button>
+   </div>`;
+ };
+ render();
+ // 计算弹层位置（紧贴触发按钮下方，溢出视口则翻转）
+ const r=trigger.getBoundingClientRect();
+ popup.style.left=(r.left+window.scrollX)+'px';
+ popup.style.top=(r.bottom+window.scrollY+4)+'px';
+ document.body.appendChild(popup);
+ const overflow=popup.getBoundingClientRect();
+ if(overflow.right>window.innerWidth-8){popup.style.left=(window.innerWidth-popup.offsetWidth-8+window.scrollX)+'px'}
+ if(overflow.bottom>window.innerHeight-8){popup.style.top=(r.top+window.scrollY-popup.offsetHeight-4)+'px'}
+ // 事件
+ popup.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  e.preventDefault();e.stopPropagation();
+  if(b.dataset.calPrevYear!==undefined)cur=new Date(cur.getFullYear()-1,cur.getMonth(),1);
+  else if(b.dataset.calPrevMonth!==undefined)cur=new Date(cur.getFullYear(),cur.getMonth()-1,1);
+  else if(b.dataset.calNextMonth!==undefined)cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+  else if(b.dataset.calNextYear!==undefined)cur=new Date(cur.getFullYear()+1,cur.getMonth(),1);
+  else if(b.dataset.calToday!==undefined){const t=new Date();cur=new Date(t.getFullYear(),t.getMonth(),1);hidden.value=`${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}`;hidden.dispatchEvent(new Event('change',{bubbles:true}));close()}
+  else if(b.dataset.calClear!==undefined){hidden.value='';hidden.dispatchEvent(new Event('change',{bubbles:true}));close()}
+  else if(b.dataset.calClose!==undefined){close();return}
+  else if(b.dataset.d){hidden.value=b.dataset.d;hidden.dispatchEvent(new Event('change',{bubbles:true}));close();return}
+  render();
+ });
+ function close(){popup.remove();document.removeEventListener('mousedown',_calOutside,true);document.removeEventListener('keydown',_calEsc,true)}
+ function _calOutside(ev){if(!popup.contains(ev.target)&&ev.target!==trigger&&!trigger.contains(ev.target))close()}
+ function _calEsc(ev){if(ev.key==='Escape')close()}
+ setTimeout(()=>{document.addEventListener('mousedown',_calOutside,true);document.addEventListener('keydown',_calEsc,true)},0);
+}
+async function _loadCampaignDeps(){
+ // 拉取工作区、平台、渠道账号、业务线、市场（已缓存则直接复用）
+ const need=['cmpWorkspaces','cmpPlatforms','cmpAccounts','cmpBusinessLines','cmpMarkets'];
+ if(!S.cache.cmpWorkspaces||!S.cache.cmpPlatforms||!S.cache.cmpAccounts||!S.cache.cmpBusinessLines||!S.cache.cmpMarkets){
+  const tasks={
+   cmpWorkspaces:api('/api/v207/admin/workspaces'+qp()+'&pageSize=200'),
+   cmpPlatforms:api('/api/v207/admin/platforms?pageSize=200'),
+   cmpAccounts:api('/api/v207/admin/accounts?status=active&pageSize=500'),
+   cmpBusinessLines:api('/api/v207/admin/business-lines?status=active&pageSize=200'),
+   cmpMarkets:api('/api/v207/admin/markets?status=active&pageSize=200')
+  };
+  const [wd,pd,ad,bld,mkd]=await Promise.all([tasks.cmpWorkspaces,tasks.cmpPlatforms,tasks.cmpAccounts,tasks.cmpBusinessLines,tasks.cmpMarkets]);
+  S.cache.cmpWorkspaces=wd.items||[];
+  S.cache.cmpPlatforms=pd.items||[];
+  S.cache.cmpAccounts=ad.items||[];
+  S.cache.cmpBusinessLines=bld.items||[];
+  S.cache.cmpMarkets=mkd.items||[];
+ }
+ return {
+  workspaces:S.cache.cmpWorkspaces||[],
+  platforms:S.cache.cmpPlatforms||[],
+  accounts:S.cache.cmpAccounts||[],
+  businessLines:S.cache.cmpBusinessLines||[],
+  markets:S.cache.cmpMarkets||[]
+ };
+}
+function _buildCampaignFields(item,deps){
+ const ws=deps.workspaces,plats=deps.platforms,accs=deps.accounts,bls=deps.businessLines,mkts=deps.markets;
+ const platformOptions=[{value:'',label:'不指定平台'},...plats.filter(p=>p.status!=='disabled').map(p=>({value:p.platform_id,label:`${p.platform_name||p.platform_code} · ${p.platform_code||''}`}))];
+ // 渠道账号默认显示全部；选择平台后可通过页面交互过滤（下面 onOpened 处理）
+ const accountOptions=[{value:'',label:'不绑定账号'},...accs.map(a=>({value:a.channel_account_id,label:`${a.display_name||a.channel_account_id} · ${a.platform_name||a.platform_code||'未分类'}${a.status==='active'?'':'（已停用）'}`}))];
+ const wsOptions=[{value:'',label:'请选择工作区 *'},...ws.filter(w=>w.status!=='disabled').map(w=>({value:w.workspace_id,label:w.name||w.workspace_id}))];
+ const blOptions=[{value:'',label:'不指定业务线'},...bls.map(b=>({value:b.business_line_id,label:b.name||b.business_line_id}))];
+ const mkOptions=[{value:'',label:'不指定市场'},...mkts.map(m=>({value:m.market_id,label:m.name||m.market_id}))];
+ const r=item||{};
+ return [
+  {name:'name',label:'活动名称',required:true,value:r.name||r.campaign_name||'',placeholder:'例：双11大促 · 美区'},
+  {name:'code',label:'活动代码',value:r.code||r.campaign_code||'',placeholder:'例：CMP-2026-001',help:'同一工作区内唯一，留空自动跳过'},
+  {name:'workspaceId',label:'所属工作区',type:'select',required:true,value:r.workspaceId||r.workspace_id||'',options:wsOptions,placeholder:'请选择工作区'},
+  {name:'campaign_type',label:'活动类型',type:'select',required:true,value:r.campaign_type||r.type||'marketing',options:CAMPAIGN_TYPE_OPTIONS},
+  {name:'status',label:'活动状态',type:'select',value:r.status||'draft',options:CAMPAIGN_STATUS_OPTIONS},
+  {name:'platformId',label:'所属平台',type:'select',value:r.platformId||r.platform_id||'',options:platformOptions,help:'系统中的平台（如 WhatsApp、Meta Ads），不选可不填'},
+  {name:'channelAccountId',label:'承接渠道账号',type:'select',value:r.channelAccountId||r.channel_account_id||'',options:accountOptions,help:'关联账号后可承载触点数据；选平台后可自动联动'},
+  {name:'businessLineId',label:'业务线（可选）',type:'select',value:r.businessLineId||r.business_line_id||'',options:blOptions},
+  {name:'marketId',label:'市场（可选）',type:'select',value:r.marketId||r.market_id||'',options:mkOptions},
+ {name:'start_at',label:'开始时间',type:'date',value:_tsToLocalDate(r.start_at),help:'点击日历按钮选择日期；留空表示暂未排期'},
+  {name:'end_at',label:'结束时间',type:'date',value:_tsToLocalDate(r.end_at),help:'留空表示长期有效；不得早于开始时间'},
+  {name:'reason',label:'操作原因',type:'textarea',value:r.reason||'',placeholder:'可选，建议填写变更原因以利审计'}
+ ];
+}
+function _campaignPayload(o,isUpdate){
+ const base={
+  name:String(o.name||'').trim(),
+  code:String(o.code||'').trim()||undefined,
+  workspaceId:String(o.workspaceId||'').trim(),
+  type:o.campaign_type||'marketing',
+  status:o.status||'draft',
+  platformId:o.platformId||undefined,
+  channelAccountId:o.channelAccountId||undefined,
+  businessLineId:o.businessLineId||undefined,
+  marketId:o.marketId||undefined,
+  startAt:_localInputToTs(o.start_at),
+  endAt:_localInputToTs(o.end_at)
+ };
+ if(!isUpdate)delete base.code;
+ if(isUpdate){
+  base.code=String(o.code||'').trim()||undefined;
+  base.reason=String(o.reason||'').trim();
+ }
+ // 清理 undefined
+ Object.keys(base).forEach(k=>{if(base[k]===undefined)delete base[k]});
+ return base;
+}
+async function createCampaign(){
+ try{
+  const deps=await _loadCampaignDeps();
+  if(!deps.workspaces.length){toast('当前企业暂无工作区，请先创建工作区',1);return}
+  openFormModal('新建营销活动',_buildCampaignFields({},deps),async (_,form)=>{
+   const o=modalFormValues(form,_buildCampaignFields({},deps));
+   const body=_campaignPayload(o,false);
+   if(!body.name){toast('请填写活动名称',1);return false}
+   if(!body.workspaceId){toast('请选择所属工作区',1);return false}
+   if(body.startAt&&body.endAt&&body.endAt<body.startAt){toast('结束时间不能早于开始时间',1);return false}
+   try{
+    await api('/api/v207/admin/campaigns'+qp(),{method:'POST',body});
+    toast('活动创建成功');
+    closeModal();await loadPage();
+   }catch(err){toast(err.message||'创建失败',1)}
+   return false;
+  },{html:_buildCampaignFields({},deps).map(modalFieldHtml).join(''),submitText:'创建活动',reload:false,
+   onOpened:(body,form)=>{
+    // 平台 ↔ 渠道账号联动：选择平台后，自动筛选账号选项；如已选账号同步反填平台
+    const pidSel=body.querySelector('select[name=platformId]');
+    const accSel=body.querySelector('select[name=channelAccountId]');
+    if(pidSel&&accSel){
+     const allAccounts=deps.accounts.map(a=>({value:a.channel_account_id,label:`${a.display_name||a.channel_account_id} · ${a.platform_name||a.platform_code||'未分类'}${a.status==='active'?'':'（已停用）'}`}));
+     const refreshAcc=()=>{
+      const pid=pidSel.value;
+      const prev=accSel.value;
+      const list=pid?allAccounts.filter(a=>{const item=deps.accounts.find(x=>x.channel_account_id===a.value);return item&&item.platform_id===pid}):[{value:'',label:'不绑定账号'},...allAccounts];
+      accSel.innerHTML=list.map(x=>`<option value="${esc(x.value)}">${esc(x.label)}</option>`).join('');
+      accSel.value=list.some(x=>x.value===prev)?prev:'';
+     };
+     pidSel.addEventListener('change',refreshAcc);
+     accSel.addEventListener('change',()=>{
+      if(!accSel.value)return;
+      const acc=deps.accounts.find(a=>a.channel_account_id===accSel.value);
+      if(acc&&acc.platform_id&&pidSel.value!==acc.platform_id){pidSel.value=acc.platform_id;refreshAcc()}
+     });
+    }
+   }});
+ }catch(e){toast(e.message||'活动表单加载失败',1)}
+}
+async function editCampaign(id){
+ try{
+  const deps=await _loadCampaignDeps();
+  let r=(S.cache.campaigns||[]).find(x=>x.campaign_id===id);
+  if(!r){
+   try{const detail=await api('/api/v207/admin/campaigns/'+encodeURIComponent(id)+qp());r=detail.item||detail.campaign||r||{}}catch(_){r={}}
+  }
+  const fields=_buildCampaignFields(r,deps);
+  openFormModal('编辑营销活动',fields,async (_,form)=>{
+   const o=modalFormValues(form,fields);
+   const body=_campaignPayload(o,true);
+   if(!body.name){toast('请填写活动名称',1);return false}
+   if(!body.workspaceId){toast('请选择所属工作区',1);return false}
+   if(body.startAt&&body.endAt&&body.endAt<body.startAt){toast('结束时间不能早于开始时间',1);return false}
+   try{
+    await api('/api/v207/admin/campaigns/'+encodeURIComponent(id)+qp(),{method:'PATCH',body});
+    toast('活动已更新');
+    closeModal();await loadPage();
+   }catch(err){toast(err.message||'保存失败',1)}
+   return false;
+  },{html:fields.map(modalFieldHtml).join(''),submitText:'保存修改',reload:false,
+   onOpened:(body,form)=>{
+    const pidSel=body.querySelector('select[name=platformId]');
+    const accSel=body.querySelector('select[name=channelAccountId]');
+    if(pidSel&&accSel){
+     const allAccounts=deps.accounts.map(a=>({value:a.channel_account_id,label:`${a.display_name||a.channel_account_id} · ${a.platform_name||a.platform_code||'未分类'}${a.status==='active'?'':'（已停用）'}`}));
+     const refreshAcc=()=>{
+      const pid=pidSel.value;
+      const prev=accSel.value;
+      const list=pid?allAccounts.filter(a=>{const item=deps.accounts.find(x=>x.channel_account_id===a.value);return item&&item.platform_id===pid}):[{value:'',label:'不绑定账号'},...allAccounts];
+      accSel.innerHTML=list.map(x=>`<option value="${esc(x.value)}">${esc(x.label)}</option>`).join('');
+      accSel.value=list.some(x=>x.value===prev)?prev:'';
+     };
+     pidSel.addEventListener('change',refreshAcc);
+     accSel.addEventListener('change',()=>{
+      if(!accSel.value)return;
+      const acc=deps.accounts.find(a=>a.channel_account_id===accSel.value);
+      if(acc&&acc.platform_id&&pidSel.value!==acc.platform_id){pidSel.value=acc.platform_id;refreshAcc()}
+     });
+    }
+   }});
+ }catch(e){toast(e.message||'活动表单加载失败',1)}
+}
 function createDepartment(){openModal('新建部门',[{name:'name',label:'部门名称',required:true},{name:'code',label:'部门代码',required:true,placeholder:'例：DEPT-SALES'},{name:'parent_department_id',label:'父部门',type:'select',options:[{value:'',label:'顶级部门'},...treeOptions(((window._orgData||{}).deps||[]),'department_id','parent_department_id')]},{name:'description',label:'描述'}],o=>api('/api/v207/admin/departments'+qp(),{method:'POST',body:o}))}
 function createBusinessLine(){openModal('新建业务线',[{name:'name',label:'业务线名称',required:true},{name:'code',label:'业务线代码',required:true,placeholder:'例：BL-CLOUD'},{name:'parent_business_line_id',label:'父业务线',type:'select',options:[{value:'',label:'顶级业务线'},...treeOptions(((window._orgData||{}).lines||[]),'business_line_id','parent_business_line_id')]},{name:'description',label:'描述'}],o=>api('/api/v207/admin/business-lines'+qp(),{method:'POST',body:o}))}
 function timezoneOptions(){let z=[];try{z=Intl.supportedValuesOf('timeZone')}catch(e){z=['Asia/Shanghai','Europe/Paris','Europe/Rome','UTC']}return z.map(x=>({value:x,label:x}))}
@@ -857,7 +1147,7 @@ function filterAudit(){let et=$('#auditEntityType')?.value,op=$('#auditOperation
 
 const ROLE_SCOPES=[['organization','企业'],['workspace','工作区'],['department','部门'],['team','团队'],['self','本人']];
 function roleStatus(v){let m={active:'正常',disabled:'已停用',archived:'已归档'};return `<span class="status ${esc(v)}">${m[v]||esc(v||'未知')}</span>`}
-const PERMISSION_ZH={account:'渠道账号',attribution:'归因',audit:'审计',campaign:'营销活动',contact:'联系人',device:'设备',organization:'组织',permission:'权限',platform:'平台',role:'角色',source:'来源',team:'团队',touchpoint:'客户触点',user:'用户',workspace:'工作区',read:'查看',manage:'管理',create:'新建',update:'修改',delete:'删除',bind:'绑定',identity:'身份管理',export:'导出',approve:'审批'};function permissionName(p){return p.display_name||p.name||p.description||String(p.permission_key||'').split('.').map(x=>PERMISSION_ZH[x]||x).join(' · ')}
+const PERMISSION_ZH={account:'渠道账号',attribution:'归因',audit:'审计',campaign:'营销活动',contact:'联系人',device:'设备',organization:'企业组织',permission:'权限',platform:'平台',role:'角色',source:'来源',team:'团队',touchpoint:'客户触点',user:'用户',workspace:'工作区',read:'查看',manage:'管理',create:'新建',update:'修改',delete:'删除',restore:'恢复',recalculate:'重新计算',disable:'停用',rename:'重命名',bind:'绑定',identity:'身份管理',export:'导出',approve:'审批',path:'路径',structure:'组织架构',self:'本人',admin:'管理员'};function permissionName(p){return p.display_name||p.name||p.description||String(p.permission_key||'').split('.').map(x=>PERMISSION_ZH[x]||x).join(' · ')}
 function permissionRisk(p){let v=String(p.risk_level||p.risk||p.sensitivity||'normal').toLowerCase();if(['high','critical','danger'].includes(v))return ['high','高风险'];if(['sensitive','medium'].includes(v))return ['sensitive','敏感'];return ['normal','普通']}
 function permissionMatrix(selected=[]){let set=new Set(selected),groups={};(S.cache.permissions||[]).forEach(p=>{let raw=String(p.permission_key||'其他').split('.')[0]||'其他',g=p.resource||PERMISSION_ZH[raw]||raw;(groups[g]||(groups[g]=[])).push(p)});return `<div class="permission-matrix">${Object.entries(groups).map(([g,ps])=>`<div class="permission-group"><h4>${esc(g)}</h4>${ps.map(p=>{let [rc,rn]=permissionRisk(p),k=p.permission_key;return `<label class="permission-item"><input type="checkbox" name="permissionKey" value="${esc(k)}" ${set.has(k)?'checked':''}><span><b>${esc(permissionName(p))}</b><div class="permission-key">${esc(k)}</div></span><span class="risk ${rc}">${rn}</span></label>`}).join('')}</div>`).join('')||'<div class="empty">暂无权限目录</div>'}</div>`}
 function roleContext(action,body,id){if(action==='role.create')return {name:body.name,organizationId:S.org,permissionKeys:body.permissionKeys,scopeLevel:body.scopeLevel};if(action==='role.update')return {name:body.name,organizationId:S.org,permissionKeys:body.permissionKeys,roleId:id,scopeLevel:body.scopeLevel,status:body.status};if(action==='role.copy')return {name:body.name,organizationId:S.org,sourceRoleId:id};return {organizationId:S.org,roleId:id}}
@@ -1011,6 +1301,14 @@ function modalFieldHtml(field){
  }else if(f.type==='color-palette'){
   const colors=f.colors||['#64748b','#2563eb','#7c3aed','#db2777','#dc2626','#ea580c','#ca8a04','#16a34a','#0891b2'];
   control=`<input type="hidden" name="${name}" value="${esc(value||colors[0])}"><div class="color-palette">${colors.map(c=>`<button type="button" class="color-swatch ${String(c)===String(value)?'active':''}" style="background:${esc(c)}" data-color="${esc(c)}" aria-label="选择颜色 ${esc(c)}"></button>`).join('')}</div>`;
+ }else if(f.type==='date'){
+  control=`<span class="dt-picker" data-name="${name}">
+   <button type="button" class="dt-trigger" data-cal-trigger aria-haspopup="dialog">
+    <span class="dt-ico" aria-hidden="true">📅</span>
+    <span class="dt-label${value?'':' dt-placeholder'}" data-role="label">${value?esc(value):'点击选择日期'}</span>
+   </button>
+   <input type="hidden" name="${name}" data-role="hidden" value="${esc(value)}">
+  </span>`;
  }else{
   const type=['password','number','date','email','tel','url'].includes(f.type)?f.type:'text';
   const min=f.min!==undefined?` min="${esc(f.min)}"`:'',max=f.max!==undefined?` max="${esc(f.max)}"`:'',step=f.step!==undefined?` step="${esc(f.step)}"`:'';
@@ -1020,6 +1318,22 @@ function modalFieldHtml(field){
 }
 function bindModalFieldEvents(){
  $('#modalBody').querySelectorAll('.color-palette').forEach(p=>p.addEventListener('click',e=>{const b=e.target.closest('[data-color]');if(!b)return;const input=p.previousElementSibling;input.value=b.dataset.color;p.querySelectorAll('[data-color]').forEach(x=>x.classList.toggle('active',x===b))}))
+ // 自定义日期选择器：点击按钮弹出 openCalendar 选择面板；变化时同步更新按钮文字
+ $('#modalBody').querySelectorAll('.dt-picker').forEach(p=>{
+  const hidden=p.querySelector('[data-role=hidden]');
+  const label=p.querySelector('[data-role=label]');
+  const refresh=()=>{
+   const v=hidden.value;
+   label.textContent=v||'点击选择日期';
+   label.classList.toggle('dt-placeholder',!v);
+  };
+  refresh();
+  p.querySelector('[data-cal-trigger]').addEventListener('click',e=>{
+   e.preventDefault();e.stopPropagation();
+   openCalendar(e.currentTarget,hidden);
+  });
+  hidden.addEventListener('change',refresh);
+ });
 }
 function modalFormValues(form,fields){
  const fd=new FormData(form),out={};

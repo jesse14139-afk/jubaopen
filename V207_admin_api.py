@@ -712,13 +712,14 @@ def dispatch(h,m,p,q,a,db):
  if root=='permissions' and m=='GET':
   if not (platform(db,a) or can(db,a,'user.manage',organization_id=org)):return bad(h,'FORBIDDEN','无权限元数据读取权限',403)
   with db.tx(False) as c:its=rows(c,'SELECT * FROM permissions ORDER BY permission_key')
-  resource_zh={'account':'渠道账号','attribution':'归因','audit':'审计','campaign':'营销活动','contact':'联系人','device':'设备','organization':'组织','permission':'权限','platform':'平台','role':'角色','source':'来源','team':'团队','touchpoint':'客户触点','user':'用户','workspace':'工作区'}
-  action_zh={'read':'查看','manage':'管理','create':'新建','update':'修改','delete':'删除','bind':'绑定','identity':'身份管理','export':'导出','approve':'审批'}
+  resource_zh={'account':'渠道账号','attribution':'归因','audit':'审计','campaign':'营销活动','contact':'联系人','device':'设备','organization':'企业组织','permission':'权限','platform':'平台','role':'角色','source':'来源','team':'团队','touchpoint':'客户触点','user':'用户','workspace':'工作区'}
+  action_zh={'read':'查看','manage':'管理','create':'新建','update':'修改','delete':'删除','restore':'恢复','recalculate':'重新计算','disable':'停用','rename':'重命名','bind':'绑定','identity':'身份管理','export':'导出','approve':'审批','path':'路径','structure':'组织架构','self':'本人','admin':'管理员'}
   for x in its:
-   parts=str(x.get('permission_key') or '').split('.');resource=parts[0] if parts else '';action=parts[-1] if parts else ''
-   if not x.get('display_name'):x['display_name']=' · '.join(resource_zh.get(p,action_zh.get(p,p)) for p in parts)
-   if not x.get('resource'):x['resource']=resource_zh.get(resource,resource or '其他')
-   if not x.get('risk_level'):x['risk_level']='high' if action in ('delete','manage','approve') else ('sensitive' if action in ('create','update','bind','export') else 'normal')
+   parts=[p for p in str(x.get('permission_key') or '').split('.') if p];resource=parts[0] if parts else '';action=parts[-1] if parts else ''
+   # 始终根据 permission_key 生成权威中文释义，避免数据库中遗留的英文 key 被原样返回
+   x['display_name']=' · '.join(resource_zh.get(p,action_zh.get(p,p)) for p in parts)
+   x['resource']=resource_zh.get(resource,resource or '其他')
+   if not x.get('risk_level'):x['risk_level']='high' if action in ('delete','manage','approve') else ('sensitive' if action in ('create','update','bind','export','restore','recalculate','disable','rename','identity') else 'normal')
   return h.sendj({'ok':True,'items':its}) or True
  if root=='roles':
   if not (platform(db,a) or can(db,a,'user.manage',organization_id=org)):return bad(h,'FORBIDDEN','无角色读取权限',403)
