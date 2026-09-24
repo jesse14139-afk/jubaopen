@@ -3,9 +3,10 @@
 import json, re, sqlite3, uuid
 from V207_shared_db import now_ms, dumps
 from V207_security import can, is_platform_admin
+from V208_identity import normalize_identity
 
 STATUSES={'active','disabled'}
-IDENTITY_TYPES={'external_id','email','login','username','handle','phone','mobile','whatsapp','telegram','instagram','facebook','messenger','line','wechat','tiktok'}
+IDENTITY_TYPES={'external_id','email','login','username','handle','phone','mobile','whatsapp','telegram','instagram','facebook','messenger','line','wechat','tiktok','whatsapp_jid','whatsapp_lid','telegram_user_id','telegram_phone','telegram_username'}
 def _one(c,s,a=()):
  x=c.execute(s,a).fetchone();return dict(x) if x else None
 def _rows(c,s,a=()):return [dict(x) for x in c.execute(s,a)]
@@ -15,11 +16,7 @@ def _audit(c,a,op,typ,eid,before,after,reason=None,wid=None):
  if not wid:raise RuntimeError('AUDIT_SCOPE_REQUIRED')
  c.execute('INSERT INTO audit_logs(workspace_id,actor_id,device_id,operation,entity_type,entity_id,before_json,after_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(wid,a['user_id'],None,op,typ,eid,dumps(before or {}),dumps(after or {}),reason,now_ms()))
 def _canonical(typ,value):
- typ=str(typ or 'external_id').strip().lower();v=str(value or '').strip()
- if typ in ('email','login','username','handle'):cv=''.join(v.lower().split())
- elif typ in ('phone','mobile','whatsapp'):cv=('+' if v.startswith('+') else '')+''.join(x for x in v if x.isdigit())
- else:cv=' '.join(v.lower().split())
- return typ,v,cv
+ return normalize_identity('',typ,value)
 def _identity(body,old=None):
  old=old or {};typ,v,cv=_canonical(body.get('identityType',old.get('identity_type')),body.get('identityValue',body.get('identity',old.get('identity_value'))))
  if typ not in IDENTITY_TYPES or not re.fullmatch(r'[a-z][a-z0-9_]{1,63}',typ) or not v or not cv or len(v)>512:return None,_err('INVALID_IDENTITY','身份类型或身份值无效')
@@ -139,7 +136,10 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
   pid=str(body.get('platformId') or '').strip()
   if not pid:return _err('PLATFORM_ID_REQUIRED','platform_id is required')
   
-  team_id=str(body.get('teamId') or '').strip() or None
+  team_id=str(body.get('teamId') or '').strip()
+  if not team_id:return _err('TEAM_ID_REQUIRED','teamId 必填')
+  account_type=str(body.get('accountType') or '').strip().lower()
+  if account_type not in ('chat','internal','login','service','marketing','advertising','attribution'):return _err('INVALID_ACCOUNT_TYPE','accountType 必须是 chat、internal、login、service、marketing、advertising 或 attribution')
   channel_type_id=str(body.get('channelTypeId') or body.get('channel_type_id') or '').strip() or None
   idata,e=_identity({'identityType':body.get('identityType','login'),'identityValue':body.get('identity'),'metadata':body.get('identityMetadata',{})})
   if e:return e
@@ -147,9 +147,13 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
   meta=body.get('metadata',{})
   if not isinstance(meta,dict):return _err('INVALID_METADATA','metadata 必须是对象')
   
+  purpose=str(body.get('businessPurpose') or body.get('business_purpose') or '').strip().lower()
+  if purpose not in ('acquisition','conversion','hybrid'):return _err('INVALID_BUSINESS_PURPOSE','businessPurpose 必须是 acquisition、conversion 或 hybrid')
+  collection=body.get('collectionEnabled',body.get('collection_enabled',True))
+  if not isinstance(collection,bool):return _err('INVALID_COLLECTION_ENABLED','collectionEnabled 必须是布尔值')
   with db.tx() as c:
-   team=_one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(team_id,org)) if team_id else None
-   if team_id and not team:return _err('TEAM_NOT_FOUND','团队不存在',404)
+   team=_one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(team_id,org))
+   if not team:return _err('TEAM_NOT_FOUND','团队不存在、未启用或不属于当前企业',404)
    if channel_type_id and not _one(c,"SELECT 1 FROM channel_types WHERE channel_type_id=? AND platform_id=? AND is_active=1",(channel_type_id,pid)):return _err('INVALID_CHANNEL_TYPE','渠道类型不存在、未启用或不属于所选平台',404)
    
    # P2: 验证 platform_id 存在且激活
@@ -157,13 +161,15 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
    if not platform:return _err('INVALID_PLATFORM','Platform not found or inactive',404)
    
    n=now_ms()
+   conflict=_one(c,"SELECT i.identity_id,i.channel_account_id FROM channel_account_identities i JOIN channel_accounts ca ON ca.channel_account_id=i.channel_account_id WHERE ca.organization_id=? AND ca.platform_id=? AND i.identity_type=? AND i.canonical_value=? AND i.status='active' LIMIT 1",(org,pid,idata['type'],idata['canonical']))
+   if conflict:return _err('ACCOUNT_IDENTITY_CONFLICT','当前企业在该平台已存在相同稳定身份',409,conflict=conflict)
    aid='acc_'+uuid.uuid4().hex
    iid='idn_'+uuid.uuid4().hex
    ch=platform['platform_code'].lower()  # channel 字段仅用于向后兼容
    
-   c.execute('INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,channel_type_id,account_type,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(aid,org,ch,str(body.get('displayName') or idata['value']).strip(), 'active',n,n,pid,channel_type_id,str(body.get('accountType') or 'business_account'),dumps(meta)))
+   c.execute('INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,channel_type_id,account_type,metadata_json,business_purpose,collection_enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(aid,org,ch,str(body.get('displayName') or idata['value']).strip(), 'active',n,n,pid,channel_type_id,account_type,dumps(meta),purpose,1 if collection else 0))
    c.execute('INSERT INTO channel_account_identities(identity_id,channel_account_id,identity_type,identity_value,canonical_value,created_at,platform_id,is_primary,status,valid_from,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(iid,aid,idata['type'],idata['value'],idata['canonical'],n,pid,1,'active',n,dumps(idata['metadata'])))
-   if team_id:c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team_id,aid,actor['user_id'],n))
+   c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team_id,aid,actor['user_id'],n))
    new=_one(c,'SELECT * FROM channel_accounts WHERE channel_account_id=?',(aid,))
    audit_wid=team['workspace_id'] if team else (_one(c,"SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY created_at,workspace_id LIMIT 1",(org,)) or {}).get('workspace_id')
    if not audit_wid:return _err('WORKSPACE_REQUIRED','企业至少需要一个启用的工作区才能创建账号',409)
@@ -172,6 +178,10 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
  if method=='PATCH' and account_id:
   st=str(body.get('status') or '').lower() if 'status' in body else None
   if st and st not in STATUSES:return _err('INVALID_ACCOUNT_STATUS','账号状态无效')
+  purpose=str(body.get('businessPurpose',body.get('business_purpose',''))).strip().lower() if ('businessPurpose' in body or 'business_purpose' in body) else None
+  if purpose is not None and purpose not in ('acquisition','conversion','hybrid'):return _err('INVALID_BUSINESS_PURPOSE','businessPurpose 必须是 acquisition、conversion 或 hybrid')
+  collection=body.get('collectionEnabled',body.get('collection_enabled')) if ('collectionEnabled' in body or 'collection_enabled' in body) else None
+  if collection is not None and not isinstance(collection,bool):return _err('INVALID_COLLECTION_ENABLED','collectionEnabled 必须是布尔值')
   with db.tx() as c:
    old=_account(c,org,account_id)
    if not old:return _err('ACCOUNT_NOT_FOUND','账号不存在',404)
@@ -181,6 +191,6 @@ def handle(db,actor,org,method,account_id=None,action=None,child_id=None,query=N
     if any(refs.values()):return _err('ACCOUNT_IN_USE','账号仍被活跃业务对象引用',409,references=refs)
    name=str(body.get('displayName',old['display_name'])).strip()
    if not name:return _err('INVALID_ACCOUNT','账号名称不能为空')
-   c.execute('UPDATE channel_accounts SET display_name=?,status=?,updated_at=? WHERE channel_account_id=?',(name,newst,now_ms(),account_id));new=_one(c,'SELECT * FROM channel_accounts WHERE channel_account_id=?',(account_id,));_audit(c,actor,'update','channel_account',account_id,old,new,body.get('reason'),_workspace_for_account(c,account_id))
+   c.execute('UPDATE channel_accounts SET display_name=?,status=?,business_purpose=?,collection_enabled=?,updated_at=? WHERE channel_account_id=?',(name,newst,purpose if purpose is not None else old['business_purpose'],(1 if collection else 0) if collection is not None else old['collection_enabled'],now_ms(),account_id));new=_one(c,'SELECT * FROM channel_accounts WHERE channel_account_id=?',(account_id,));_audit(c,actor,'update','channel_account',account_id,old,new,body.get('reason'),_workspace_for_account(c,account_id))
   return {'ok':True,'item':new},200
  return _err('METHOD_NOT_ALLOWED','不支持的账号操作',405)

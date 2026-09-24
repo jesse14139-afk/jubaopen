@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Legacy Application Service：V208 仅维护现有调用，禁止新增业务。
 """V206 兼容层，运行于 Schema 207（V207.3.0）。
 
 职责：为 ``V207_center_service`` 提供 ``apply_event / list_contacts / get_contact /
@@ -19,6 +20,7 @@ delete_field_definition / admin_contact_lifecycle / admin_logs / admin_schema`` 
 from __future__ import annotations
 import hashlib,re,secrets,uuid,sqlite3
 from V207_shared_db import now_ms,dumps,loads
+from V208_name_sanitize import sanitize_observed_name
 
 from V207_version import PRODUCT_VERSION as VERSION, SCHEMA_VERSION
 CHANNELS={"whatsapp","instagram","facebook","messenger","telegram","other"}
@@ -187,7 +189,8 @@ def _contact(c,e,dev,src,org_id):
   if not src or not ext:return err("INVALID_OBSERVATION","观察事件缺少有效来源或外部联系人 ID")
   if ch!=src["channel"]:return err("CHANNEL_MISMATCH","事件渠道与来源渠道不一致",409)
   row=c.execute("SELECT * FROM contacts WHERE workspace_id=? AND source_id=? AND channel=? AND external_contact_id=?",(wid,sid,ch,ext)).fetchone()
-  obs={k:(stable(p.get(k)) if k=="observed" else p.get(k)) for k in OBS_KEYS if k in p};oh=hash_obj(obs)
+  observed_name=sanitize_observed_name(p.get("displayName"))
+  obs={k:(stable(p.get(k)) if k=="observed" else (observed_name if k=="displayName" else p.get(k))) for k in OBS_KEYS if k in p};oh=hash_obj(obs)
   t=now_ms();touch_relation(c,wid,sid,did,op,True)
   c.execute("UPDATE sources SET last_seen_at=?,last_device_id=?,updated_at=? WHERE source_id=?",(t,did,t,sid))
   if not row:
@@ -195,7 +198,7 @@ def _contact(c,e,dev,src,org_id):
    c.execute(
     "INSERT INTO contacts(contact_id,workspace_id,source_id,channel,external_contact_id,display_name,observed_phone,avatar_url,observed_json,observation_hash,last_observed_device_id,last_observed_at,created_at,updated_at,last_seen_at,organization_id,team_id) "
     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    (cid,wid,sid,ch,ext,str(p.get("displayName") or ""),str(p.get("observedPhone") or ""),str(p.get("avatarUrl") or ""),dumps(stable(p.get("observed") or {})),oh,did,t,t,t,t,org_id,src["team_id"]))
+    (cid,wid,sid,ch,ext,observed_name,str(p.get("observedPhone") or ""),str(p.get("avatarUrl") or ""),dumps(stable(p.get("observed") or {})),oh,did,t,t,t,t,org_id,src["team_id"]))
    ver=1;action="create"
   else:
    cid=row["contact_id"]
@@ -207,8 +210,8 @@ def _contact(c,e,dev,src,org_id):
     return dict(ok=True,eventId=eid,entityId=cid,version=row["version"],unchanged=True,deviceChanged=device_changed,contact=data),200
    ver=row["version"]+1
    c.execute(
-    "UPDATE contacts SET display_name=?,observed_phone=?,avatar_url=?,observed_json=?,observation_hash=?,last_observed_device_id=?,last_observed_at=?,version=?,updated_at=?,last_seen_at=? WHERE contact_id=?",
-    (str(p.get("displayName") or ""),str(p.get("observedPhone") or ""),str(p.get("avatarUrl") or ""),dumps(stable(p.get("observed") or {})),oh,did,t,ver,t,t,cid))
+    "UPDATE contacts SET display_name=CASE WHEN ?<>'' THEN ? ELSE display_name END,observed_phone=?,avatar_url=?,observed_json=?,observation_hash=?,last_observed_device_id=?,last_observed_at=?,version=?,updated_at=?,last_seen_at=? WHERE contact_id=?",
+    (observed_name,observed_name,str(p.get("observedPhone") or ""),str(p.get("avatarUrl") or ""),dumps(stable(p.get("observed") or {})),oh,did,t,ver,t,t,cid))
    action="observe"
   data=public_contact(c,c.execute("SELECT * FROM contacts WHERE contact_id=?",(cid,)).fetchone())
   add_change(c,wid,"contact",cid,action,ver,sid,did,data,eid)
@@ -358,10 +361,23 @@ def save_field_definition(db,wid,p):
  key=str(p.get('field_key') or '').strip()
  if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}',key):return err('INVALID_FIELD_KEY','字段键名无效')
  typ=str(p.get('field_type') or 'text')
- if typ not in ('text','number','date','boolean','json'):return err('INVALID_FIELD_TYPE','字段类型无效')
- t=now_ms()
+ if typ not in ('text','number','date','boolean','json','single_select','multi_select'):return err('INVALID_FIELD_TYPE','字段类型无效')
+ role=str(p.get('field_role') or 'custom').strip()
+ if role not in ('custom','stage','priority','owner_note'):return err('INVALID_FIELD_ROLE','字段角色无效')
+ zone=str(p.get('display_zone') or 'workbench').strip()
+ if zone not in ('workbench','profile','both','hidden'):return err('INVALID_DISPLAY_ZONE','字段显示区域无效')
+ options=p.get('options',p.get('options_json',[]))
+ if isinstance(options,str):
+  try:options=json.loads(options)
+  except Exception:return err('INVALID_OPTIONS','options 必须是字符串数组')
+ if not isinstance(options,list) or any(not isinstance(x,str) or not x.strip() or len(x)>120 for x in options) or len(options)!=len(set(options)):return err('INVALID_OPTIONS','options 必须是无重复的非空字符串数组')
+ if typ in ('single_select','multi_select') and not options:return err('OPTIONS_REQUIRED','选择字段必须配置 options')
+ if typ not in ('single_select','multi_select') and options:return err('OPTIONS_NOT_ALLOWED','非选择字段不能配置 options')
+ try:sort_order=int(p.get('sort_order') or 0)
+ except (TypeError,ValueError):return err('INVALID_SORT_ORDER','sort_order 必须是整数')
+ quick=1 if p.get('is_quick_edit',False) else 0;placeholder=str(p.get('placeholder') or '')[:240];t=now_ms()
  with db.tx() as c:
-  c.execute("INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,field_key) DO UPDATE SET label=excluded.label,field_type=excluded.field_type,sort_order=excluded.sort_order,enabled=excluded.enabled,updated_at=excluded.updated_at",(wid,key,str(p.get('label') or key)[:120],typ,int(p.get('sort_order') or 0),1 if p.get('enabled',True) else 0,t,t))
+  c.execute("INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at,field_role,display_zone,is_quick_edit,options_json,placeholder) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,field_key) DO UPDATE SET label=excluded.label,field_type=excluded.field_type,sort_order=excluded.sort_order,enabled=excluded.enabled,field_role=excluded.field_role,display_zone=excluded.display_zone,is_quick_edit=excluded.is_quick_edit,options_json=excluded.options_json,placeholder=excluded.placeholder,updated_at=excluded.updated_at",(wid,key,str(p.get('label') or key)[:120],typ,sort_order,1 if p.get('enabled',True) else 0,t,t,role,zone,quick,dumps(options),placeholder))
   return ok(field=dict(c.execute("SELECT * FROM custom_field_definitions WHERE workspace_id=? AND field_key=?",(wid,key)).fetchone()))
 
 def delete_field_definition(db,wid,key):
@@ -383,13 +399,14 @@ def set_contact_tags(db,wid,cid,tag_ids,did,base_version):
   if not row:return err('CONTACT_NOT_FOUND','联系人不存在',404)
   if row['deleted_at'] is not None:return err('CONTACT_DELETED','联系人已删除',409)
   if base_version!=int(row['version']):return err('VERSION_CONFLICT','联系人版本冲突',409,currentVersion=row['version'],current=public_contact(c,row))
-  ids=[];seen=set()
+  ids=[];seen=set();status_count=0
   for value in tag_ids:
    tid=str(value or '').strip()
    if not tid or tid in seen:continue
-   tag=c.execute("SELECT 1 FROM tags WHERE workspace_id=? AND tag_id=? AND enabled=1",(wid,tid)).fetchone()
+   tag=c.execute("SELECT tag_kind FROM tags WHERE workspace_id=? AND tag_id=? AND enabled=1",(wid,tid)).fetchone()
    if not tag:return err('TAG_NOT_FOUND','标签不存在或已停用',404,tagId=tid)
-   seen.add(tid);ids.append(tid)
+   status_count+=tag['tag_kind']=='status';seen.add(tid);ids.append(tid)
+  if status_count>1:return err('MULTIPLE_STATUS_TAGS','状态标签最多选择一个',409)
   old_ids=sorted(x['tag_id'] for x in c.execute("SELECT tag_id FROM contact_tags WHERE contact_id=?",(cid,)).fetchall())
   if old_ids==sorted(ids):return ok(unchanged=True,version=row['version'],contact=public_contact(c,row),tagIds=ids)
   before=public_contact(c,row);t=now_ms();ver=int(row['version'])+1
@@ -439,12 +456,14 @@ def admin_set_contact_tags(db,wid,cid,p):
   try:base=int(p.get('base_version'))
   except (TypeError,ValueError):return err('BASE_VERSION_REQUIRED','base_version 必须是整数')
   if base!=int(row['version']):return err('VERSION_CONFLICT','联系人版本冲突，请刷新后重试',409,currentVersion=row['version'])
-  clean=[]
+  clean=[];status_count=0
   for x in ids:
    tid=str(x)
    if tid not in clean:
-    if not c.execute("SELECT 1 FROM tags WHERE workspace_id=? AND tag_id=? AND enabled=1",(wid,tid)).fetchone():return err('TAG_NOT_FOUND','标签不存在或已停用',404,tagId=tid)
-    clean.append(tid)
+    tag=c.execute("SELECT tag_kind FROM tags WHERE workspace_id=? AND tag_id=? AND enabled=1",(wid,tid)).fetchone()
+    if not tag:return err('TAG_NOT_FOUND','标签不存在或已停用',404,tagId=tid)
+    status_count+=tag['tag_kind']=='status';clean.append(tid)
+  if status_count>1:return err('MULTIPLE_STATUS_TAGS','状态标签最多选择一个',409)
   before=public_contact(c,row);t=now_ms();ver=int(row['version'])+1;c.execute("DELETE FROM contact_tags WHERE contact_id=?",(cid,))
   for tid in clean:c.execute("INSERT INTO contact_tags(contact_id,tag_id,created_at) VALUES(?,?,?)",(cid,tid,t))
   c.execute("UPDATE contacts SET version=?,updated_at=? WHERE contact_id=?",(ver,t,cid));after=public_contact(c,c.execute("SELECT * FROM contacts WHERE contact_id=?",(cid,)).fetchone());event='admin_tags_'+uuid.uuid4().hex

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Schema 212 只读数据字典：合并运行时 SQLite 元数据与中文业务释义。"""
+"""Schema 214 只读数据字典：合并运行时 SQLite 元数据与中文业务释义。"""
 from V207_version import SCHEMA_VERSION, PRODUCT_VERSION, CATALOG_VERSION
 
 CATEGORIES={
@@ -174,7 +174,7 @@ def _field_description(table,name):
  if name=='status':return '控制记录当前是否有效，常见值为 active（正常）或 disabled（停用）。'
  if name=='created_at':return '记录创建时的毫秒级 Unix 时间戳。'
  if name=='updated_at':return '记录最后更新时的毫秒级 Unix 时间戳。'
- return label+'的持久化字段。'
+ return '保存“'+label+'”对应的业务值。'
 
 def _quote_identifier(name):
  """仅为已从 sqlite_schema 读取的对象名生成 PRAGMA 安全标识符。"""
@@ -338,4 +338,101 @@ LOGICAL_RELATIONS.extend([
     ('business_lines','parent_business_line_id','business_lines','business_line_id','业务线上级（自引用层级）'),
     ('markets','parent_market_id','markets','market_id','市场上级（自引用层级）'),
     ('teams','organization_id','organizations','organization_id','团队归属企业'),
+])
+
+# ============================================================
+# 【Schema 214 中文数据字典完整性补丁】2026-09-24
+# 基线：61 张物理表、668 个物理字段；禁止表用途或字段中文名称回退。
+# ============================================================
+TABLES.update({
+    'plugin_sessions': ('identity','插件会话凭证表','保存插件独立访问凭证的摘要、用户与设备绑定范围、有效期、撤销状态及客户端版本，不授予后台管理会话权限。'),
+    'device_channel_account_bindings': ('device','设备渠道账号绑定表','记录采集设备与外部渠道账号的发现、绑定及最后核验关系，用于确定消息采集归属。'),
+    'conversations': ('contact','渠道会话表','保存工作区内联系人身份与渠道账号之间的外部会话标识、会话类型及消息时间范围。'),
+    'conversation_messages': ('contact','会话消息表','保存渠道会话消息的幂等标识、发送方、内容类型、脱敏正文、采集时间及正文删除审计状态。'),
+    'contact_transfers': ('contact','联系人跨渠道转移表','记录联系人在渠道账号或会话之间的转移来源、目标、方式、操作者及确认状态。'),
+    'account_binding_slots': ('channel','账号绑定槽位表','保存用户在工作区和团队范围内可认领的平台账号槽位、匹配预期、审批策略及认领结果。'),
+    'account_identity_discoveries': ('channel','账号身份发现表','记录插件发现的平台身份、规范化值、审批状态、冲突原因及管理员处理结果。'),
+})
+
+LABELS.update({
+    'ip_address':'IP 地址','platform_id':'平台 ID','start_at':'开始时间','end_at':'结束时间',
+    'valid_from':'生效开始时间','valid_to':'生效结束时间','account_type':'账号类型',
+    'business_purpose':'业务用途','collection_enabled':'是否启用采集','contact_identity_id':'联系人身份 ID',
+    'transfer_id':'转移记录 ID','from_channel_account_id':'来源渠道账号 ID','from_conversation_id':'来源会话 ID',
+    'to_channel_account_id':'目标渠道账号 ID','to_conversation_id':'目标会话 ID','transfer_method':'转移方式',
+    'transferred_by':'转移操作者','transferred_at':'转移时间','confirmed_by':'确认人','confirmed_at':'确认时间',
+    'message_id':'消息 ID','conversation_id':'会话 ID','external_message_id':'外部消息 ID',
+    'client_event_id':'客户端事件 ID','sender_type':'发送方类型','sender_external_id':'发送方外部 ID',
+    'content_type':'内容类型','text_content':'消息正文','redacted_text':'脱敏正文','content_hash':'内容摘要',
+    'pii_flags_json':'个人信息标记','collected_at':'采集时间','edited_at':'编辑时间',
+    'content_deleted_at':'正文删除时间','content_deleted_by':'正文删除人','content_delete_reason':'正文删除原因',
+    'external_conversation_id':'外部会话 ID','conversation_type':'会话类型','first_message_at':'首条消息时间',
+    'last_message_at':'末条消息时间','last_collected_at':'最后采集时间','field_role':'字段角色',
+    'display_zone':'展示区域','is_quick_edit':'是否支持快捷编辑','options_json':'候选选项配置',
+    'placeholder':'输入提示','external_account_key':'外部账号键','bound_at':'绑定时间','bound_by':'绑定操作者',
+    'last_verified_at':'最后核验时间','market_type':'市场类型','country_code':'国家代码',
+    'region_code':'区域代码','timezone':'时区','resource':'权限资源','action':'权限动作',
+    'scope_mask':'作用域掩码','risk_level':'风险等级','capabilities_json':'平台能力配置',
+    'platform_abbr':'平台简称','plugin_session_id':'插件会话 ID','token_hash':'令牌摘要',
+    'issued_at':'签发时间','revoked_reason':'撤销原因','client_version':'客户端版本',
+    'role_code':'角色编码','is_system':'是否系统内置','detail_json':'事件详情',
+    'initiated_by':'发起方','external_event_id':'外部事件 ID','source_type':'来源类型',
+    'source_subtype':'来源子类型','parent_source_id':'上级来源 ID','external_key':'外部业务键',
+    'landing_url':'落地页地址','tracking_code':'追踪代码','tag_kind':'标签种类',
+    'membership_type':'成员关系类型','joined_at':'加入时间','left_at':'离开时间',
+    'failed_attempts':'连续失败次数','locked_until':'锁定截止时间','last_failed_at':'最后失败时间',
+    'relation_type':'关系类型','access_level':'访问级别',
+    'slot_id':'绑定槽位 ID','expected_phone':'预期电话号码','expected_username':'预期用户名',
+    'claim_policy':'认领策略','claimed_identity_type':'已认领身份类型','claimed_canonical_value':'已认领规范值',
+    'claimed_device_id':'认领设备 ID','claimed_at':'认领时间','disabled_at':'禁用时间','disabled_by':'禁用操作者',
+    'discovery_id':'身份发现 ID','auxiliary_json':'辅助信息','reason_code':'原因编码',
+    'resolved_at':'处理时间','resolved_by':'处理操作者','resolution_reason':'处理原因',
+})
+
+SPECIAL.update({
+    'channel_accounts.business_purpose':'渠道账号的业务用途，仅允许 acquisition（获客）、conversion（转化）或 hybrid（混合）。',
+    'channel_accounts.collection_enabled':'控制该渠道账号是否允许 Collector 采集消息，必须保存为布尔值。',
+    'plugin_sessions.token_hash':'插件访问令牌的不可逆摘要；数据库不保存令牌明文。',
+    'plugin_sessions.revoked_reason':'插件会话被主动撤销或安全策略终止时记录的原因。',
+    'device_channel_account_bindings.external_account_key':'设备侧发现的外部账号稳定键，用于解析或匹配正式渠道账号。',
+    'conversation_messages.client_event_id':'采集客户端生成的幂等键，用于阻止同一消息被重复写入。',
+    'conversation_messages.text_content':'原始消息正文，读取时必须具备 message.read.raw 权限。',
+    'conversation_messages.redacted_text':'移除或掩码个人敏感信息后可用于常规展示的消息正文。',
+    'conversation_messages.pii_flags_json':'记录正文中识别出的个人敏感信息类型及处理标记的 JSON。',
+    'conversation_messages.content_deleted_at':'非空表示消息正文已按审计流程删除，但消息结构和审计信息仍保留。',
+    'contact_transfers.transfer_method':'联系人跨渠道转移方式，用于区分人工、规则或系统自动转移。',
+    'custom_field_definitions.field_role':'自定义字段在业务流程中的角色，用于约束用途和展示行为。',
+    'custom_field_definitions.display_zone':'自定义字段在联系人界面中的展示区域。',
+    'custom_field_definitions.is_quick_edit':'控制该字段是否允许在联系人快捷编辑区直接修改。',
+    'custom_field_definitions.options_json':'选择类字段的候选项配置 JSON，写入时执行严格结构校验。',
+    'tags.tag_kind':'标签种类；status 表示状态标签，并对单个联系人执行单选约束。',
+    'permissions.scope_mask':'权限允许作用的范围掩码，用于限制平台、企业、工作区或个人层级。',
+    'user_credentials.failed_attempts':'当前连续认证失败次数，成功登录后按认证策略清零。',
+    'user_credentials.locked_until':'账号因连续认证失败被锁定至该时间；为空表示未锁定。',
+    'account_binding_slots.claim_policy':'账号认领策略；auto 表示满足唯一槽位和身份预期时自动认领，approval 表示必须由管理员审批。',
+    'account_binding_slots.claimed_canonical_value':'槽位成功认领后保存的平台身份规范值，用于后续一致性核验。',
+    'account_binding_slots.expected_phone':'管理员预设的电话号码期望值；自动认领时必须与规范化后的插件身份一致。',
+    'account_binding_slots.expected_username':'管理员预设的平台用户名期望值；自动认领时必须与规范化后的插件身份一致。',
+    'account_identity_discoveries.canonical_value':'插件上报身份经平台规则规范化后的稳定值，用于幂等发现、冲突检测和审批。',
+    'account_identity_discoveries.auxiliary_json':'保存身份发现过程中的非主键辅助信息 JSON，不作为授权判断的唯一依据。',
+    'account_identity_discoveries.reason_code':'记录待审批、冲突或无法自动认领的机器可读原因编码。',
+    'account_identity_discoveries.resolution_reason':'管理员审批、拒绝或其他处理决定的文字依据。',
+})
+
+
+# Schema 214 账号认领域逻辑关系（同时补充物理外键的中文业务语义）。
+LOGICAL_RELATIONS.extend([
+    ('account_binding_slots','organization_id','organizations','organization_id','绑定槽位归属企业'),
+    ('account_binding_slots','workspace_id','workspaces','workspace_id','绑定槽位限定工作区'),
+    ('account_binding_slots','team_id','teams','team_id','绑定槽位限定团队'),
+    ('account_binding_slots','user_id','users','user_id','绑定槽位分配用户'),
+    ('account_binding_slots','platform_id','platforms','platform_id','绑定槽位对应平台'),
+    ('account_binding_slots','channel_account_id','channel_accounts','channel_account_id','绑定槽位预分配渠道账号'),
+    ('account_identity_discoveries','organization_id','organizations','organization_id','身份发现归属企业'),
+    ('account_identity_discoveries','workspace_id','workspaces','workspace_id','身份发现发生工作区'),
+    ('account_identity_discoveries','team_id','teams','team_id','身份发现发生团队'),
+    ('account_identity_discoveries','user_id','users','user_id','身份发现所属用户'),
+    ('account_identity_discoveries','platform_id','platforms','platform_id','身份发现对应平台'),
+    ('account_identity_discoveries','slot_id','account_binding_slots','slot_id','身份发现匹配绑定槽位'),
+    ('account_identity_discoveries','channel_account_id','channel_accounts','channel_account_id','身份发现解析渠道账号'),
 ])

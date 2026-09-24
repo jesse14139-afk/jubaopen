@@ -35,6 +35,20 @@ def _exclusive_backup_path(path):
    return candidate
   except FileExistsError:continue
  raise RuntimeError('无法创建不可覆盖的迁移备份文件名')
+def _sqlite_backup(source_path,target_path):
+ """Create a transactionally consistent SQLite backup, including WAL contents."""
+ src=sqlite3.connect(str(source_path),timeout=30)
+ dst=sqlite3.connect(str(target_path),timeout=30)
+ try:src.backup(dst);dst.commit()
+ finally:dst.close();src.close()
+
+def _restore_sqlite_backup(backup_path,target_path):
+ for suffix in ('-wal','-shm'):Path(str(target_path)+suffix).unlink(missing_ok=True)
+ src=sqlite3.connect(str(backup_path),timeout=30)
+ dst=sqlite3.connect(str(target_path),timeout=30)
+ try:src.backup(dst);dst.commit()
+ finally:dst.close();src.close()
+
 def _write_failure_report(path,exc,backup):
  report=path.with_name(path.name+'.migration-failure.'+time.strftime('%Y%m%dT%H%M%S',time.gmtime())+f'.{time.time_ns()%1000000000:09d}Z.json')
  payload={'status':'failed','database':str(path),'backup':str(backup) if backup else None,'errorType':type(exc).__name__,'error':str(exc),'failedAt':now_ms()}
@@ -139,7 +153,7 @@ def ensure_v207_1(c):
  if existing and existing[0]!=checksum:raise RuntimeError('MIGRATION_CHECKSUM_MISMATCH: V207_100_channel_attribution')
  if not existing:
   c.execute("INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES('V207_100_channel_attribution','渠道平台、来源触点与客户归因兼容升级',?,?,?,?)",(checksum,t,'system',dumps({'status':'success'})))
- c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version','207.8.2')")
+ c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version',?)",(PRODUCT_VERSION,))
 
 V207_101_SCHEMA=r"""
 CREATE UNIQUE INDEX IF NOT EXISTS uq_contact_identity_primary
@@ -193,7 +207,7 @@ def ensure_v207_200(c):
   for role,ps in grants.items():
    for key in ps:c.execute('INSERT OR IGNORE INTO role_permissions(role_id,permission_key) VALUES(?,?)',(role,key))
   c.execute('INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES(?,?,?,?,?,?)',(mid,'客户旅程触点、归因与来源路径加固',checksum,t,'system',dumps({'status':'success','duplicateExternalEventsRepaired':repaired_events,'duplicatePrimariesRepaired':repaired_primaries})))
- c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version','207.2.0-dev')")
+ c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version',?)",(PRODUCT_VERSION,))
 
 V207_300_SCHEMA=r"""
 CREATE TABLE IF NOT EXISTS departments(
@@ -554,8 +568,10 @@ def ensure_v208(c):
 BOOTSTRAP_FIELDS=('organization_id','organization_name','workspace_id','workspace_name','team_id','team_name','admin_user_id','admin_login','admin_display_name','admin_password')
 def validate_bootstrap(bootstrap):
  if bootstrap is None:bootstrap={}
- b0={'organization_id':'jubaopen','organization_name':'聚宝盆企业','workspace_id':'default','workspace_name':'默认业务空间','team_id':'default','team_name':'默认团队','admin_user_id':'platform_admin','admin_login':'admin','admin_display_name':'平台超级管理员','admin_password':'','builtin_default':'0'}
+ b0={'organization_id':'jubaopen','organization_name':'聚宝盆企业','workspace_id':'ws-global','workspace_name':'全球业务工作区','team_id':'TEAM-JBP','team_name':'聚宝盆团队','admin_user_id':'platform_admin','admin_login':'admin','admin_display_name':'平台超级管理员','admin_password':'','builtin_default':'0'}
  bootstrap={**b0,**{k:v for k,v in bootstrap.items() if v is not None}}
+ # Schema 215 fresh installs have one canonical workspace and primary team.
+ bootstrap.update({'workspace_id':'ws-global','workspace_name':'全球业务工作区','team_id':'TEAM-JBP','team_name':'聚宝盆团队'})
  b={k:str(bootstrap.get(k) or '').strip() for k in BOOTSTRAP_FIELDS}
  missing=[k for k,v in b.items() if not v]
  if missing:raise RuntimeError('BOOTSTRAP_REQUIRED: '+','.join(missing))
@@ -576,15 +592,32 @@ def bootstrap_fresh_database(c,b):
  c.execute('INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,1,?)',(b['admin_user_id'],h,salt,it,t))
  c.execute('INSERT INTO platform_administrators(user_id,is_builtin,onboarding_completed,created_at,updated_at) VALUES(?,1,0,?,?)',(b['admin_user_id'],t,t))
  c.execute("INSERT INTO role_bindings(binding_id,user_id,role_id,organization_id,scope_type,scope_id,status,granted_by,created_at,updated_at) VALUES(?,?,?,?,?,?,'active',?,?,?)",('bootstrap:org:'+b['admin_user_id'],b['admin_user_id'],'role_orgadmin',b['organization_id'],'organization',b['organization_id'],b['admin_user_id'],t,t))
- for i in range(1,9):c.execute('INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',(b['workspace_id'],f'f{i}',str(i),'text',i,1,t,t))
+ quick_fields=[
+  ('country','国家','text','国家或地区'),('region','地区','text','省/州/城市'),('industry','行业','text','所属行业'),
+  ('customer_type','客户类型','single_select',''),('intent_level','意向等级','single_select',''),('budget','预算','text','预算范围'),
+  ('requirement','需求','text','核心需求'),('source_channel','来源渠道','text','客户来源'),('next_follow_up','下次跟进','date','')]
+ field_options={'customer_type':['个人','企业','渠道商','其他'],'intent_level':['高','中','低']}
+ for order,(key,label,typ,placeholder) in enumerate(quick_fields,1):
+  c.execute("INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at,field_role,display_zone,is_quick_edit,options_json,placeholder) VALUES(?,?,?,?,?,1,?,?,'custom','interaction_panel',1,?,?)",(b['workspace_id'],key,label,typ,order,t,t,dumps(field_options.get(key,[])),placeholder))
+ c.execute("INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at,field_role,display_zone,is_quick_edit,options_json,placeholder) VALUES(?,?,?,?,?,1,?,?,'stage_customer','interaction_panel',0,?,'')",(b['workspace_id'],'customer_stage','客户阶段','multi_select',0,t,t,dumps(['一切','二切','三切'])))
+ # Schema 215 workspace-scoped defaults: status is mutually exclusive; portrait is multi-select.
+ preset_tags=[
+  ('观察','status','#64748b','客户状态'),('开户','status','#2563eb','客户状态'),('入金','status','#16a34a','客户状态'),
+  ('加金','status','#0891b2','客户状态'),('完成','status','#7c3aed','客户状态'),('放弃','status','#dc2626','客户状态'),
+  ('高净值','portrait','#d97706','客户画像'),('股民','portrait','#0284c7','客户画像'),('有房','portrait','#059669','客户画像'),
+  ('企业主','portrait','#7c3aed','客户画像'),('高意向','portrait','#e11d48','客户画像'),('低风险','portrait','#0f766e','客户画像'),('长期客户','portrait','#4f46e5','客户画像')]
+ for order,(name,kind,color,category) in enumerate(preset_tags,1):
+  c.execute("INSERT INTO tags(tag_id,workspace_id,name,color,category,tag_kind,sort_order,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)",('tag_seed_'+kind+'_'+str(order),b['workspace_id'],name,color,category,kind,order,t,t))
 
 def _connect_strict_readonly(path):
- """打开不会创建 WAL/SHM 的不可变只读连接；非空 WAL 必须先由写入方安全检查点。"""
- p=Path(path).resolve()
- wal=Path(str(p)+'-wal')
- if wal.exists() and wal.stat().st_size:
-  raise RuntimeError('STRICT_READONLY_WAL_PRESENT: '+str(wal))
- return sqlite3.connect(p.as_uri()+'?mode=ro&immutable=1',uri=True)
+ """Open a read-only consistent view; include committed WAL frames when present."""
+ p=Path(path).resolve();wal=Path(str(p)+'-wal')
+ # immutable=1 deliberately ignores WAL. Use ordinary read-only mode when WAL
+ # exists so migration preflight validates the complete committed database.
+ uri=p.as_uri()+'?mode=ro'+('' if wal.exists() and wal.stat().st_size else '&immutable=1')
+ c=sqlite3.connect(uri,uri=True,timeout=30)
+ c.execute('PRAGMA query_only=ON');c.execute('PRAGMA busy_timeout=30000')
+ return c
 
 def validate_registered_migration_checksums(path):
  """只读预检迁移登记；任何已知迁移校验和漂移均阻止启动。"""
@@ -825,11 +858,11 @@ def ensure_v211(c):
  t=now_ms()
  if not old:c.execute('INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES(?,?,?,?,?,?)',(V211_MIGRATION_ID,'Schema 211 成员权限分离与主工作区约束',checksum,t,'system',dumps({'status':'success'})))
 
-# Schema 212：全新安装基线，不提供旧数据库升级路径。
+# Schema 213：全新安装基线，不提供旧数据库升级路径。
 def ensure_v212(c):
  c.execute("""CREATE TABLE IF NOT EXISTS device_enrollments(
   enrollment_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, workspace_id TEXT NOT NULL, team_id TEXT NOT NULL,
-  assigned_user_id TEXT, admin_device_name TEXT NOT NULL DEFAULT '', admin_computer_name TEXT NOT NULL DEFAULT '',
+  assigned_user_id TEXT NOT NULL, admin_device_name TEXT NOT NULL DEFAULT '', admin_computer_name TEXT NOT NULL DEFAULT '',
   binding_code_hash TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','consumed','expired','revoked')),
   expires_at INTEGER NOT NULL, consumed_at INTEGER, consumed_device_id TEXT, created_by TEXT NOT NULL, created_at INTEGER NOT NULL,
   revoked_at INTEGER, revoked_by TEXT, reason TEXT NOT NULL,
@@ -839,6 +872,161 @@ def ensure_v212(c):
  )""")
  c.execute('CREATE INDEX IF NOT EXISTS idx_device_enrollment_org_status ON device_enrollments(organization_id,status,expires_at)')
  c.execute('CREATE INDEX IF NOT EXISTS idx_device_enrollment_team ON device_enrollments(team_id,status)')
+
+
+# V208.0.0 / Schema 213：插件采集、会话消息、客户转移与互动面板服务端基线。
+def ensure_v213(c):
+ _add(c,'channel_accounts','business_purpose',"TEXT NOT NULL DEFAULT 'hybrid' CHECK(business_purpose IN ('acquisition','conversion','hybrid'))")
+ _add(c,'channel_accounts','collection_enabled','INTEGER NOT NULL DEFAULT 1 CHECK(collection_enabled IN (0,1))')
+ _add(c,'custom_field_definitions','field_role',"TEXT NOT NULL DEFAULT 'custom'")
+ _add(c,'custom_field_definitions','display_zone',"TEXT NOT NULL DEFAULT 'workbench'")
+ _add(c,'custom_field_definitions','is_quick_edit','INTEGER NOT NULL DEFAULT 0 CHECK(is_quick_edit IN (0,1))')
+ _add(c,'custom_field_definitions','options_json',"TEXT NOT NULL DEFAULT '[]'")
+ _add(c,'custom_field_definitions','placeholder',"TEXT NOT NULL DEFAULT ''")
+ execute_sql_script(c,"""
+ CREATE TABLE IF NOT EXISTS plugin_sessions(
+  plugin_session_id TEXT PRIMARY KEY,organization_id TEXT NOT NULL,workspace_id TEXT NOT NULL,team_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,device_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','revoked','expired')),
+  issued_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,last_seen_at INTEGER NOT NULL,revoked_at INTEGER,revoked_by TEXT,
+  revoked_reason TEXT NOT NULL DEFAULT '',client_version TEXT NOT NULL DEFAULT '',metadata_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY(organization_id) REFERENCES organizations(organization_id),FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id),
+  FOREIGN KEY(team_id) REFERENCES teams(team_id),FOREIGN KEY(user_id) REFERENCES users(user_id),FOREIGN KEY(device_id) REFERENCES devices(device_id),
+  FOREIGN KEY(revoked_by) REFERENCES users(user_id));
+ CREATE INDEX IF NOT EXISTS idx_plugin_sessions_subject ON plugin_sessions(user_id,device_id,status,expires_at);
+ CREATE TABLE IF NOT EXISTS device_channel_account_bindings(
+  binding_id TEXT PRIMARY KEY,organization_id TEXT NOT NULL,workspace_id TEXT NOT NULL,team_id TEXT NOT NULL,device_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,channel_account_id TEXT NOT NULL,platform_id TEXT NOT NULL,external_account_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled','revoked')),bound_at INTEGER NOT NULL,bound_by TEXT NOT NULL,
+  last_verified_at INTEGER NOT NULL,metadata_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY(organization_id) REFERENCES organizations(organization_id),FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id),
+  FOREIGN KEY(team_id) REFERENCES teams(team_id),FOREIGN KEY(device_id) REFERENCES devices(device_id),FOREIGN KEY(user_id) REFERENCES users(user_id),
+  FOREIGN KEY(channel_account_id) REFERENCES channel_accounts(channel_account_id),FOREIGN KEY(platform_id) REFERENCES platforms(platform_id),
+  FOREIGN KEY(bound_by) REFERENCES users(user_id),UNIQUE(device_id,platform_id,external_account_key));
+ CREATE INDEX IF NOT EXISTS idx_device_account_binding ON device_channel_account_bindings(device_id,status,last_verified_at);
+ CREATE TABLE IF NOT EXISTS conversations(
+  conversation_id TEXT PRIMARY KEY,organization_id TEXT NOT NULL,workspace_id TEXT NOT NULL,team_id TEXT NOT NULL,
+  channel_account_id TEXT NOT NULL,platform_id TEXT NOT NULL,contact_id TEXT NOT NULL,contact_identity_id TEXT,
+  external_conversation_id TEXT NOT NULL,conversation_type TEXT NOT NULL DEFAULT 'direct' CHECK(conversation_type='direct'),
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','closed','archived')),assigned_user_id TEXT,source_id TEXT,
+  first_message_at INTEGER,last_message_at INTEGER,last_collected_at INTEGER,metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,
+  FOREIGN KEY(organization_id) REFERENCES organizations(organization_id),FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id),
+  FOREIGN KEY(team_id) REFERENCES teams(team_id),FOREIGN KEY(channel_account_id) REFERENCES channel_accounts(channel_account_id),
+  FOREIGN KEY(platform_id) REFERENCES platforms(platform_id),FOREIGN KEY(contact_id) REFERENCES contacts(contact_id) ON DELETE RESTRICT,
+  FOREIGN KEY(contact_identity_id) REFERENCES contact_identities(contact_identity_id),FOREIGN KEY(assigned_user_id) REFERENCES users(user_id),
+  FOREIGN KEY(source_id) REFERENCES sources(source_id),UNIQUE(organization_id,channel_account_id,external_conversation_id));
+ CREATE INDEX IF NOT EXISTS idx_conversations_contact_time ON conversations(contact_id,last_message_at);
+ CREATE INDEX IF NOT EXISTS idx_conversations_team_time ON conversations(team_id,last_message_at);
+ CREATE INDEX IF NOT EXISTS idx_conversations_assignee ON conversations(assigned_user_id,status,last_message_at);
+ CREATE TABLE IF NOT EXISTS conversation_messages(
+  message_id TEXT PRIMARY KEY,organization_id TEXT NOT NULL,workspace_id TEXT NOT NULL,team_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,channel_account_id TEXT NOT NULL,contact_id TEXT NOT NULL,external_message_id TEXT,client_event_id TEXT,
+  direction TEXT NOT NULL CHECK(direction IN ('inbound','outbound','system')),sender_type TEXT NOT NULL DEFAULT 'unknown',sender_external_id TEXT,
+  content_type TEXT NOT NULL CHECK(content_type IN ('text','image','audio','video','file','sticker','location','contact','call','system','unknown')),
+  text_content TEXT,redacted_text TEXT,content_hash TEXT NOT NULL,pii_flags_json TEXT NOT NULL DEFAULT '[]',occurred_at INTEGER NOT NULL,
+  collected_at INTEGER NOT NULL,edited_at INTEGER,deleted_at INTEGER,content_deleted_at INTEGER,content_deleted_by TEXT,
+  content_delete_reason TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','edited','deleted','content_deleted')),
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY(organization_id) REFERENCES organizations(organization_id),FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id),
+  FOREIGN KEY(team_id) REFERENCES teams(team_id),FOREIGN KEY(conversation_id) REFERENCES conversations(conversation_id),
+  FOREIGN KEY(channel_account_id) REFERENCES channel_accounts(channel_account_id),FOREIGN KEY(contact_id) REFERENCES contacts(contact_id) ON DELETE RESTRICT,
+  FOREIGN KEY(content_deleted_by) REFERENCES users(user_id));
+ CREATE UNIQUE INDEX IF NOT EXISTS uq_message_external ON conversation_messages(organization_id,channel_account_id,external_message_id) WHERE external_message_id IS NOT NULL AND external_message_id<>'';
+ CREATE UNIQUE INDEX IF NOT EXISTS uq_message_client_event ON conversation_messages(organization_id,channel_account_id,client_event_id) WHERE client_event_id IS NOT NULL AND client_event_id<>'';
+ CREATE INDEX IF NOT EXISTS idx_messages_conversation_time ON conversation_messages(conversation_id,occurred_at);
+ CREATE INDEX IF NOT EXISTS idx_messages_contact_time ON conversation_messages(contact_id,occurred_at);
+ CREATE INDEX IF NOT EXISTS idx_messages_team_time ON conversation_messages(team_id,occurred_at);
+ CREATE TABLE IF NOT EXISTS contact_transfers(
+  transfer_id TEXT PRIMARY KEY,organization_id TEXT NOT NULL,workspace_id TEXT NOT NULL,team_id TEXT NOT NULL,contact_id TEXT NOT NULL,
+  from_channel_account_id TEXT,from_conversation_id TEXT,to_channel_account_id TEXT NOT NULL,to_conversation_id TEXT,
+  transfer_method TEXT NOT NULL CHECK(transfer_method IN ('phone_shared','username_shared','invite_link','qr_code','manual_link','system_match','other')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','confirmed','failed','cancelled')),transferred_by TEXT NOT NULL,
+  transferred_at INTEGER NOT NULL,confirmed_by TEXT,confirmed_at INTEGER,reason TEXT NOT NULL DEFAULT '',metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,
+  FOREIGN KEY(organization_id) REFERENCES organizations(organization_id),FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id),
+  FOREIGN KEY(team_id) REFERENCES teams(team_id),FOREIGN KEY(contact_id) REFERENCES contacts(contact_id) ON DELETE RESTRICT,
+  FOREIGN KEY(from_channel_account_id) REFERENCES channel_accounts(channel_account_id),FOREIGN KEY(from_conversation_id) REFERENCES conversations(conversation_id),
+  FOREIGN KEY(to_channel_account_id) REFERENCES channel_accounts(channel_account_id),FOREIGN KEY(to_conversation_id) REFERENCES conversations(conversation_id),
+  FOREIGN KEY(transferred_by) REFERENCES users(user_id),FOREIGN KEY(confirmed_by) REFERENCES users(user_id));
+ CREATE INDEX IF NOT EXISTS idx_transfers_contact_time ON contact_transfers(contact_id,transferred_at);
+ CREATE TRIGGER IF NOT EXISTS trg_plugin_session_scope_insert BEFORE INSERT ON plugin_sessions BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM users u,devices d,teams t,workspaces w WHERE u.user_id=NEW.user_id AND u.organization_id=NEW.organization_id AND u.status='active' AND d.device_id=NEW.device_id AND d.organization_id=NEW.organization_id AND d.workspace_id=NEW.workspace_id AND d.team_id=NEW.team_id AND d.status='active' AND t.team_id=NEW.team_id AND t.organization_id=NEW.organization_id AND t.workspace_id=NEW.workspace_id AND w.workspace_id=NEW.workspace_id AND w.organization_id=NEW.organization_id) THEN RAISE(ABORT,'PLUGIN_SESSION_SCOPE_MISMATCH') END; END;
+ CREATE TRIGGER IF NOT EXISTS trg_device_account_scope_insert BEFORE INSERT ON device_channel_account_bindings BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM devices d JOIN teams t ON t.team_id=NEW.team_id JOIN channel_accounts a ON a.channel_account_id=NEW.channel_account_id JOIN team_channel_accounts x ON x.team_id=NEW.team_id AND x.channel_account_id=NEW.channel_account_id JOIN users u ON u.user_id=NEW.user_id WHERE d.device_id=NEW.device_id AND d.organization_id=NEW.organization_id AND d.workspace_id=NEW.workspace_id AND d.team_id=NEW.team_id AND t.organization_id=NEW.organization_id AND t.workspace_id=NEW.workspace_id AND a.organization_id=NEW.organization_id AND a.platform_id=NEW.platform_id AND a.status='active' AND a.collection_enabled=1 AND u.organization_id=NEW.organization_id AND u.status='active') THEN RAISE(ABORT,'DEVICE_ACCOUNT_SCOPE_MISMATCH') END; END;
+ CREATE TRIGGER IF NOT EXISTS trg_conversation_scope_insert BEFORE INSERT ON conversations BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM channel_accounts a JOIN team_channel_accounts x ON x.channel_account_id=a.channel_account_id AND x.team_id=NEW.team_id JOIN contacts c ON c.contact_id=NEW.contact_id JOIN teams t ON t.team_id=NEW.team_id WHERE a.channel_account_id=NEW.channel_account_id AND a.organization_id=NEW.organization_id AND a.platform_id=NEW.platform_id AND c.organization_id=NEW.organization_id AND c.workspace_id=NEW.workspace_id AND c.team_id=NEW.team_id AND t.organization_id=NEW.organization_id AND t.workspace_id=NEW.workspace_id) THEN RAISE(ABORT,'CONVERSATION_SCOPE_MISMATCH') END; END;
+ CREATE TRIGGER IF NOT EXISTS trg_message_scope_insert BEFORE INSERT ON conversation_messages BEGIN
+  SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM conversations v WHERE v.conversation_id=NEW.conversation_id AND v.organization_id=NEW.organization_id AND v.workspace_id=NEW.workspace_id AND v.team_id=NEW.team_id AND v.channel_account_id=NEW.channel_account_id AND v.contact_id=NEW.contact_id) THEN RAISE(ABORT,'MESSAGE_SCOPE_MISMATCH') END; END;
+ """)
+ perms=[
+ ('collector.session.issue','签发插件会话','collector','session.issue','high'),('collector.write','插件采集写入','collector','write','medium'),
+ ('collector.account.resolve','解析采集账号','collector','account.resolve','medium'),('collector.conversation.resolve','解析采集会话','collector','conversation.resolve','medium'),
+ ('contact.read.assigned','读取分配客户','contact','read.assigned','low'),('contact.update.assigned','更新分配客户','contact','update.assigned','medium'),
+ ('conversation.read.self','读取本人会话','conversation','read.self','low'),('conversation.read.team','读取团队会话','conversation','read.team','medium'),
+ ('conversation.manage','管理会话','conversation','manage','medium'),('message.read.self','读取本人消息','message','read.self','medium'),
+ ('message.read.team','读取团队消息','message','read.team','high'),('message.read.raw','读取消息原文','message','read.raw','critical'),
+ ('message.export.redacted','导出脱敏消息','message','export.redacted','high'),('message.export.raw','导出原文消息','message','export.raw','critical'),
+ ('message.delete.content','删除消息正文','message','delete.content','critical'),('transfer.create','创建客户转移','transfer','create','medium'),
+ ('transfer.manage','管理客户转移','transfer','manage','high'),('pii.read.full','读取完整敏感信息','pii','read.full','critical')]
+ for k,d,res,act,risk in perms:c.execute('INSERT OR IGNORE INTO permissions(permission_key,description,display_name,resource,action,scope_mask,risk_level) VALUES(?,?,?,?,?,63,?)',(k,d,d,res,act,risk))
+ for role in ('role_superadmin','role_orgadmin'):
+  for k,*_ in perms:c.execute('INSERT OR IGNORE INTO role_permissions(role_id,permission_key) VALUES(?,?)',(role,k))
+ for role in ('role_teamlead','role_operator'):
+  for k in ('collector.session.issue','collector.write','collector.account.resolve','collector.conversation.resolve','contact.read.assigned','contact.update.assigned','conversation.read.self','message.read.self','transfer.create'):
+   c.execute('INSERT OR IGNORE INTO role_permissions(role_id,permission_key) VALUES(?,?)',(role,k))
+ t=now_ms(); sig=hashlib.sha256(b'Schema 213 V208 phase1 server truth center').hexdigest()
+ c.execute("INSERT OR IGNORE INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES('V213_000_phase1_collector','V208阶段1采集会话消息基线',?,?,?,?)",(sig,t,'system',dumps({'status':'success','schema':213})))
+
+def ensure_v214(c):
+ """Schema 214: account claim slots, approval queue, and WA canonical repair."""
+ execute_sql_script(c,"""
+ CREATE TABLE IF NOT EXISTS account_binding_slots(
+  slot_id TEXT PRIMARY KEY,organization_id TEXT NOT NULL,workspace_id TEXT NOT NULL,team_id TEXT NOT NULL,user_id TEXT NOT NULL,
+  platform_id TEXT NOT NULL,channel_account_id TEXT,expected_phone TEXT,expected_username TEXT,
+  claim_policy TEXT NOT NULL DEFAULT 'auto' CHECK(claim_policy IN ('auto','approval')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','claimed','disabled')),
+  claimed_identity_type TEXT,claimed_canonical_value TEXT,claimed_device_id TEXT,claimed_at INTEGER,
+  created_by TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,disabled_at INTEGER,disabled_by TEXT,reason TEXT,
+  FOREIGN KEY(organization_id) REFERENCES organizations(organization_id),FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id),
+  FOREIGN KEY(team_id) REFERENCES teams(team_id),FOREIGN KEY(user_id) REFERENCES users(user_id),
+  FOREIGN KEY(platform_id) REFERENCES platforms(platform_id),FOREIGN KEY(channel_account_id) REFERENCES channel_accounts(channel_account_id)
+ );
+ CREATE INDEX IF NOT EXISTS idx_binding_slots_subject ON account_binding_slots(organization_id,user_id,platform_id,status);
+ CREATE INDEX IF NOT EXISTS idx_binding_slots_team ON account_binding_slots(organization_id,team_id,status);
+ CREATE UNIQUE INDEX IF NOT EXISTS uq_binding_slot_active_user_platform ON account_binding_slots(organization_id,user_id,platform_id) WHERE status='pending';
+ CREATE TABLE IF NOT EXISTS account_identity_discoveries(
+  discovery_id TEXT PRIMARY KEY,organization_id TEXT NOT NULL,workspace_id TEXT NOT NULL,team_id TEXT NOT NULL,user_id TEXT NOT NULL,
+  platform_id TEXT NOT NULL,identity_type TEXT NOT NULL,canonical_value TEXT NOT NULL,identity_value TEXT NOT NULL,
+  auxiliary_json TEXT NOT NULL DEFAULT '{}',device_id TEXT,plugin_session_id TEXT,slot_id TEXT,channel_account_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','auto_claimed','approved','rejected','conflict','expired')),
+  reason_code TEXT,first_seen_at INTEGER NOT NULL,last_seen_at INTEGER NOT NULL,resolved_at INTEGER,resolved_by TEXT,resolution_reason TEXT,
+  FOREIGN KEY(organization_id) REFERENCES organizations(organization_id),FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id),
+  FOREIGN KEY(team_id) REFERENCES teams(team_id),FOREIGN KEY(user_id) REFERENCES users(user_id),FOREIGN KEY(platform_id) REFERENCES platforms(platform_id),
+  FOREIGN KEY(slot_id) REFERENCES account_binding_slots(slot_id),FOREIGN KEY(channel_account_id) REFERENCES channel_accounts(channel_account_id)
+ );
+ CREATE INDEX IF NOT EXISTS idx_identity_discoveries_status ON account_identity_discoveries(organization_id,status,last_seen_at DESC);
+ CREATE INDEX IF NOT EXISTS idx_identity_discoveries_subject ON account_identity_discoveries(organization_id,user_id,platform_id);
+ CREATE UNIQUE INDEX IF NOT EXISTS uq_identity_discovery_subject ON account_identity_discoveries(organization_id,user_id,platform_id,identity_type,canonical_value);
+ """)
+ # Repair only unambiguous numeric WhatsApp identities; conflicts are preserved for administrator review.
+ wa_platforms=[r[0] for r in c.execute("SELECT platform_id FROM platforms WHERE lower(platform_code)='whatsapp' OR lower(platform_name)='whatsapp'")]
+ repaired=conflicts=0
+ for pid in wa_platforms:
+  records=list(c.execute("""SELECT i.identity_id,i.channel_account_id,i.identity_type,i.identity_value,i.canonical_value
+   FROM channel_account_identities i JOIN channel_accounts a ON a.channel_account_id=i.channel_account_id
+   WHERE a.platform_id=?""",(pid,)))
+  for r in records:
+   raw=str(r[4] or r[3] or '');digits=''.join(x for x in raw.split('@',1)[0] if x.isdigit())
+   if not (7<=len(digits)<=20) or '@lid' in raw.lower():continue
+   canonical=digits+'@c.us'
+   duplicate=c.execute("""SELECT 1 FROM channel_account_identities i JOIN channel_accounts a ON a.channel_account_id=i.channel_account_id
+    WHERE a.platform_id=? AND i.identity_id<>? AND i.identity_type='whatsapp_jid' AND i.canonical_value=? LIMIT 1""",(pid,r[0],canonical)).fetchone()
+   if duplicate:conflicts+=1;continue
+   if r[2]!='whatsapp_jid' or r[4]!=canonical or r[3]!=canonical:
+    c.execute("UPDATE channel_account_identities SET identity_type='whatsapp_jid',identity_value=?,canonical_value=? WHERE identity_id=?",(canonical,canonical,r[0]));repaired+=1
+ sig=hashlib.sha256(b'Schema 214 account identity claim slots and discovery approval').hexdigest();t=now_ms()
+ c.execute("INSERT OR IGNORE INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json) VALUES('V214_000_account_identity_claim','账号身份自动认领与审批',?,?,?,?)",(sig,t,'system',dumps({'status':'success','schema':214,'whatsappRepaired':repaired,'whatsappConflicts':conflicts})))
 
 def _read_existing_schema_version(path):
  """只读识别现有数据库；不猜测、升级或修改未知结构。"""
@@ -850,27 +1038,28 @@ def _read_existing_schema_version(path):
   return str(row[0]).strip() if row and row[0] is not None else None
  finally:c.close()
 
-def validate_schema212_readonly(path):
- """Schema 212 重启路径：严格只读校验，绝不重放历史迁移。"""
+def validate_schema213_readonly(path):
+ """Schema 213 重启路径：严格只读校验，绝不重放历史迁移。"""
  c=_connect_strict_readonly(path);c.row_factory=sqlite3.Row
  try:
   required_tables={
    'meta','schema_migrations','organizations','workspaces','teams','users',
    'user_credentials','roles','permissions','role_permissions','role_bindings',
-   'team_memberships','audit_logs','sessions','device_enrollments','channel_types','source_type_definitions'
+   'team_memberships','audit_logs','sessions','device_enrollments','channel_types','source_type_definitions',
+    'plugin_sessions','device_channel_account_bindings','conversations','conversation_messages','contact_transfers'
   }
   actual={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
   missing=sorted(required_tables-actual)
-  if missing:raise RuntimeError('SCHEMA_212_INVALID: missing tables: '+','.join(missing))
+  if missing:raise RuntimeError('SCHEMA_213_INVALID: missing tables: '+','.join(missing))
   cols={r[1] for r in c.execute('PRAGMA table_info(team_memberships)')}
   required_cols={'user_id','team_id','membership_type','is_primary','status','joined_at','left_at','created_at','updated_at'}
   missing_cols=sorted(required_cols-cols)
-  if missing_cols:raise RuntimeError('SCHEMA_212_INVALID: team_memberships missing columns: '+','.join(missing_cols))
-  if 'role_id' in cols:raise RuntimeError('SCHEMA_212_INVALID: legacy team_memberships.role_id exists')
+  if missing_cols:raise RuntimeError('SCHEMA_213_INVALID: team_memberships missing columns: '+','.join(missing_cols))
+  if 'role_id' in cols:raise RuntimeError('SCHEMA_213_INVALID: legacy team_memberships.role_id exists')
   device_cols={r[1] for r in c.execute('PRAGMA table_info(devices)')}
   legacy_device_cols=sorted({'binding_code','binding_code_expires_at','binding_code_hash'} & device_cols)
-  if legacy_device_cols:raise RuntimeError('SCHEMA_212_INVALID: legacy devices columns exist: '+','.join(legacy_device_cols))
-  # 固定 Schema 212 约束基线：防止结构可读但关键业务约束已被误删。
+  if legacy_device_cols:raise RuntimeError('SCHEMA_213_INVALID: legacy devices columns exist: '+','.join(legacy_device_cols))
+  # 固定 Schema 213 约束基线：防止结构可读但关键业务约束已被误删。
   required_indexes={
    'idx_attribution_contact',
    'idx_attribution_contact_rule',
@@ -891,7 +1080,8 @@ def validate_schema212_readonly(path):
    'idx_tags_workspace_kind',
    'idx_team_bl_org_line',
    'idx_team_markets_org_market',
-   'idx_device_enrollment_org_status','idx_device_enrollment_team',
+   'idx_device_enrollment_org_status','idx_device_enrollment_team','idx_plugin_sessions_subject','idx_device_account_binding',
+    'idx_conversations_contact_time','idx_messages_conversation_time','idx_transfers_contact_time',
    'idx_team_memberships_team',
    'idx_team_memberships_user',
    'idx_touchpoint_contact_occurred',
@@ -912,12 +1102,12 @@ def validate_schema212_readonly(path):
    'uq_user_primary_team',
    'uq_team_primary_workspace',
    'uq_workspace_primary_bl',
-   'uq_workspace_primary_market',
+   'uq_workspace_primary_market','uq_message_external','uq_message_client_event',
    'uq_workspace_primary_team',
   }
   indexes={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'")}
   missing_indexes=sorted(required_indexes-indexes)
-  if missing_indexes:raise RuntimeError('SCHEMA_212_INVALID: missing indexes: '+','.join(missing_indexes))
+  if missing_indexes:raise RuntimeError('SCHEMA_213_INVALID: missing indexes: '+','.join(missing_indexes))
   required_triggers={
    'trg_business_line_cycle_insert',
    'trg_business_line_cycle_update',
@@ -948,13 +1138,54 @@ def validate_schema212_readonly(path):
   }
   triggers={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
   missing_triggers=sorted(required_triggers-triggers)
-  if missing_triggers:raise RuntimeError('SCHEMA_212_INVALID: missing triggers: '+','.join(missing_triggers))
+  if missing_triggers:raise RuntimeError('SCHEMA_213_INVALID: missing triggers: '+','.join(missing_triggers))
   qc=c.execute('PRAGMA quick_check').fetchone()[0]
-  if qc!='ok':raise RuntimeError('SCHEMA_212_INVALID: quick_check: '+str(qc))
+  if qc!='ok':raise RuntimeError('SCHEMA_213_INVALID: quick_check: '+str(qc))
   fk=list(c.execute('PRAGMA foreign_key_check'))
-  if fk:raise RuntimeError('SCHEMA_212_INVALID: foreign_key_check: '+str(len(fk)))
+  if fk:raise RuntimeError('SCHEMA_213_INVALID: foreign_key_check: '+str(len(fk)))
   validate_registered_migration_checksums(path)
   return True
+ finally:c.close()
+
+def validate_schema214_readonly(path):
+ validate_schema213_readonly(path)
+ c=_connect_strict_readonly(path)
+ try:
+  required={'account_binding_slots','account_identity_discoveries'}
+  actual={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+  missing=sorted(required-actual)
+  if missing:raise RuntimeError('SCHEMA_214_INVALID: missing tables: '+','.join(missing))
+  version=c.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+  if not version or str(version[0])!='214':raise RuntimeError('SCHEMA_214_INVALID: version')
+  if c.execute('PRAGMA quick_check').fetchone()[0]!='ok':raise RuntimeError('SCHEMA_214_INVALID: quick_check')
+  if list(c.execute('PRAGMA foreign_key_check')):raise RuntimeError('SCHEMA_214_INVALID: foreign_key_check')
+ finally:c.close()
+
+def ensure_v215(c):
+ # Schema 215 is a fresh-install configuration-integrity baseline; no 214 upgrade is offered.
+ c.execute("UPDATE custom_field_definitions SET field_type='single_select' WHERE field_type='select'")
+ c.execute("UPDATE contacts SET display_name='' WHERE manual_name='' AND lower(trim(display_name)) IN ('个人主页详情','联系人信息','联系方式','个人资料','群组信息','contact info','profile details','group info','click to view contact info')")
+
+def validate_schema215_readonly(path):
+ # Schema 215 inherits the 214 object set, but validates its own version below.
+ validate_schema213_readonly(path)
+ c=_connect_strict_readonly(path)
+ try:
+  version=c.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+  if not version or str(version[0])!='215':raise RuntimeError('SCHEMA_215_INVALID: version')
+  if c.execute('PRAGMA user_version').fetchone()[0]!=SCHEMA_VERSION:raise RuntimeError('SCHEMA_215_INVALID: user_version')
+  required={'account_binding_slots','account_identity_discoveries'}
+  actual={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+  if required-actual:raise RuntimeError('SCHEMA_215_INVALID: missing tables: '+','.join(sorted(required-actual)))
+  workspaces=[r[0] for r in c.execute('SELECT workspace_id FROM workspaces ORDER BY workspace_id')]
+  if workspaces!=['ws-global']:raise RuntimeError('SCHEMA_215_INVALID: canonical workspace required')
+  if c.execute("SELECT COUNT(*) FROM tags WHERE workspace_id='ws-global' AND tag_kind='status'").fetchone()[0]<6:raise RuntimeError('SCHEMA_215_INVALID: status presets')
+  if c.execute("SELECT COUNT(*) FROM tags WHERE workspace_id='ws-global' AND tag_kind='portrait'").fetchone()[0]<7:raise RuntimeError('SCHEMA_215_INVALID: portrait presets')
+  if c.execute("SELECT COUNT(*) FROM custom_field_definitions WHERE field_type='select'").fetchone()[0]:raise RuntimeError('SCHEMA_215_INVALID: legacy select type')
+  stage=c.execute("SELECT field_type,options_json FROM custom_field_definitions WHERE workspace_id='ws-global' AND field_key='customer_stage'").fetchone()
+  if not stage or stage[0]!='multi_select' or loads(stage[1])!=['一切','二切','三切']:raise RuntimeError('SCHEMA_215_INVALID: customer stage baseline')
+  if c.execute('PRAGMA quick_check').fetchone()[0]!='ok':raise RuntimeError('SCHEMA_215_INVALID: quick_check')
+  if list(c.execute('PRAGMA foreign_key_check')):raise RuntimeError('SCHEMA_215_INVALID: foreign_key_check')
  finally:c.close()
 
 class Database:
@@ -968,27 +1199,26 @@ class Database:
   except Exception:c.execute('ROLLBACK');raise
   finally:c.close()
  def initialize(self,bootstrap=None):
-  """全新安装创建 Schema 212；现有 Schema 212 仅只读校验，拒绝旧库自动迁移。"""
+  """Create or validate the Schema 215 fresh-install baseline; legacy schemas are rejected."""
   fresh=not self.path.exists() or not self.path.stat().st_size
+  upgrading=False;backup=None
   if not fresh:
    version=_read_existing_schema_version(self.path)
    if version==str(SCHEMA_VERSION):
-    validate_schema212_readonly(self.path)
-    return
-   if version and version.isdigit() and int(version)<SCHEMA_VERSION:
-    raise RuntimeError('LEGACY_SCHEMA_NOT_SUPPORTED: detected Schema '+version+', require fresh Schema '+str(SCHEMA_VERSION))
-   raise RuntimeError('UNSUPPORTED_DATABASE_SCHEMA: detected '+repr(version)+', require Schema '+str(SCHEMA_VERSION))
-  b=validate_bootstrap(bootstrap)
-  backup=None
+    validate_schema215_readonly(self.path);return
+   raise RuntimeError('SCHEMA_215_FRESH_INSTALL_REQUIRED: detected '+repr(version)+', require a new Schema 215 database')
+  b=validate_bootstrap(bootstrap) if fresh else None
   c=self.connect()
   try:
    # SQLite 表重建要求在事务开始前关闭写入期外键检查；提交前强制 foreign_key_check。
    c.execute('PRAGMA foreign_keys=OFF')
    c.execute('BEGIN IMMEDIATE')
-   if fresh:execute_sql_script(c,BASE_SCHEMA)
-   ensure_v207(c,fresh=fresh);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c);ensure_v211_030(c);ensure_v211_040(c);ensure_v211_050(c);ensure_v212(c)
-   if fresh:bootstrap_fresh_database(c,b)
+   if fresh:
+    execute_sql_script(c,BASE_SCHEMA)
+    ensure_v207(c,fresh=True);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c);ensure_v211_030(c);ensure_v211_040(c);ensure_v211_050(c);ensure_v212(c);ensure_v213(c);ensure_v214(c);ensure_v215(c)
+    bootstrap_fresh_database(c,b)
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)",(str(SCHEMA_VERSION),))
+   c.execute('PRAGMA user_version=%d'%int(SCHEMA_VERSION))
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version',?)",(PRODUCT_VERSION,))
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('catalog_version',?)",(CATALOG_VERSION,))
    c.execute("DELETE FROM meta WHERE key='initial_admin_password'")
@@ -1005,7 +1235,7 @@ class Database:
    finally:c.close()
    if backup and backup.exists():
     for suffix in ('-wal','-shm'):Path(str(self.path)+suffix).unlink(missing_ok=True)
-    shutil.copy2(backup,self.path)
+    _restore_sqlite_backup(backup,self.path)
    elif fresh and self.path.exists():self.path.unlink()
    _write_failure_report(self.path,exc,backup)
    raise

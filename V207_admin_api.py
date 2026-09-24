@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""V207 企业综合管理 API。Schema 212；所有范围与写入均由服务端校验。"""
-import hashlib, json, uuid, os, sqlite3, secrets
+"""V208.1.7 企业综合管理 API。Schema 215；所有范围与写入均由服务端校验。"""
+import hashlib, json, uuid, os, sqlite3, secrets, re
 from V207_shared_db import now_ms,dumps,loads,hash_password,default_workspace_id
 from V207_security import can,permissions,verify_password,password_strong,is_platform_admin,grant_binding_in_tx,revoke_sessions_in_tx,revoke_session_in_tx,issue_confirmation,consume_confirmation
 from V207_schema_catalog import build_schema_catalog
@@ -16,6 +16,7 @@ from V207_touchpoint_service import handle as handle_touchpoint
 from V207_attribution_service import handle as handle_attribution
 from V207_source_link_service import handle as handle_source_link
 from V207_organization_service import handle as handle_organization_model
+from V208_account_admin_service import handle as handle_account_admin
 CHANNELS=('whatsapp','instagram','facebook','messenger','telegram')
 
 def rows(c,sql,args=()): return [dict(x) for x in c.execute(sql,args)]
@@ -26,7 +27,7 @@ def platform(db,a):
  return is_platform_admin(db,a)
 def org_ok(db,a,org):return bool(org) and (platform(db,a) or org==a['organization_id'])
 def manage(db,a,perm,org):return org_ok(db,a,org) and (platform(db,a) or can(db,a,perm))
-def target(q,a,b=None):return str((b or {}).get('organizationId') or (b or {}).get('organization_id') or q.get('organization_id') or a['organization_id'])
+def target(q,a,b=None):return str((b or {}).get('organizationId') or (b or {}).get('organization_id') or q.get('organizationId') or q.get('organization_id') or a['organization_id'])
 def page(q):
  try:p=max(1,int(q.get('page',1)));size=min(200,max(1,int(q.get('pageSize',q.get('limit',50)))))
  except:p,size=1,50
@@ -143,6 +144,8 @@ def dispatch(h,m,p,q,a,db):
  seg=[x for x in p[len('/api/v207/admin/'):].split('/') if x]
  if not seg:return bad(h,'NOT_FOUND','管理接口不存在',404)
  root=seg[0];ident=seg[1] if len(seg)>1 else None;action=seg[2] if len(seg)>2 else None
+ org=target(q,a)
+ if handle_account_admin(h,m,root,ident,action,q,a,db,manage,org):return True
  # [Stage3] 权限矩阵聚合（只读）
  if root=='rbac' and ident=='matrix' and m=='GET':
   org=target(q,a)
@@ -964,18 +967,18 @@ def dispatch(h,m,p,q,a,db):
     its=rows(c,"SELECT e.enrollment_id,e.organization_id,e.workspace_id,e.team_id,e.assigned_user_id,e.admin_device_name,e.admin_computer_name,e.status,e.expires_at,e.consumed_at,e.consumed_device_id,e.created_by,e.created_at,e.revoked_at,e.revoked_by,e.reason,w.name workspace_name,t.name team_name,u.display_name assigned_user FROM device_enrollments e JOIN workspaces w ON w.workspace_id=e.workspace_id JOIN teams t ON t.team_id=e.team_id LEFT JOIN users u ON u.user_id=e.assigned_user_id WHERE e.organization_id=? ORDER BY e.created_at DESC",(org,))
    return h.sendj({'ok':True,'items':its}) or True
   if not ident and m=='POST':
-   b=h.body();wid=str(b.get('workspaceId') or '').strip();tid=str(b.get('teamId') or '').strip();uid=str(b.get('assignedUserId') or '').strip() or None;reason=str(b.get('reason') or '').strip()
-   if not wid or not tid or not reason:return bad(h,'INVALID_INPUT','工作区、团队和操作原因必填')
-   try:hours=max(1,min(168,int(b.get('validHours') or 24)))
+   b=h.body();wid=str(b.get('workspaceId') or '').strip();tid=str(b.get('teamId') or '').strip();uid=str(b.get('assignedUserId') or '').strip();reason=str(b.get('reason') or '').strip()
+   if not wid or not tid or not uid or not reason:return bad(h,'INVALID_INPUT','工作区、团队、指定用户和操作原因必填')
+   try:hours=max(1,min(72,int(b.get('validHours') or 24)))
    except Exception:return bad(h,'INVALID_INPUT','有效时长必须为整数')
    with db.tx() as c:
     team=one(c,"SELECT t.*,wt.workspace_id authorized_workspace FROM teams t LEFT JOIN workspace_teams wt ON wt.team_id=t.team_id AND wt.workspace_id=? AND wt.status='active' WHERE t.team_id=? AND t.organization_id=? AND t.status='active'",(wid,tid,org))
     if not team or not (team.get('workspace_id')==wid or team.get('authorized_workspace')==wid):return bad(h,'TEAM_WORKSPACE_MISMATCH','团队不属于所选工作区',409)
-    if uid and not one(c,"SELECT 1 ok FROM users u JOIN team_memberships tm ON tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active' WHERE u.user_id=? AND u.organization_id=? AND u.status='active'",(tid,uid,org)):return bad(h,'USER_TEAM_MISMATCH','用户不是目标团队的有效成员',409)
-    code=secrets.token_hex(6).upper();eid='denr_'+secrets.token_hex(12);now=now_ms();exp=now+hours*3600*1000;digest=hashlib.sha256(code.encode()).hexdigest()
+    if not one(c,"SELECT 1 ok FROM users u JOIN team_memberships tm ON tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active' WHERE u.user_id=? AND u.organization_id=? AND u.status='active'",(tid,uid,org)):return bad(h,'USER_TEAM_MISMATCH','用户不是目标团队的有效成员',409)
+    raw=''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(20));code='-'.join(raw[i:i+4] for i in range(0,20,4));eid='denr_'+secrets.token_hex(12);now=now_ms();exp=now+hours*3600*1000;digest=hashlib.sha256(raw.encode()).hexdigest()
     c.execute("INSERT INTO device_enrollments(enrollment_id,organization_id,workspace_id,team_id,assigned_user_id,admin_device_name,admin_computer_name,binding_code_hash,status,expires_at,created_by,created_at,reason) VALUES(?,?,?,?,?,?,?,?,'pending',?,?,?,?)",(eid,org,wid,tid,uid,str(b.get('deviceName') or '')[:120],str(b.get('computerName') or '')[:120],digest,exp,a['user_id'],now,reason))
     item=one(c,'SELECT * FROM device_enrollments WHERE enrollment_id=?',(eid,));audit_in_tx(c,a,'create','device_enrollment',eid,None,{k:v for k,v in item.items() if k!='binding_code_hash'},reason,wid)
-   return h.sendj({'ok':True,'item':{k:v for k,v in item.items() if k!='binding_code_hash'},'bindingCode':code},201) or True
+   return h.sendj({'ok':True,'item':{k:v for k,v in item.items() if k!='binding_code_hash'},'invitationCode':code,'bindingCode':code},201) or True
   if ident and action=='revoke' and m=='POST':
    b=h.body();reason=str(b.get('reason') or '').strip()
    if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
@@ -988,12 +991,50 @@ def dispatch(h,m,p,q,a,db):
   return bad(h,'METHOD_NOT_ALLOWED','不支持的设备接入邀请操作',405)
  # devices generic list and state
  if root=='devices':
-  if m=='GET':
+  if not ident and m=='GET':
    if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备读取权限',403)
-   with db.tx(False) as c:its=rows(c,"SELECT d.*,t.name team_name,u.display_name assigned_user,(SELECT count(*) FROM source_devices sd WHERE sd.device_id=d.device_id) source_count FROM devices d LEFT JOIN teams t ON t.team_id=d.team_id LEFT JOIN users u ON u.user_id=d.assigned_user_id WHERE d.organization_id=? ORDER BY d.last_seen_at DESC",(org,))
+   with db.tx(False) as c:its=rows(c,"""SELECT d.*,t.name team_name,u.display_name assigned_user,
+    (SELECT count(*) FROM source_devices sd WHERE sd.device_id=d.device_id) source_count,
+    (SELECT count(*) FROM plugin_sessions ps WHERE ps.device_id=d.device_id AND ps.status='active' AND ps.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000) active_plugin_sessions,
+    (SELECT ps.client_version FROM plugin_sessions ps WHERE ps.device_id=d.device_id ORDER BY ps.last_seen_at DESC LIMIT 1) client_version,
+    (SELECT group_concat(ca.display_name||' ['||p.platform_code||']') FROM device_channel_account_bindings b JOIN channel_accounts ca ON ca.channel_account_id=b.channel_account_id JOIN platforms p ON p.platform_id=b.platform_id WHERE b.device_id=d.device_id AND b.status='active') running_accounts,
+    (SELECT count(*) FROM account_identity_discoveries ad WHERE ad.device_id=d.device_id AND ad.organization_id=d.organization_id AND ad.status='pending') pending_identity_count,
+    (SELECT group_concat(ad.canonical_value||' ['||p.platform_code||' · 待审批]') FROM account_identity_discoveries ad JOIN platforms p ON p.platform_id=ad.platform_id WHERE ad.device_id=d.device_id AND ad.organization_id=d.organization_id AND ad.status='pending') pending_identities,
+    (SELECT count(*) FROM account_identity_discoveries ad WHERE ad.device_id=d.device_id AND ad.organization_id=d.organization_id AND ad.status='approved' AND ad.channel_account_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM device_channel_account_bindings b WHERE b.device_id=d.device_id AND b.channel_account_id=ad.channel_account_id AND b.platform_id=ad.platform_id AND b.status='active')) awaiting_recheck_count,
+    (SELECT group_concat(ad.canonical_value||' ['||p.platform_code||' · 已批准，等待插件重新检测]') FROM account_identity_discoveries ad JOIN platforms p ON p.platform_id=ad.platform_id WHERE ad.device_id=d.device_id AND ad.organization_id=d.organization_id AND ad.status='approved' AND ad.channel_account_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM device_channel_account_bindings b WHERE b.device_id=d.device_id AND b.channel_account_id=ad.channel_account_id AND b.platform_id=ad.platform_id AND b.status='active')) awaiting_recheck_identities
+    FROM devices d LEFT JOIN teams t ON t.team_id=d.team_id LEFT JOIN users u ON u.user_id=d.assigned_user_id
+    WHERE d.organization_id=? ORDER BY d.last_seen_at DESC""",(org,))
    now=now_ms()
-   for x in its:x['online_status']='online' if x.get('status')=='active' and now-int(x.get('last_seen_at') or 0)<=300000 else 'offline'
+   online_threshold_ms=120000;offline_threshold_ms=600000
+   for x in its:
+    last=x.get('last_seen_at');age=max(0,now-int(last or 0)) if last else None
+    x['heartbeat_age_ms']=age;x['online_threshold_ms']=online_threshold_ms;x['offline_threshold_ms']=offline_threshold_ms
+    if x.get('status')!='active':x['online_status']='disabled'
+    elif last is None:x['online_status']='unknown'
+    elif age<=online_threshold_ms:x['online_status']='online'
+    elif age<=offline_threshold_ms:x['online_status']='unstable'
+    else:x['online_status']='offline'
+    displays=[v for v in (x.get('running_accounts'),x.get('pending_identities'),x.get('awaiting_recheck_identities')) if v]
+    x['running_accounts_display']='；'.join(displays) if displays else None
    return h.sendj({'ok':True,'items':its}) or True
+  if ident and action=='sessions' and len(seg)==3 and m=='GET':
+   if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备会话读取权限',403)
+   with db.tx(False) as c:
+    if not one(c,'SELECT 1 ok FROM devices WHERE device_id=? AND organization_id=?',(ident,org)):return bad(h,'NOT_FOUND','设备不存在',404)
+    its=rows(c,"SELECT ps.plugin_session_id,ps.workspace_id,ps.team_id,ps.user_id,u.display_name user_name,ps.status,ps.issued_at,ps.expires_at,ps.last_seen_at,ps.revoked_at,ps.revoked_by,ps.revoked_reason,ps.client_version,ps.metadata_json FROM plugin_sessions ps LEFT JOIN users u ON u.user_id=ps.user_id WHERE ps.device_id=? AND ps.organization_id=? ORDER BY ps.issued_at DESC",(ident,org))
+   return h.sendj({'ok':True,'items':its}) or True
+  if ident and action=='sessions' and len(seg)==5 and seg[4]=='revoke' and m=='POST':
+   if not (platform(db,a) or manage(db,a,'device.disable',org)):return bad(h,'FORBIDDEN','无设备会话撤销权限',403)
+   b=h.body();session_id=seg[3];reason=str(b.get('reason') or '').strip()
+   if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
+   with db.tx() as c:
+    dev=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
+    if not dev:return bad(h,'NOT_FOUND','设备不存在',404)
+    old_session=one(c,'SELECT * FROM plugin_sessions WHERE plugin_session_id=? AND device_id=? AND organization_id=?',(session_id,ident,org))
+    if not old_session:return bad(h,'NOT_FOUND','插件会话不存在',404)
+    if old_session['status']=='active':c.execute("UPDATE plugin_sessions SET status='revoked',revoked_at=?,revoked_by=?,revoked_reason=? WHERE plugin_session_id=? AND status='active'",(now_ms(),a['user_id'],reason[:200],session_id))
+    new_session=one(c,'SELECT * FROM plugin_sessions WHERE plugin_session_id=?',(session_id,));audit_in_tx(c,a,'revoke','plugin_session',session_id,old_session,new_session,reason,dev.get('workspace_id'))
+   return h.sendj({'ok':True,'item':new_session}) or True
   if ident and action=='history' and m=='GET':
    if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备读取权限',403)
    with db.tx(False) as c:
@@ -1008,34 +1049,42 @@ def dispatch(h,m,p,q,a,db):
     old=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
     if not old:return bad(h,'NOT_FOUND','设备不存在',404)
     if not one(c,"SELECT 1 ok FROM users u JOIN team_memberships tm ON tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active' JOIN teams t ON t.team_id=tm.team_id WHERE u.user_id=? AND u.organization_id=? AND u.status='active' AND t.organization_id=? AND t.status='active'",(tid,uid,org,org)):return bad(h,'USER_TEAM_MISMATCH','用户不是目标团队的有效成员',409)
-    now=now_ms();c.execute('UPDATE device_assignments SET released_at=? WHERE device_id=? AND released_at IS NULL',(now,ident));c.execute('INSERT INTO device_assignments(assignment_id,device_id,assigned_user_id,team_id,assigned_at,released_at) VALUES(?,?,?,?,?,NULL)',('asn_'+secrets.token_hex(12),ident,uid,tid,now));c.execute('UPDATE devices SET team_id=?,assigned_user_id=? WHERE device_id=?',(tid,uid,ident));new=one(c,'SELECT * FROM devices WHERE device_id=?',(ident,));audit_in_tx(c,a,'assign','device',ident,old,new,reason,old.get('workspace_id'))
-   return h.sendj({'ok':True,'item':new}) or True
+    team=one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(tid,org))
+    if not team:return bad(h,'TEAM_NOT_FOUND','目标团队不存在、未启用或不属于当前企业',404)
+    now=now_ms();c.execute('UPDATE device_assignments SET released_at=? WHERE device_id=? AND released_at IS NULL',(now,ident));c.execute('INSERT INTO device_assignments(assignment_id,device_id,assigned_user_id,team_id,assigned_at,released_at) VALUES(?,?,?,?,?,NULL)',('asn_'+secrets.token_hex(12),ident,uid,tid,now));c.execute('UPDATE devices SET workspace_id=?,team_id=?,assigned_user_id=? WHERE device_id=?',(team['workspace_id'],tid,uid,ident))
+    revoked=c.execute("UPDATE plugin_sessions SET status='revoked',revoked_at=?,revoked_by=?,revoked_reason='device_reassigned' WHERE device_id=? AND organization_id=? AND status='active'",(now,a['user_id'],ident,org)).rowcount
+    disabled_bindings=c.execute("UPDATE device_channel_account_bindings SET status='disabled' WHERE device_id=? AND organization_id=? AND status='active'",(ident,org)).rowcount
+    new=one(c,'SELECT * FROM devices WHERE device_id=?',(ident,));audit_in_tx(c,a,'assign','device',ident,old,new,reason,team['workspace_id'])
+    return h.sendj({'ok':True,'item':new,'revokedSessionCount':revoked,'disabledBindingCount':disabled_bindings}) or True
   if ident and not action and m=='GET':
    if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备读取权限',403)
    with db.tx(False) as c:item=one(c,"SELECT d.*,t.name team_name,u.display_name assigned_user FROM devices d LEFT JOIN teams t ON t.team_id=d.team_id LEFT JOIN users u ON u.user_id=d.assigned_user_id WHERE d.device_id=? AND d.organization_id=?",(ident,org))
    if not item:return bad(h,'NOT_FOUND','设备不存在',404)
    item['display_name']=item.get('admin_device_name') or item.get('user_device_alias') or item.get('system_device_name') or ident
    return h.sendj({'ok':True,'item':item}) or True
-  if ident and m=='PATCH':
+  if ident and not action and m=='PATCH':
    if not manage(db,a,'device.disable',org):return bad(h,'FORBIDDEN','无资源管理权限',403)
    b=h.body();reason=str(b.get('reason') or '').strip()
    if not reason:return bad(h,'REASON_REQUIRED','操作原因必填')
    with db.tx() as c:
     old=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
     if not old:return bad(h,'NOT_FOUND','资源不存在',404)
-    c.execute('UPDATE devices SET admin_device_name=?,admin_computer_name=?,status=? WHERE device_id=?',(str(b.get('deviceName') if b.get('deviceName') is not None else old.get('admin_device_name') or ''),str(b.get('computerName') if b.get('computerName') is not None else old.get('admin_computer_name') or ''),clean_status(b.get('status')) or old['status'],ident));new=one(c,'SELECT * FROM devices WHERE device_id=?',(ident,))
-    audit_in_tx(c,a,'update','device',ident,old,new,reason,old.get('workspace_id'))
-   return h.sendj({'ok':True,'item':new}) or True
+    new_status=clean_status(b.get('status')) or old['status'];now=now_ms()
+    c.execute('UPDATE devices SET admin_device_name=?,admin_computer_name=?,status=? WHERE device_id=?',(str(b.get('deviceName') if b.get('deviceName') is not None else old.get('admin_device_name') or ''),str(b.get('computerName') if b.get('computerName') is not None else old.get('admin_computer_name') or ''),new_status,ident))
+    revoked=disabled_bindings=0
+    if old.get('status')=='active' and new_status!='active':
+     revoked=c.execute("UPDATE plugin_sessions SET status='revoked',revoked_at=?,revoked_by=?,revoked_reason='device_disabled' WHERE device_id=? AND organization_id=? AND status='active'",(now,a['user_id'],ident,org)).rowcount
+     disabled_bindings=c.execute("UPDATE device_channel_account_bindings SET status='disabled' WHERE device_id=? AND organization_id=? AND status='active'",(ident,org)).rowcount
+    new=one(c,'SELECT * FROM devices WHERE device_id=?',(ident,));audit_in_tx(c,a,'update','device',ident,old,new,reason,old.get('workspace_id'))
+    return h.sendj({'ok':True,'item':new,'revokedSessionCount':revoked,'disabledBindingCount':disabled_bindings}) or True
   if ident and not action and m=='DELETE':
    if not (platform(db,a) or manage(db,a,'device.disable',org)):return bad(h,'FORBIDDEN','无设备删除权限',403)
    with db.tx() as c:
     old=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
     if not old:return bad(h,'NOT_FOUND','资源不存在',404)
-    refs={'sources':c.execute('SELECT count(*) FROM source_devices WHERE device_id=? AND source_id IN (SELECT source_id FROM sources WHERE status=\'active\')',(ident,)).fetchone()[0],'contacts':c.execute('SELECT count(*) FROM contacts WHERE last_observed_device_id=?',(ident,)).fetchone()[0]}
+    refs={'pluginSessions':c.execute('SELECT count(*) FROM plugin_sessions WHERE device_id=?',(ident,)).fetchone()[0],'accountBindings':c.execute('SELECT count(*) FROM device_channel_account_bindings WHERE device_id=?',(ident,)).fetchone()[0],'assignments':c.execute('SELECT count(*) FROM device_assignments WHERE device_id=?',(ident,)).fetchone()[0],'sources':c.execute('SELECT count(*) FROM source_devices WHERE device_id=?',(ident,)).fetchone()[0],'enrollments':c.execute('SELECT count(*) FROM device_enrollments WHERE consumed_device_id=?',(ident,)).fetchone()[0],'contacts':c.execute('SELECT count(*) FROM contacts WHERE last_observed_device_id=?',(ident,)).fetchone()[0],'auditLogs':c.execute("SELECT count(*) FROM audit_logs WHERE device_id=? OR (entity_type='device' AND entity_id=?)",(ident,ident)).fetchone()[0]}
     refs={k:v for k,v in refs.items() if v}
-    if refs:return bad(h,'DEVICE_IN_USE','设备仍被业务对象引用，无法删除',409,references=refs)
-    c.execute('DELETE FROM source_devices WHERE device_id=?',(ident,))
-    c.execute('DELETE FROM device_assignments WHERE device_id=?',(ident,))
+    if refs:return h.sendj({'ok':False,'code':'DEVICE_IN_USE','message':'设备存在业务或接入历史，只能停用，不能物理删除','references':refs},409) or True
     c.execute('DELETE FROM devices WHERE device_id=?',(ident,))
     audit_in_tx(c,a,'delete','device',ident,old,{},old.get('workspace_id'))
    return h.sendj({'ok':True}) or True
@@ -1159,32 +1208,45 @@ def dispatch(h,m,p,q,a,db):
   if not wid:return bad(h,'WORKSPACE_REQUIRED','工作区参数必需')
   with db.tx(False) as c:
    if not c.execute('SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=?',(wid,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在',404)
-   cond='workspace_id=?';args=[wid]
-   if kind:cond+=' AND tag_kind=?';args.append(kind)
-   its=rows(c,f'SELECT * FROM tags WHERE {cond} ORDER BY sort_order,name',tuple(args))
+   sql='SELECT * FROM tags WHERE workspace_id=?';args=[wid]
+   if kind:sql+=' AND tag_kind=?';args.append(kind)
+   its=rows(c,sql+' ORDER BY sort_order,name',tuple(args))
   return h.sendj({'ok':True,'items':its}) or True
  if root=='tags' and m=='POST':
   if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无标签管理权限',403)
-  b=h.body();wid=str(b.get('workspace') or '').strip();name=str(b.get('name') or '').strip();kind=str(b.get('kind') or 'portrait')
+  x=h.body();wid=str(x.get('workspace') or '').strip();name=str(x.get('name') or '').strip();kind=str(x.get('kind') or 'portrait');color=str(x.get('color') or '#64748b').strip().upper()
   if not wid or not name:return bad(h,'INVALID_INPUT','工作区和名称不能为空')
-  if kind not in ('status','portrait'):return bad(h,'INVALID_KIND','标签类型必须为 status 或 portrait')
+  if kind not in ('status','portrait'):return bad(h,'INVALID_KIND','标签类型无效')
+  if not re.fullmatch(r'#[0-9A-F]{6}',color):return bad(h,'INVALID_COLOR','标签颜色必须是 #RRGGBB 格式')
   tid='tag_'+uuid.uuid4().hex;n=now_ms()
   try:
    with db.tx() as c:
     if not c.execute('SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=?',(wid,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在',404)
-    c.execute('INSERT INTO tags(tag_id,workspace_id,name,color,category,tag_kind,sort_order,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,1,?,?)',(tid,wid,name,str(b.get('color') or '#64748b'),str(b.get('category') or ''),kind,int(b.get('sortOrder') or 0),n,n));item=one(c,'SELECT * FROM tags WHERE tag_id=?',(tid,))
-    audit_in_tx(c,a,'create','tag',tid,{},item,wid)
+    c.execute('INSERT INTO tags(tag_id,workspace_id,name,color,category,tag_kind,sort_order,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',(tid,wid,name,color,str(x.get('category') or '')[:80],kind,int(x.get('sortOrder') or 0),1 if x.get('enabled',True) not in (False,0,'0') else 0,n,n));item=one(c,'SELECT * FROM tags WHERE tag_id=?',(tid,));audit_in_tx(c,a,'create','tag',tid,{},item,wid)
    return h.sendj({'ok':True,'item':item},201) or True
-  except sqlite3.IntegrityError:return bad(h,'TAG_CONFLICT','标签名称已存在',409)
+  except (sqlite3.IntegrityError,ValueError):return bad(h,'TAG_CONFLICT','标签名称已存在或排序无效',409)
+ if root=='tags' and ident and m=='PATCH':
+  if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无标签管理权限',403)
+  x=h.body();n=now_ms()
+  try:
+   with db.tx() as c:
+    old=one(c,'SELECT t.*,w.organization_id FROM tags t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.tag_id=?',(ident,))
+    if not old or old['organization_id']!=org:return bad(h,'NOT_FOUND','标签不存在',404)
+    name=str(x.get('name',old['name'])).strip();kind=str(x.get('kind',old['tag_kind']));color=str(x.get('color',old['color'])).strip().upper()
+    if not name or kind not in ('status','portrait'):return bad(h,'INVALID_INPUT','标签名称或类型无效')
+    if kind!=old['tag_kind']:return bad(h,'TAG_KIND_IMMUTABLE','标签类型创建后不可修改',409)
+    if not re.fullmatch(r'#[0-9A-F]{6}',color):return bad(h,'INVALID_COLOR','标签颜色必须是 #RRGGBB 格式')
+    c.execute('UPDATE tags SET name=?,color=?,category=?,tag_kind=?,sort_order=?,enabled=?,updated_at=? WHERE tag_id=?',(name,color,str(x.get('category',old['category']))[:80],kind,int(x.get('sortOrder',old['sort_order'])),1 if x.get('enabled',old['enabled']) not in (False,0,'0') else 0,n,ident));item=one(c,'SELECT * FROM tags WHERE tag_id=?',(ident,));audit_in_tx(c,a,'update','tag',ident,old,item,old['workspace_id'])
+   return h.sendj({'ok':True,'item':item}) or True
+  except (sqlite3.IntegrityError,ValueError):return bad(h,'TAG_CONFLICT','标签名称已存在或排序无效',409)
  if root=='tags' and ident and m=='DELETE':
   if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无标签删除权限',403)
   with db.tx() as c:
    old=one(c,'SELECT t.*,w.organization_id FROM tags t JOIN workspaces w ON w.workspace_id=t.workspace_id WHERE t.tag_id=?',(ident,))
    if not old or old['organization_id']!=org:return bad(h,'NOT_FOUND','标签不存在',404)
-   c.execute('DELETE FROM contact_tags WHERE tag_id=?',(ident,));c.execute('DELETE FROM tags WHERE tag_id=?',(ident,))
-   audit_in_tx(c,a,'delete','tag',ident,old,{},old['workspace_id'])
+   if c.execute('SELECT COUNT(*) FROM contact_tags WHERE tag_id=?',(ident,)).fetchone()[0]:return bad(h,'TAG_IN_USE','标签仍被联系人使用',409)
+   c.execute('DELETE FROM tags WHERE tag_id=?',(ident,));audit_in_tx(c,a,'delete','tag',ident,old,{},old['workspace_id'])
   return h.sendj({'ok':True}) or True
- # custom field definitions
  if root=='field-definitions' and m=='GET':
   if not (platform(db,a) or can(db,a,'contact.read')):return bad(h,'FORBIDDEN','无字段定义读取权限',403)
   wid=q.get('workspace')
@@ -1193,19 +1255,36 @@ def dispatch(h,m,p,q,a,db):
    if not c.execute('SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=?',(wid,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在',404)
    its=rows(c,'SELECT * FROM custom_field_definitions WHERE workspace_id=? ORDER BY sort_order,field_key',(wid,))
   return h.sendj({'ok':True,'items':its}) or True
- if root=='field-definitions' and m=='POST':
+ if root=='field-definitions' and (m=='POST' or (ident and m=='PATCH')):
   if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无字段定义管理权限',403)
-  b=h.body();wid=str(b.get('workspace') or '').strip();key=str(b.get('fieldKey') or '').strip().lower();label=str(b.get('label') or '').strip();ftype=str(b.get('fieldType') or 'text')
+  x=h.body();wid=str(x.get('workspace') or q.get('workspace') or '').strip();key=str(ident or x.get('fieldKey') or '').strip().lower();label=str(x.get('label') or '').strip();ftype=str(x.get('fieldType') or 'text')
+  if ftype=='select':ftype='single_select'
   if not wid or not key or not label:return bad(h,'INVALID_INPUT','工作区、键名和标签不能为空')
-  if ftype not in ('text','number','date','boolean','select'):return bad(h,'INVALID_TYPE','字段类型无效')
+  if not __import__('re').fullmatch(r'[A-Za-z0-9_.:-]{1,80}',key):return bad(h,'INVALID_KEY','字段键名无效')
+  if ftype not in ('text','number','date','boolean','json','single_select','multi_select'):return bad(h,'INVALID_TYPE','字段类型无效')
+  opts=x.get('options',x.get('optionsJson',[]))
+  if isinstance(opts,str):
+   try:opts=json.loads(opts) if opts.strip().startswith('[') else [v.strip() for v in opts.split(',') if v.strip()]
+   except Exception:return bad(h,'INVALID_OPTIONS','候选项格式无效')
+  if not isinstance(opts,list) or any(not isinstance(v,str) or not v.strip() for v in opts) or len(opts)!=len(set(opts)):return bad(h,'INVALID_OPTIONS','候选项必须是不重复的非空字符串数组')
+  opts=[v.strip()[:120] for v in opts]
+  if ftype in ('single_select','multi_select') and not opts:return bad(h,'OPTIONS_REQUIRED','选择字段必须配置候选项')
+  if ftype not in ('single_select','multi_select'):opts=[]
   n=now_ms()
   try:
    with db.tx() as c:
     if not c.execute('SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=?',(wid,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在',404)
-    c.execute('INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at) VALUES(?,?,?,?,?,1,?,?)',(wid,key,label,ftype,int(b.get('sortOrder') or 0),n,n));item=one(c,'SELECT * FROM custom_field_definitions WHERE workspace_id=? AND field_key=?',(wid,key))
-    audit_in_tx(c,a,'create','field_definition',key,{},item,wid)
-   return h.sendj({'ok':True,'item':item},201) or True
-  except sqlite3.IntegrityError:return bad(h,'FIELD_CONFLICT','字段键名已存在',409)
+    old=one(c,'SELECT * FROM custom_field_definitions WHERE workspace_id=? AND field_key=?',(wid,key))
+    if m=='POST' and old:return bad(h,'FIELD_CONFLICT','字段键名已存在',409)
+    if m=='PATCH' and not old:return bad(h,'NOT_FOUND','字段定义不存在',404)
+    enabled=1 if x.get('enabled',old['enabled'] if old else True) not in (False,0,'0') else 0;quick=1 if x.get('isQuickEdit',old['is_quick_edit'] if old else False) not in (False,0,'0','') else 0
+    role=str(x.get('fieldRole',old['field_role'] if old else 'custom'))[:80];zone=str(x.get('displayZone',old['display_zone'] if old else 'interaction_panel'))[:80];placeholder=str(x.get('placeholder',old['placeholder'] if old else ''))[:240];order=int(x.get('sortOrder',old['sort_order'] if old else 0))
+    vals=(label,ftype,order,enabled,n,role,zone,quick,json.dumps(opts,ensure_ascii=False),placeholder)
+    if m=='POST':c.execute('INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at,field_role,display_zone,is_quick_edit,options_json,placeholder) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(wid,key,label,ftype,order,enabled,n,n,role,zone,quick,json.dumps(opts,ensure_ascii=False),placeholder))
+    else:c.execute('UPDATE custom_field_definitions SET label=?,field_type=?,sort_order=?,enabled=?,updated_at=?,field_role=?,display_zone=?,is_quick_edit=?,options_json=?,placeholder=? WHERE workspace_id=? AND field_key=?',vals+(wid,key))
+    item=one(c,'SELECT * FROM custom_field_definitions WHERE workspace_id=? AND field_key=?',(wid,key));audit_in_tx(c,a,'create' if m=='POST' else 'update','field_definition',key,old or {},item,wid)
+   return h.sendj({'ok':True,'item':item},201 if m=='POST' else 200) or True
+  except (sqlite3.IntegrityError,ValueError):return bad(h,'FIELD_CONFLICT','字段配置冲突或排序无效',409)
  if root=='field-definitions' and ident and m=='DELETE':
   if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无字段定义删除权限',403)
   wid=q.get('workspace')
@@ -1214,10 +1293,8 @@ def dispatch(h,m,p,q,a,db):
    if not c.execute('SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=?',(wid,org)).fetchone():return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在',404)
    old=one(c,'SELECT * FROM custom_field_definitions WHERE workspace_id=? AND field_key=?',(wid,ident))
    if not old:return bad(h,'NOT_FOUND','字段定义不存在',404)
-   c.execute('DELETE FROM contact_custom_values WHERE field_key=?',(ident,));c.execute('DELETE FROM custom_field_definitions WHERE workspace_id=? AND field_key=?',(wid,ident))
-   audit_in_tx(c,a,'delete','field_definition',ident,old,{},wid)
+   c.execute('DELETE FROM contact_custom_values WHERE field_key=? AND contact_id IN (SELECT contact_id FROM contacts WHERE workspace_id=?)',(ident,wid));c.execute('DELETE FROM custom_field_definitions WHERE workspace_id=? AND field_key=?',(wid,ident));audit_in_tx(c,a,'delete','field_definition',ident,old,{},wid)
   return h.sendj({'ok':True}) or True
- # diagnostics
  if root=='diagnostics' and m=='GET':
   if not (platform(db,a) or can(db,a,'audit.read')):return bad(h,'FORBIDDEN','无诊断权限',403)
   with db.tx(False) as c:
@@ -1246,7 +1323,7 @@ def dispatch(h,m,p,q,a,db):
   return h.sendj({'ok':True,'version':PRODUCT_VERSION,'schemaVersion':SCHEMA_VERSION,'quickCheck':db.quick_check(),'databasePath':path,'databaseBytes':os.path.getsize(path) if os.path.exists(path) else 0,'walExists':os.path.exists(path+'-wal'),'shmExists':os.path.exists(path+'-shm'),'foreignKeyIssues':fk,'tableCounts':counts,'tableMeta':table_meta,'pageCount':page_count,'pageSize':page_size,'freelistCount':freelist,'integrityCheck':integrity[0] if integrity else '','readLatencyMs':round(read_ms,3),'databaseUsageBytes':(page_count-freelist)*page_size,'databaseFreeBytes':freelist*page_size}) or True
  return bad(h,'NOT_FOUND','管理接口不存在',404)
 
-# V207.2.0-dev 更新说明（2026-09-18）：新增平台、营销活动、触点与客户归因管理 API；写入操作执行组织/工作区隔离、RBAC 与审计。
+# V208.0.0 更新说明（2026-09-18）：新增平台、营销活动、触点与客户归因管理 API；写入操作执行组织/工作区隔离、RBAC 与审计。
 
 # V207.3.0-dev 更新说明（2026-09-19）：接入部门、业务线、市场和业务空间多维关系 API；创建企业/团队同步主工作区关系；改密兼容 currentPassword，密码错误返回 400。
 

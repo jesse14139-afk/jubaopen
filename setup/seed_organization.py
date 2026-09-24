@@ -13,7 +13,7 @@ P1 企业预设初始化脚本 - 聚宝盆公司组织架构预设
 - 职位预设
 
 运行方式：
-  python V207_p1_init.py --db jubaopen-v207.db
+  python V207_p1_init.py --db jubaopen-v208.db
 
 前置条件：
   1. 数据库已通过 V207_first_run.py 完成基础初始化
@@ -71,17 +71,11 @@ def seed_p1(db_path, org_id='jubaopen'):
         ).fetchone()
         
         if not existing_ws:
-            c.execute(
-                "INSERT INTO workspaces(workspace_id,name,status,created_at,updated_at,organization_id) VALUES(?,?,'active',?,?,?)",
-                (WS_GLOBAL_ID, ws_global_name, n, n, org_id)
-            )
-            c.execute(
-                "INSERT INTO workspace_configs(workspace_id,revision,items_json,updated_at,updated_by) VALUES(?,0,'[]',?,?)",
-                (WS_GLOBAL_ID, n, 'SYSTEM')
-            )
-            print(f"✓ 创建工作区：{WS_GLOBAL_ID} - {ws_global_name}")
-        else:
-            print(f"○ 工作区已存在：{WS_GLOBAL_ID} - {ws_global_name}，跳过")
+            raise RuntimeError("SCHEMA_215_WORKSPACE_REQUIRED: 首次初始化必须已创建 ws-global，组织预设不得创建第二工作区")
+        other_ws = c.execute("SELECT workspace_id FROM workspaces WHERE workspace_id<>?", (WS_GLOBAL_ID,)).fetchall()
+        if other_ws:
+            raise RuntimeError("SCHEMA_215_MULTIPLE_WORKSPACES_FORBIDDEN: " + ",".join(x[0] for x in other_ws))
+        print(f"○ 复用工作区：{WS_GLOBAL_ID} - {ws_global_name}")
     
     # ===== 2. 部门 =====
     departments = [
@@ -281,7 +275,7 @@ def seed_p1(db_path, org_id='jubaopen'):
 def main():
     _configure_output()
     p = argparse.ArgumentParser(description="P1 企业组织预设初始化")
-    p.add_argument('--db', default=str(ROOT / 'data' / 'jubaopen-v207.db'))
+    p.add_argument('--db', default=str(ROOT / 'data' / 'jubaopen-v208.db'))
     args = p.parse_args()
     
     db_path = Path(args.db).expanduser().resolve()

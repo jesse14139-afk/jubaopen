@@ -1,0 +1,12 @@
+"use strict";
+window.JubaAdapters=window.JubaAdapters||{};
+function tgId(value){const text=String(value||"");return (text.match(/(?:user_id|userId|id)["'\s:=]+([1-9][0-9]{3,19})/i)||[])[1]||""}
+function tgOwnIdentity(){
+ const selectors=["[data-testid='left-column'] [data-user-id][data-self='true']",".LeftMainHeader [data-user-id]",".sidebar-header [data-user-id]","[data-self-user-id]"];
+ for(const sel of selectors)for(const el of document.querySelectorAll(sel)){const id=el.getAttribute("data-self-user-id")||el.getAttribute("data-user-id");if(/^[1-9][0-9]{3,19}$/.test(id||""))return id}
+ for(const key of ["user_auth","auth_user","currentUser","current_user"]){let v="";try{v=localStorage.getItem(key)||""}catch(_){}const id=tgId(v);if(id)return id}return "";
+}
+window.JubaAdapters.telegram={code:"telegram",matches:()=>location.hostname==="web.telegram.org",
+ account(){const id=tgOwnIdentity();return id?{identityType:"telegram_user_id",identityValue:id}:null},
+ conversation(){const active=document.querySelector(".chat.active,.Chat.active,#MiddleColumn .chat-info");const title=document.querySelector("#MiddleColumn .peer-title,.chat-info .title,.topbar .peer-title")?.textContent||"";const path=location.hash+location.pathname;const peer=(path.match(/(?:#|\/)(-?\d{3,})/)||[])[1]||active?.getAttribute("data-peer-id")||document.querySelector("[data-peer-id].active")?.getAttribute("data-peer-id");if(!peer)return null;return {externalConversationId:"tg:"+peer,identity:{identityType:"telegram_peer_id",identityValue:String(peer),displayName:title,phone:""}}},
+ messages(){return [...document.querySelectorAll("#MiddleColumn [data-message-id],.message-list-item[data-mid],.Message[data-message-id]")].map((el,i)=>{const id=el.getAttribute("data-message-id")||el.getAttribute("data-mid");if(!id)return null;const out=el.classList.contains("is-out")||el.classList.contains("own")||!!el.closest(".is-out");const text=el.querySelector(".text-content,.message-content,.Message_text")?.innerText||el.innerText||"";return {externalMessageId:"tg:"+id,clientEventId:"tg:"+id,direction:out?"outbound":"inbound",senderType:out?"agent":"contact",contentType:text?"text":"unknown",text:text.slice(0,65536),occurredAt:Date.now(),metadata:{visibleIndex:i}}}).filter(Boolean)}};

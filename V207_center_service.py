@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""聚宝盆 V207.8.0 / Schema 211 中心服务（Python 标准库，零第三方依赖）。"""
+"""聚宝盆 V208.1.7 / Schema 215 中心服务（Python 标准库，零第三方依赖）。"""
 import argparse,json,os,sys,uuid
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from urllib.parse import urlparse,parse_qs,unquote
@@ -9,6 +9,7 @@ from V207_shared_db import Database,now_ms,dumps,hash_password,default_workspace
 from V207_version import PRODUCT_VERSION,SCHEMA_VERSION
 from V207_security import login,actor_from_token,can,canonical,password_strong,grant_binding_in_tx,revoke_token_session_in_tx
 from V207_admin_api import dispatch as admin_dispatch
+from V208_api import dispatch as v208_dispatch
 from V207_core import session_context,resolve_account,register_device,rename_device,graph,ok,err
 from V206_core_compat import (list_contacts,get_contact,changes,apply_event,delete_preview,get_workspace,update_workspace,list_sources,list_tags,save_tag,delete_tag,list_field_definitions,save_field_definition,delete_field_definition,admin_contact_lifecycle,admin_logs,admin_schema)
 VERSION=PRODUCT_VERSION;DB=None;WEB_ROOT=os.path.join(ROOT,'web');ADMIN=open(os.path.join(WEB_ROOT,'admin.html'),'rb').read();ECHARTS=open(os.path.join(WEB_ROOT,'echarts.min.js'),'rb').read()
@@ -23,7 +24,7 @@ class H(BaseHTTPRequestHandler):
  def sendj(self,d,s=200):
   b=json.dumps(d,ensure_ascii=False,separators=(',',':')).encode();self.send_response(s);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.security_headers();self.end_headers();self.wfile.write(b)
  def security_headers(self):
-  self.send_header('Access-Control-Allow-Origin','null');self.send_header('Access-Control-Allow-Headers','Authorization,Content-Type');self.send_header('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS');self.send_header('Cache-Control','no-store');self.send_header('Content-Security-Policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'");self.send_header('Referrer-Policy','no-referrer');self.send_header('X-Content-Type-Options','nosniff');self.send_header('X-Frame-Options','DENY');self.send_header('Permissions-Policy','camera=(), microphone=(), geolocation=()')
+  self.send_header('Access-Control-Allow-Origin','null');self.send_header('Access-Control-Allow-Headers','Authorization,Content-Type');self.send_header('Access-Control-Allow-Methods','GET,POST,PUT,PATCH,DELETE,OPTIONS');self.send_header('Cache-Control','no-store');self.send_header('Content-Security-Policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'");self.send_header('Referrer-Policy','no-referrer');self.send_header('X-Content-Type-Options','nosniff');self.send_header('X-Frame-Options','DENY');self.send_header('Permissions-Policy','camera=(), microphone=(), geolocation=()')
  def body(self):
   n=int(self.headers.get('Content-Length','0') or 0)
   if n>1048576:raise ValueError('REQUEST_TOO_LARGE')
@@ -61,6 +62,7 @@ class H(BaseHTTPRequestHandler):
    self.log_message('internal error: %s',e);self.sendj({'ok':False,'code':'INTERNAL_ERROR','message':'服务器内部错误'},500)
  def do_GET(self):self.safe_route('GET')
  def do_POST(self):self.safe_route('POST')
+ def do_PUT(self):self.safe_route('PUT')
  def do_PATCH(self):self.safe_route('PATCH')
  def do_DELETE(self):self.safe_route('DELETE')
  def route(self,m):
@@ -79,6 +81,7 @@ class H(BaseHTTPRequestHandler):
   if p.startswith('/api/v205/') or p.startswith('/api/v206/'):
    return self.sendj({'ok':False,'code':'CLIENT_READ_ONLY','message':'V207 迁移期已冻结旧客户端写入；请升级 V207 客户端'},426)
   if not p.startswith('/api/v207/'):return self.sendj({'ok':False,'code':'NOT_FOUND'},404)
+  if v208_dispatch(self,m,p,q,DB):return
   a=self.actor()
   if not a:return self.sendj({'ok':False,'code':'UNAUTHORIZED','message':'请登录或重新登录'},401)
   if p.startswith('/api/v207/admin/') and p!='/api/v207/admin/channel-accounts' and admin_dispatch(self,m,p,q,a,DB):return
@@ -89,9 +92,7 @@ class H(BaseHTTPRequestHandler):
    return self.sendj({'ok':True})
   if p=='/api/v207/accounts/resolve' and m=='POST':r,s=resolve_account(DB,a,self.body());return self.sendj(r,s)
   if p=='/api/v207/devices/register' and m=='POST':
-   b=self.body();team=str(b.get('team_id') or '')
-   if not can(DB,a,'device.rename.self',None,team):return self.sendj({'ok':False,'code':'FORBIDDEN','message':'无设备注册权限'},403)
-   b.pop('actor_id',None);r,s=register_device(DB,a,b);return self.sendj(r,s)
+   return self.sendj({'ok':False,'code':'LEGACY_DEVICE_REGISTER_GONE','message':'旧设备注册接口已停用，请使用设备接入邀请码流程'},410)
   if p=='/api/v207/devices/alias' and m=='PATCH':
    b=self.body()
    with DB.tx(False) as c:d=c.execute('SELECT workspace_id,team_id FROM devices WHERE device_id=? AND organization_id=?',(str(b.get('device_id') or ''),a['organization_id'])).fetchone()
@@ -180,16 +181,20 @@ class H(BaseHTTPRequestHandler):
   if not can(DB,a,'account.bind'):return self.sendj({'ok':False,'code':'FORBIDDEN'},403)
   b=self.body();requested_pid=str(b.get('platformId') or '');ch=str(b.get('channel') or '').lower();identity=canonical(b.get('identity'));team=str(b.get('teamId') or '')
   if not (ch or requested_pid) or not identity or not team:return self.sendj({'ok':False,'code':'INVALID_ACCOUNT'},400)
+  purpose=str(b.get('businessPurpose') or b.get('business_purpose') or '').strip().lower();account_type=str(b.get('accountType') or b.get('account_type') or '').strip().lower();collection=b.get('collectionEnabled',b.get('collection_enabled',True))
+  if purpose not in ('acquisition','conversion','hybrid'):return self.sendj({'ok':False,'code':'INVALID_BUSINESS_PURPOSE'},400)
+  if account_type not in ('chat','internal','login','service','marketing','advertising','attribution'):return self.sendj({'ok':False,'code':'INVALID_ACCOUNT_PURPOSE'},400)
+  if not isinstance(collection,bool):return self.sendj({'ok':False,'code':'INVALID_COLLECTION_ENABLED'},400)
   with DB.tx() as c:
    t=c.execute('SELECT * FROM teams WHERE team_id=? AND organization_id=?',(team,a['organization_id'])).fetchone()
    if not t:return self.sendj({'ok':False,'code':'TEAM_NOT_FOUND'},404)
    platform_row=c.execute("SELECT * FROM platforms WHERE status='active' AND (platform_id=? OR (?='' AND platform_code=?))",(requested_pid,requested_pid,ch)).fetchone()
    if not platform_row:return self.sendj({'ok':False,'code':'PLATFORM_NOT_FOUND'},404)
    pid=platform_row['platform_id'];ch=platform_row['platform_code'];n=now_ms();aid='acc_'+uuid.uuid4().hex;iid='idn_'+uuid.uuid4().hex;sid='src_'+uuid.uuid4().hex
-   c.execute('INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,account_type,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?)',(aid,a['organization_id'],ch,str(b.get('displayName') or identity),'active',n,n,pid,str(b.get('accountType') or 'business_account'),'{}'));c.execute('INSERT INTO channel_account_identities(identity_id,channel_account_id,identity_type,identity_value,canonical_value,created_at,platform_id,is_primary,status,valid_from,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(iid,aid,str(b.get('identityType') or 'login'),str(b.get('identity')),identity,n,pid,1,'active',n,'{}'));c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team,aid,a['user_id'],n));c.execute("INSERT INTO sources(source_id,workspace_id,channel,account_identity,source_name,status,first_seen_at,last_seen_at,metadata_json,organization_id,team_id,channel_account_id) VALUES(?,?,?,?,?,'active',?,?,'{}',?,?,?)",(sid,t['workspace_id'],ch,str(b.get('identity')),str(b.get('sourceName') or b.get('displayName') or identity),n,n,a['organization_id'],team,aid))
+   c.execute('INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,account_type,metadata_json,business_purpose,collection_enabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(aid,a['organization_id'],ch,str(b.get('displayName') or identity),'active',n,n,pid,account_type,'{}',purpose,1 if collection else 0));c.execute('INSERT INTO channel_account_identities(identity_id,channel_account_id,identity_type,identity_value,canonical_value,created_at,platform_id,is_primary,status,valid_from,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(iid,aid,str(b.get('identityType') or 'login'),str(b.get('identity')),identity,n,pid,1,'active',n,'{}'));c.execute('INSERT INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)',(team,aid,a['user_id'],n));c.execute("INSERT INTO sources(source_id,workspace_id,channel,account_identity,source_name,status,first_seen_at,last_seen_at,metadata_json,organization_id,team_id,channel_account_id) VALUES(?,?,?,?,?,'active',?,?,'{}',?,?,?)",(sid,t['workspace_id'],ch,str(b.get('identity')),str(b.get('sourceName') or b.get('displayName') or identity),n,n,a['organization_id'],team,aid))
   self.audit(a,'create','channel_account',aid,{},dict(b,workspace_id=t['workspace_id']));return self.sendj({'ok':True,'channelAccountId':aid,'sourceId':sid},201)
  def create_team(self,a):
-  # [P0 收口] 旧团队创建入口已废弃。Schema 212 要求所有团队创建统一走新管理 API：
+  # [P0 收口] 旧团队创建入口已废弃。Schema 215 要求所有团队创建统一走新管理 API：
   #   POST /api/v207/admin/teams
   # 旧实现会忽略前端选择的工作区并自动创建新工作区，制造孤立工作区与团队漂移。
   # 此路由仅返回弃用错误，避免后续请求继续产生错误数据。
@@ -202,14 +207,14 @@ class H(BaseHTTPRequestHandler):
   self.sendj({'ok':False,'code':'DEPRECATED','message':'用户创建请使用 POST /api/v207/admin/users（支持职位、团队、角色独立管理）'},410)
 def main():
  global DB
- ap=argparse.ArgumentParser();ap.add_argument('--db',default='jubaopen-v207.db');ap.add_argument('--host',default='127.0.0.1');ap.add_argument('--port',type=int,default=8765)
+ ap=argparse.ArgumentParser();ap.add_argument('--db',default='jubaopen-v208.db');ap.add_argument('--host',default='127.0.0.1');ap.add_argument('--port',type=int,default=8765)
  for arg in ('organization-id','organization-name','workspace-id','workspace-name','team-id','team-name','admin-user-id','admin-login','admin-display-name','admin-password'):ap.add_argument('--'+arg)
  a=ap.parse_args();DB=Database(a.db)
  bootstrap={k:getattr(a,k) for k in ('organization_id','organization_name','workspace_id','workspace_name','team_id','team_name','admin_user_id','admin_login','admin_display_name','admin_password')}
  if any(bootstrap.values()):bootstrap['builtin_default']='0'
  else:bootstrap=None
  DB.initialize(bootstrap)
- print('V207.8 服务：http://%s:%s/admin'%(a.host,a.port));ThreadingHTTPServer((a.host,a.port),H).serve_forever()
+ print('V%s / Schema %s 服务：http://%s:%s/admin'%(PRODUCT_VERSION,SCHEMA_VERSION,a.host,a.port));ThreadingHTTPServer((a.host,a.port),H).serve_forever()
 if __name__=='__main__':main()
 
 # V207.8.0 更新说明（2026-09-20）：统一版本源并接入严格只读数据字典接口。
