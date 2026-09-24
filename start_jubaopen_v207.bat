@@ -3,9 +3,9 @@ chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
 title Jubaopen V208.1.7 Launcher
 set "APP_DIR=%~dp0"
-set "DB_FILE=%APP_DIR%data\jubaopen-schema214.db"
+set "DB_FILE=%APP_DIR%data\jubaopen-schema216.db"
 set "LOG_DIR=%APP_DIR%logs"
-set "LOG_FILE=%LOG_DIR%\jubaopen-208.1.7.log"
+set "LOG_FILE=%LOG_DIR%\jubaopen-208.1.8.log"
 set "HOST=127.0.0.1"
 set "PORT=8765"
 set "PYTHON_CMD="

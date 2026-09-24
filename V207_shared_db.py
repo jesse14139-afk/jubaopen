@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """聚宝盆 V207.5 数据层：Schema 208，多租户/RBAC/账号授权/设备双命名。"""
 from __future__ import annotations
-import contextlib, hashlib, json, sqlite3, time, secrets, shutil, re
+import contextlib, hashlib, json, sqlite3, time, secrets, shutil, re, sys
 from pathlib import Path
 from V207_version import SCHEMA_VERSION, PRODUCT_VERSION, CATALOG_VERSION
 def now_ms(): return int(time.time()*1000)
@@ -1166,6 +1166,155 @@ def ensure_v215(c):
  c.execute("UPDATE custom_field_definitions SET field_type='single_select' WHERE field_type='select'")
  c.execute("UPDATE contacts SET display_name='' WHERE manual_name='' AND lower(trim(display_name)) IN ('个人主页详情','联系人信息','联系方式','个人资料','群组信息','contact info','profile details','group info','click to view contact info')")
 
+# V208.1.7 更新说明（2026-09-25）：Schema 216 — 客户运营工作台(Phase 3)
+#   客户运营工作台驱动增量：
+#   - contacts 增加 stage / owner_user_id / next_follow_up_at / last_touch_at 4 列
+#   - 3 个复合索引用于 scope 收敛 + 工作清单分桶
+#   - 新增 user_dashboard_pins 表(工作台区块个人偏好)
+#   所有迁移幂等,可重入,回填全部基于已有 interactions + audit_logs.
+V216_WORKBENCH_MIGRATION_ID = 'V216_workbench_contacts'
+V216_WORKBENCH_SIGNATURE = 'contacts.stage,contacts.owner_user_id,contacts.next_follow_up_at,contacts.last_touch_at,user_dashboard_pins'
+
+def _v216_has_column(c, table, column):
+ return column in [r[1] for r in c.execute(f"PRAGMA table_info({table})")]
+
+def _v216_index_exists(c, name):
+ row = c.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", (name,)).fetchone()
+ return bool(row)
+
+def ensure_v216(c):
+ """Schema 216 — 客户运营工作台(Phase 3)数据层增量。幂等可重入。"""
+ checksum = hashlib.sha256(V216_WORKBENCH_SIGNATURE.encode()).hexdigest()
+ old = c.execute("SELECT checksum FROM schema_migrations WHERE migration_id=?", (V216_WORKBENCH_MIGRATION_ID,)).fetchone()
+ if old and old[0] != checksum:
+  raise RuntimeError('MIGRATION_CHECKSUM_MISMATCH: ' + V216_WORKBENCH_MIGRATION_ID)
+
+ changes = []
+
+ # 1) contacts.stage —— 显式阶段列(配合 Schema 215 已有的 customer_stage multi_select 字典)
+ if not _v216_has_column(c, 'contacts', 'stage'):
+  c.execute("ALTER TABLE contacts ADD COLUMN stage TEXT NOT NULL DEFAULT ''")
+  changes.append('add_contacts_stage')
+  # 回填:从 contact_tags + customer_stage 反推阶段
+  # 业务侧约定:customer_stage 单选值 = stage
+  try:
+   c.execute("""
+    UPDATE contacts
+       SET stage = COALESCE((
+        SELECT ct.field_value
+          FROM contact_custom_values ct
+          JOIN custom_field_definitions fd ON fd.field_id = ct.field_id
+         WHERE ct.contact_id = contacts.contact_id
+           AND fd.field_key = 'customer_stage'
+         LIMIT 1
+        ), '')
+    WHERE deleted_at IS NULL
+   """)
+   backfilled = c.total_changes
+  except Exception:
+   backfilled = 0
+  changes.append(f'stage_backfilled_rows={backfilled}')
+
+ # 2) contacts.owner_user_id —— scope 收敛关键,避免每次 JOIN team_memberships
+ if not _v216_has_column(c, 'contacts', 'owner_user_id'):
+  c.execute("ALTER TABLE contacts ADD COLUMN owner_user_id TEXT")
+  changes.append('add_contacts_owner_user_id')
+  # 回填:取最近一次 update_workspace/contacts 相关的 audit_logs actor
+  try:
+   c.execute("""
+    UPDATE contacts
+       SET owner_user_id = COALESCE((
+        SELECT al.actor_id
+          FROM audit_logs al
+         WHERE al.entity_type = 'contacts'
+           AND al.entity_id = contacts.contact_id
+           AND al.operation IN ('contact.create','contact.update','admin_contact.update')
+         ORDER BY al.created_at DESC
+         LIMIT 1
+        ), (
+        SELECT user_id FROM users WHERE organization_id = contacts.organization_id ORDER BY created_at LIMIT 1
+        ))
+    WHERE deleted_at IS NULL AND owner_user_id IS NULL
+   """)
+   backfilled = c.total_changes
+  except Exception:
+   backfilled = 0
+  changes.append(f'owner_backfilled_rows={backfilled}')
+
+ # 3) contacts.next_follow_up_at —— MyQueue 分桶驱动
+ if not _v216_has_column(c, 'contacts', 'next_follow_up_at'):
+  c.execute("ALTER TABLE contacts ADD COLUMN next_follow_up_at INTEGER")
+  changes.append('add_contacts_next_follow_up_at')
+  # 回填:取最近一次 conversation 触发或 7 天兜底
+  try:
+   c.execute("""
+    UPDATE contacts
+       SET next_follow_up_at = COALESCE((
+        SELECT MAX(c2.started_at) FROM conversations c2 WHERE c2.contact_id = contacts.contact_id
+        ), created_at + 7*86400*1000)
+    WHERE deleted_at IS NULL AND next_follow_up_at IS NULL
+   """)
+   backfilled = c.total_changes
+  except Exception:
+   backfilled = 0
+  changes.append(f'next_due_backfilled_rows={backfilled}')
+
+ # 4) contacts.last_touch_at —— 沟通脉搏
+ if not _v216_has_column(c, 'contacts', 'last_touch_at'):
+  c.execute("ALTER TABLE contacts ADD COLUMN last_touch_at INTEGER")
+  changes.append('add_contacts_last_touch_at')
+  try:
+   c.execute("""
+    UPDATE contacts
+       SET last_touch_at = COALESCE((
+        SELECT MAX(c2.started_at) FROM conversations c2 WHERE c2.contact_id = contacts.contact_id
+        ), created_at)
+    WHERE deleted_at IS NULL AND last_touch_at IS NULL
+   """)
+   backfilled = c.total_changes
+  except Exception:
+   backfilled = 0
+  changes.append(f'last_touch_backfilled_rows={backfilled}')
+
+ # 5) 索引 (幂等)
+ if not _v216_index_exists(c, 'idx_contacts_owner_scope'):
+  c.execute("CREATE INDEX IF NOT EXISTS idx_contacts_owner_scope ON contacts(organization_id, owner_user_id, deleted_at)")
+  changes.append('add_idx_contacts_owner_scope')
+ if not _v216_index_exists(c, 'idx_contacts_next_due'):
+  c.execute("CREATE INDEX IF NOT EXISTS idx_contacts_next_due ON contacts(organization_id, next_follow_up_at)")
+  changes.append('add_idx_contacts_next_due')
+ if not _v216_index_exists(c, 'idx_contacts_stage_due'):
+  c.execute("CREATE INDEX IF NOT EXISTS idx_contacts_stage_due ON contacts(organization_id, stage, next_follow_up_at)")
+  changes.append('add_idx_contacts_stage_due')
+ if not _v216_index_exists(c, 'idx_contacts_last_touch'):
+  c.execute("CREATE INDEX IF NOT EXISTS idx_contacts_last_touch ON contacts(organization_id, last_touch_at DESC)")
+  changes.append('add_idx_contacts_last_touch')
+
+ # 6) user_dashboard_pins —— 用户对工作台区块的置顶/折叠
+ c.execute("""
+  CREATE TABLE IF NOT EXISTS user_dashboard_pins(
+   user_id TEXT NOT NULL,
+   pin_key TEXT NOT NULL,
+   pinned_at INTEGER NOT NULL,
+   PRIMARY KEY (user_id, pin_key)
+  )
+ """)
+ changes.append('ensure_user_dashboard_pins_table')
+
+ if not old:
+  t = now_ms()
+  c.execute("""
+   INSERT INTO schema_migrations(migration_id,migration_name,checksum,applied_at,applied_by,result_json)
+   VALUES(?,?,?,?,?,?)
+  """, (
+   V216_WORKBENCH_MIGRATION_ID,
+   '客户运营工作台(Phase 3) — contacts 阶段/owner/due/last_touch + user_dashboard_pins',
+   checksum, t, 'system',
+   dumps({'status': 'success', 'changes': changes})
+  ))
+
+ return changes
+
 def validate_schema215_readonly(path):
  # Schema 215 inherits the 214 object set, but validates its own version below.
  validate_schema213_readonly(path)
@@ -1188,6 +1337,38 @@ def validate_schema215_readonly(path):
   if list(c.execute('PRAGMA foreign_key_check')):raise RuntimeError('SCHEMA_215_INVALID: foreign_key_check')
  finally:c.close()
 
+# Phase 3: 客户运营工作台(Schema 216)
+def validate_schema216_readonly(path):
+ """Schema 216 校验:继承 Schema 215 全部约束(但不复用 validate_schema215_readonly 的版本断言),并增加 Phase 3 数据层校验。"""
+ c=_connect_strict_readonly(path)
+ try:
+  version=c.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+  if not version or str(version[0])!='216':raise RuntimeError('SCHEMA_216_INVALID: version')
+  if c.execute('PRAGMA user_version').fetchone()[0]!=216:raise RuntimeError('SCHEMA_216_INVALID: user_version')
+  # Schema 215 强约束子集(逐项内联,避免与 SCHEMA_VERSION=216 冲突)
+  required={'account_binding_slots','account_identity_discoveries'}
+  actual={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+  if required-actual:raise RuntimeError('SCHEMA_216_INVALID: missing tables: '+','.join(sorted(required-actual)))
+  workspaces=[r[0] for r in c.execute('SELECT workspace_id FROM workspaces ORDER BY workspace_id')]
+  if workspaces!=['ws-global']:raise RuntimeError('SCHEMA_216_INVALID: canonical workspace required')
+  if c.execute("SELECT COUNT(*) FROM tags WHERE workspace_id='ws-global' AND tag_kind='status'").fetchone()[0]<6:raise RuntimeError('SCHEMA_216_INVALID: status presets')
+  if c.execute("SELECT COUNT(*) FROM tags WHERE workspace_id='ws-global' AND tag_kind='portrait'").fetchone()[0]<7:raise RuntimeError('SCHEMA_216_INVALID: portrait presets')
+  if c.execute("SELECT COUNT(*) FROM custom_field_definitions WHERE field_type='select'").fetchone()[0]:raise RuntimeError('SCHEMA_216_INVALID: legacy select type')
+  stage=c.execute("SELECT field_type,options_json FROM custom_field_definitions WHERE workspace_id='ws-global' AND field_key='customer_stage'").fetchone()
+  if not stage or stage[0]!='multi_select' or loads(stage[1])!=['一切','二切','三切']:raise RuntimeError('SCHEMA_216_INVALID: customer stage baseline')
+  # Schema 216 增量
+  contacts_cols={r[1] for r in c.execute("PRAGMA table_info(contacts)")}
+  required_cols={'stage','owner_user_id','next_follow_up_at','last_touch_at'}
+  missing=required_cols-contacts_cols
+  if missing:raise RuntimeError('SCHEMA_216_INVALID: contacts missing columns: '+','.join(sorted(missing)))
+  if 'user_dashboard_pins' not in actual:raise RuntimeError("SCHEMA_216_INVALID: missing table 'user_dashboard_pins'")
+  required_idx={'idx_contacts_owner_scope','idx_contacts_next_due','idx_contacts_stage_due','idx_contacts_last_touch'}
+  actual_idx={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+  if required_idx-actual_idx:raise RuntimeError('SCHEMA_216_INVALID: missing indexes: '+','.join(sorted(required_idx-actual_idx)))
+  if c.execute('PRAGMA quick_check').fetchone()[0]!='ok':raise RuntimeError('SCHEMA_216_INVALID: quick_check')
+  if list(c.execute('PRAGMA foreign_key_check')):raise RuntimeError('SCHEMA_216_INVALID: foreign_key_check')
+ finally:c.close()
+
 class Database:
  def __init__(self,path):self.path=Path(path).resolve();self.path.parent.mkdir(parents=True,exist_ok=True)
  def connect(self):
@@ -1199,14 +1380,21 @@ class Database:
   except Exception:c.execute('ROLLBACK');raise
   finally:c.close()
  def initialize(self,bootstrap=None):
-  """Create or validate the Schema 215 fresh-install baseline; legacy schemas are rejected."""
+  """Create or validate the Schema 216 baseline. Legacy 214 schemas are rejected; 215 is upgraded."""
   fresh=not self.path.exists() or not self.path.stat().st_size
   upgrading=False;backup=None
   if not fresh:
    version=_read_existing_schema_version(self.path)
    if version==str(SCHEMA_VERSION):
-    validate_schema215_readonly(self.path);return
-   raise RuntimeError('SCHEMA_215_FRESH_INSTALL_REQUIRED: detected '+repr(version)+', require a new Schema 215 database')
+    validate_schema216_readonly(self.path);return
+   if version=='215':
+    # Phase 3: 215 → 216 升级路径,做迁移前对源数据库做一次不可覆盖备份
+    upgrading=True
+    backup=_exclusive_backup_path(self.path)
+    _sqlite_backup(self.path,backup)
+    self._upgrade_215_to_216()
+    validate_schema216_readonly(self.path);return
+   raise RuntimeError('SCHEMA_216_FRESH_INSTALL_REQUIRED: detected '+repr(version)+', require a new Schema 215/216 database')
   b=validate_bootstrap(bootstrap) if fresh else None
   c=self.connect()
   try:
@@ -1215,7 +1403,7 @@ class Database:
    c.execute('BEGIN IMMEDIATE')
    if fresh:
     execute_sql_script(c,BASE_SCHEMA)
-    ensure_v207(c,fresh=True);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c);ensure_v211_030(c);ensure_v211_040(c);ensure_v211_050(c);ensure_v212(c);ensure_v213(c);ensure_v214(c);ensure_v215(c)
+    ensure_v207(c,fresh=True);ensure_v207_1(c);ensure_v207_101(c);ensure_v207_200(c);ensure_v207_300(c);ensure_v207_301(c);ensure_v208(c);ensure_v209(c);ensure_v210(c);ensure_v211(c);ensure_v211_030(c);ensure_v211_040(c);ensure_v211_050(c);ensure_v212(c);ensure_v213(c);ensure_v214(c);ensure_v215(c);ensure_v216(c)
     bootstrap_fresh_database(c,b)
    c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)",(str(SCHEMA_VERSION),))
    c.execute('PRAGMA user_version=%d'%int(SCHEMA_VERSION))
@@ -1238,6 +1426,33 @@ class Database:
     _restore_sqlite_backup(backup,self.path)
    elif fresh and self.path.exists():self.path.unlink()
    _write_failure_report(self.path,exc,backup)
+   raise
+  finally:
+   try:c.close()
+   except Exception:pass
+
+ def _upgrade_215_to_216(self):
+  """215 → 216 幂等升级;在外部已经完成备份后由 initialize() 调用。"""
+  c=self.connect()
+  try:
+   c.execute('PRAGMA foreign_keys=OFF')
+   c.execute('BEGIN IMMEDIATE')
+   changes = ensure_v216(c)
+   c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version',?)",(str(SCHEMA_VERSION),))
+   c.execute('PRAGMA user_version=%d'%int(SCHEMA_VERSION))
+   c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('product_version',?)",(PRODUCT_VERSION,))
+   c.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('catalog_version',?)",(CATALOG_VERSION,))
+   qc=c.execute('PRAGMA quick_check').fetchone()[0]
+   if qc!='ok':raise RuntimeError('PRAGMA quick_check 失败: '+str(qc))
+   fk=list(c.execute('PRAGMA foreign_key_check'))
+   if fk:raise RuntimeError('外键完整性检查失败,共 %d 项;数据库已回滚。'%len(fk))
+   c.execute('COMMIT')
+   c.execute('PRAGMA foreign_keys=ON')
+   sys.stdout.write('[V208.1.7/Schema 216] 升级成功: '+dumps(changes)+'\n');sys.stdout.flush()
+  except Exception as exc:
+   try:
+    if c.in_transaction:c.execute('ROLLBACK')
+   finally:c.close()
    raise
   finally:
    try:c.close()
