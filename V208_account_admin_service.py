@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Schema 214 administration for account binding slots and identity discoveries."""
+"""Schema 221 administration for account binding slots and identity discoveries."""
 import sqlite3, uuid
 from V207_shared_db import now_ms, dumps
+from V208_account_policy import normalize_account_policy
 
 class AccountAdminError(Exception):
  def __init__(self,code,message,status=400):
@@ -26,6 +27,28 @@ def _scope(c,org,workspace,team,user,platform):
  if not c.execute("SELECT 1 FROM users WHERE user_id=? AND organization_id=? AND status='active'",(user,org)).fetchone(): raise AccountAdminError('USER_INVALID','用户不存在或已禁用')
  if not c.execute("SELECT 1 FROM team_memberships WHERE user_id=? AND team_id=? AND status='active'",(user,team)).fetchone(): raise AccountAdminError('MEMBERSHIP_INVALID','用户不是该团队的有效成员')
  if not c.execute("SELECT 1 FROM platforms WHERE platform_id=? AND status='active'",(platform,)).fetchone(): raise AccountAdminError('PLATFORM_INVALID','平台不存在或已禁用')
+
+PLATFORM_IDENTITY_TYPES={
+ 'whatsapp':{'whatsapp_jid','whatsapp_lid','whatsapp_phone','phone'},
+ 'telegram':{'telegram_user_id','telegram_peer_id','telegram_username','telegram_phone'},
+ 'instagram':{'instagram_user_id','instagram_username'},
+ 'messenger':{'facebook_user_id'},
+ 'facebook':{'facebook_user_id'},
+}
+
+def _validate_discovery_identity(c,before):
+ platform=_one(c,"SELECT platform_code,status FROM platforms WHERE platform_id=?",(before['platform_id'],))
+ if not platform or platform['status']!='active': raise AccountAdminError('PLATFORM_INVALID','平台不存在或已禁用')
+ code=_text(platform['platform_code']).lower(); identity_type=_text(before.get('identity_type')).lower(); canonical=_text(before.get('canonical_value'))
+ allowed=PLATFORM_IDENTITY_TYPES.get(code)
+ if allowed is not None and identity_type not in allowed: raise AccountAdminError('IDENTITY_TYPE_PLATFORM_MISMATCH','身份类型与平台不匹配',409)
+ if code in ('messenger','facebook') and identity_type!='facebook_user_id': raise AccountAdminError('META_IDENTITY_TYPE_INVALID','Messenger/Facebook 仅允许 facebook_user_id',409)
+ if code=='instagram' and identity_type not in ('instagram_user_id','instagram_username'): raise AccountAdminError('META_IDENTITY_TYPE_INVALID','Instagram 身份类型无效',409)
+ if not canonical: raise AccountAdminError('CANONICAL_IDENTITY_REQUIRED','规范身份不能为空',409)
+ return code
+
+def _reject_ambiguous_match(before):
+ if before.get('match_status')=='conflict': raise AccountAdminError('DISCOVERY_MATCH_CONFLICT','当前身份匹配多个有效渠道账号，请先解决冲突',409)
 
 def _account(c,org,platform,aid):
  r=_one(c,"SELECT * FROM channel_accounts WHERE channel_account_id=? AND organization_id=? AND platform_id=? AND status='active' AND collection_enabled=1",(aid,org,platform))
@@ -119,6 +142,7 @@ def _identity_conflict(c,org,before,aid=None):
 
 def _complete_approval(c,a,org,did,before,aid,reason,slot_id=None):
  """Complete identity, authorization, slot claim and discovery resolution in the caller transaction."""
+ _validate_discovery_identity(c,before); _reject_ambiguous_match(before)
  conflict=_identity_conflict(c,org,before,aid)
  if conflict: raise AccountAdminError('ACCOUNT_IDENTITY_CONFLICT','该身份已归属当前企业的其他渠道账号',409)
  sid=_text(slot_id) or before.get('slot_id'); n=now_ms()
@@ -141,9 +165,20 @@ def _complete_approval(c,a,org,did,before,aid,reason,slot_id=None):
  else:c.execute("""INSERT INTO channel_account_identities(identity_id,channel_account_id,identity_type,identity_value,canonical_value,created_at,platform_id,is_primary,status,valid_from,metadata_json) VALUES(?,?,?,?,?,?,?,1,'active',?,'{}')""",('cai_'+uuid.uuid4().hex,aid,before['identity_type'],before['identity_value'],before['canonical_value'],n,before['platform_id'],n))
  c.execute("INSERT OR IGNORE INTO team_channel_accounts(team_id,channel_account_id,granted_by,granted_at) VALUES(?,?,?,?)",(before['team_id'],aid,a['user_id'],n))
  c.execute("INSERT OR IGNORE INTO user_channel_account_grants(user_id,channel_account_id,permission_scope,granted_by,granted_at) VALUES(?,?,'use',?,?)",(before['user_id'],aid,a['user_id'],n))
+ binding_activated=False
+ if before['device_id']:
+  device=_one(c,"SELECT * FROM devices WHERE device_id=? AND organization_id=? AND workspace_id=? AND team_id=? AND status='active'",(before['device_id'],org,before['workspace_id'],before['team_id']))
+  if not device: raise AccountAdminError('DEVICE_SCOPE_INVALID','发现记录对应设备不存在、已停用或作用域已变化',409)
+  if device['assigned_user_id'] and device['assigned_user_id']!=before['user_id']: raise AccountAdminError('DEVICE_USER_MISMATCH','发现记录对应设备已分配给其他用户',409)
+  binding_id='dcab_'+uuid.uuid4().hex
+  metadata=dumps({'source':'admin_approval','discovery_id':did})
+  c.execute("INSERT INTO device_channel_account_bindings(binding_id,organization_id,workspace_id,team_id,device_id,user_id,channel_account_id,platform_id,external_account_key,status,bound_at,bound_by,last_verified_at,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,'active',?,?,?,?) ON CONFLICT(device_id,platform_id,external_account_key) DO UPDATE SET organization_id=excluded.organization_id,workspace_id=excluded.workspace_id,team_id=excluded.team_id,user_id=excluded.user_id,channel_account_id=excluded.channel_account_id,status='active',bound_by=excluded.bound_by,last_verified_at=excluded.last_verified_at,metadata_json=excluded.metadata_json",(binding_id,org,before['workspace_id'],before['team_id'],before['device_id'],before['user_id'],aid,before['platform_id'],before['canonical_value'],n,a['user_id'],n,metadata))
+  binding_activated=True
  changed=c.execute("""UPDATE account_identity_discoveries SET status='approved',reason_code='admin_approved',slot_id=?,channel_account_id=?,resolved_at=?,resolved_by=?,resolution_reason=? WHERE discovery_id=? AND organization_id=? AND status='pending'""",(sid,aid,n,a['user_id'],reason or 'admin_approved',did,org)).rowcount
  if changed!=1: raise AccountAdminError('DISCOVERY_STATE_CONFLICT','身份发现已被并发处理',409)
  after=_discovery_detail(c,org,did)
+ after['binding_activated']=binding_activated
+ after['requires_plugin_recheck']=not binding_activated
  _audit(c,a,org,before['workspace_id'],before['team_id'],'approve','account_identity_discovery',did,before,after,reason or '管理员批准')
  return after
 
@@ -159,25 +194,26 @@ def approve(db,a,org,did,b):
 
 def approve_create(db,a,org,did,b):
  """Atomically create a channel account and approve the discovered identity."""
- name=_text(b.get('displayName')); reason=_text(b.get('reason'))
- account_type=_text(b.get('accountType') or 'chat').lower(); purpose=_text(b.get('businessPurpose') or 'acquisition').lower()
- collection=b.get('collectionEnabled',True)
+ name=_text(b.get('displayName')); reason=_text(b.get('reason')); market=_text(b.get('defaultMarketId')) or None; source_type=_text(b.get('suggestedSourceTypeId')) or None
  if not name: raise AccountAdminError('DISPLAY_NAME_REQUIRED','账号名称不能为空')
- if account_type not in ('chat','internal','login','service','marketing','advertising','attribution'): raise AccountAdminError('INVALID_ACCOUNT_TYPE','账号用途无效')
- if purpose not in ('acquisition','conversion','hybrid'): raise AccountAdminError('INVALID_BUSINESS_PURPOSE','业务目的无效')
- if not isinstance(collection,bool): raise AccountAdminError('INVALID_COLLECTION_ENABLED','采集开关必须是布尔值')
+ try:policy=normalize_account_policy(b)
+ except ValueError as e:raise AccountAdminError(str(e),'业务场景与建档策略无效')
  with db.tx() as c:
   before=_discovery_detail(c,org,did)
   if not before: raise AccountAdminError('DISCOVERY_NOT_FOUND','身份发现不存在',404)
   if before['status']!='pending': raise AccountAdminError('DISCOVERY_STATE_CONFLICT','身份发现已被处理',409)
   _scope(c,org,before['workspace_id'],before['team_id'],before['user_id'],before['platform_id'])
+  _validate_discovery_identity(c,before); _reject_ambiguous_match(before)
   conflict=_identity_conflict(c,org,before)
   if conflict: raise AccountAdminError('ACCOUNT_IDENTITY_CONFLICT','当前企业已存在使用该身份的渠道账号，请改为绑定已有账号',409)
   platform=_one(c,"SELECT platform_code FROM platforms WHERE platform_id=? AND status='active'",(before['platform_id'],))
   if not platform: raise AccountAdminError('PLATFORM_INVALID','平台不存在或已禁用')
+  if policy['business_scene']=='social_acquisition' and not market: raise AccountAdminError('SOCIAL_MARKET_REQUIRED','社交获客账号必须设置当前默认市场')
+  if market and not _one(c,"SELECT 1 ok FROM markets WHERE market_id=? AND organization_id=? AND status='active'",(market,org)): raise AccountAdminError('DEFAULT_MARKET_INVALID','默认市场不存在、未启用或不属于当前企业',409)
+  if source_type and not _one(c,"SELECT 1 ok FROM source_type_definitions WHERE source_type_id=? AND is_active=1",(source_type,)): raise AccountAdminError('SUGGESTED_SOURCE_TYPE_INVALID','建议来源类型不存在或未启用',409)
   n=now_ms(); aid='acc_'+uuid.uuid4().hex
-  c.execute("""INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,channel_type_id,account_type,metadata_json,business_purpose,collection_enabled)
-   VALUES(?,?,?,?,'active',?,?,?,?,?,'{}',?,?)""",(aid,org,_text(platform['platform_code']).lower(),name,n,n,before['platform_id'],None,account_type,purpose,1 if collection else 0))
+  c.execute("""INSERT INTO channel_accounts(channel_account_id,organization_id,channel,display_name,status,created_at,updated_at,platform_id,channel_type_id,account_type,metadata_json,business_purpose,collection_enabled,business_scene,contact_entry_policy,default_market_id,suggested_source_type_id)
+   VALUES(?,?,?,?,'active',?,?,?,?,?,'{}',?,?,?,?,?,?)""",(aid,org,_text(platform['platform_code']).lower(),name,n,n,before['platform_id'],None,policy['account_type'],policy['business_purpose'],policy['collection_enabled'],policy['business_scene'],policy['contact_entry_policy'],market,source_type))
   created=_one(c,'SELECT * FROM channel_accounts WHERE channel_account_id=?',(aid,))
   _audit(c,a,org,before['workspace_id'],before['team_id'],'create','channel_account',aid,{},created,reason or '身份审批创建账号')
   after=_complete_approval(c,a,org,did,before,aid,reason,b.get('slotId'))

@@ -2,7 +2,7 @@
 """V207.1 来源领域服务：企业/工作区隔离、引用一致性与事务审计。"""
 import json, sqlite3, uuid
 from V207_shared_db import now_ms, dumps
-from V207_security import can,is_platform_admin
+from V207_security import can,is_platform_admin,data_scope_clause_in_tx
 STATUSES={'active','disabled'}
 DIRECTIONS={'inbound','outbound','bidirectional','unknown'}
 INITIATORS={'customer','business','system','unknown'}
@@ -49,13 +49,15 @@ def scope(c,org,wid,team=None,account=None,platform=None,campaign=None,parent=No
 def refs(c,sid):
  return {'touchpoints':c.execute('SELECT count(*) FROM source_touchpoints WHERE source_id=?',(sid,)).fetchone()[0], 'attributions':c.execute('SELECT count(*) FROM contact_attributions WHERE source_id=?',(sid,)).fetchone()[0], 'contacts':c.execute('SELECT count(*) FROM contacts WHERE source_id=? AND deleted_at IS NULL',(sid,)).fetchone()[0], 'sourceLinks':c.execute('SELECT count(*) FROM source_links WHERE from_source_id=? OR to_source_id=?',(sid,sid)).fetchone()[0], 'childSources':c.execute("SELECT count(*) FROM sources WHERE parent_source_id=? AND status='active'",(sid,)).fetchone()[0]}
 def handle(db,a,org,m,ident,q,b):
- if not allowed(db,a,org,'source.read' if m=='GET' else 'source.manage'):return err('FORBIDDEN','无来源读取权限' if m=='GET' else '无来源管理权限',403)
+ if not org or a.get('organization_id')!=org:return err('FORBIDDEN','企业范围不匹配',403)
  if m=='GET':
   with db.tx(False) as c:
+   access_sql,access_args,access_meta=data_scope_clause_in_tx(c,a,'source.read',org,alias='s',owner_column=None,team_column='team_id',workspace_column='workspace_id')
+   if access_meta['level']=='none':return err('FORBIDDEN','无来源读取权限',403)
    if ident:
-    x=one(c,'SELECT s.*,t.name team_name,w.name workspace_name,ca.display_name account_name,p.platform_name,st.name source_type_name,st.source_type_code,ct.name channel_type_name,ct.channel_type_code FROM sources s LEFT JOIN teams t ON t.team_id=s.team_id LEFT JOIN workspaces w ON w.workspace_id=s.workspace_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=s.channel_account_id LEFT JOIN platforms p ON p.platform_id=s.platform_id LEFT JOIN source_type_definitions st ON st.source_type_id=s.source_type_id LEFT JOIN channel_types ct ON ct.channel_type_id=s.channel_type_id WHERE s.source_id=? AND s.organization_id=?',(ident,org))
-    return ({'ok':True,'item':x},200) if x else err('SOURCE_NOT_FOUND','来源不存在',404)
-   where=['s.organization_id=?'];args=[org]
+    x=one(c,'SELECT s.*,t.name team_name,w.name workspace_name,ca.display_name account_name,p.platform_name,st.name source_type_name,st.source_type_code,ct.name channel_type_name,ct.channel_type_code FROM sources s LEFT JOIN teams t ON t.team_id=s.team_id LEFT JOIN workspaces w ON w.workspace_id=s.workspace_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=s.channel_account_id LEFT JOIN platforms p ON p.platform_id=s.platform_id LEFT JOIN source_type_definitions st ON st.source_type_id=s.source_type_id LEFT JOIN channel_types ct ON ct.channel_type_id=s.channel_type_id WHERE s.source_id=? AND s.organization_id=? AND '+access_sql,(ident,org,*access_args))
+    return ({'ok':True,'item':x},200) if x else err('SOURCE_NOT_FOUND','来源不存在或超出授权范围',404)
+   where=['s.organization_id=?',access_sql];args=[org,*access_args]
    mapping={'workspace_id':'s.workspace_id','workspaceId':'s.workspace_id','team_id':'s.team_id','teamId':'s.team_id','platform_id':'s.platform_id','platformId':'s.platform_id','channel_account_id':'s.channel_account_id','channelAccountId':'s.channel_account_id','status':'s.status','source_type':'s.source_type','sourceType':'s.source_type','source_type_id':'s.source_type_id','sourceTypeId':'s.source_type_id'}
    for k,col in mapping.items():
     if q.get(k) not in (None,''):where.append(col+'=?');args.append(str(q[k]))
@@ -66,6 +68,7 @@ def handle(db,a,org,m,ident,q,b):
   name=str(b.get('name') or b.get('sourceName') or '').strip();identity=str(b.get('accountIdentity') or b.get('account_identity') or '').strip()
   type_id=str(b.get('sourceTypeId') or b.get('source_type_id') or '').strip();channel_type_id=str(b.get('channelTypeId') or b.get('channel_type_id') or '').strip() or None
   if not wid:return err('WORKSPACE_REQUIRED','所属工作区必填')
+  if not (is_admin(db,a) or can(db,a,'source.manage',workspace_id=wid,team_id=team,organization_id=org)):return err('FORBIDDEN','无目标范围的来源管理权限',403)
   if not name or len(name)>128:return err('INVALID_SOURCE_NAME','来源名称不能为空且不得超过 128 字符')
   if not type_id:return err('SOURCE_TYPE_REQUIRED','请选择来源类型')
   if len(identity)>512:return err('INVALID_ACCOUNT_IDENTITY','外部入口标识不得超过 512 字符')
@@ -115,21 +118,19 @@ def handle(db,a,org,m,ident,q,b):
    with db.tx() as c:
     old=one(c,'SELECT * FROM sources WHERE source_id=? AND organization_id=?',(ident,org))
     if not old:return err('SOURCE_NOT_FOUND','来源不存在',404)
+    if not (is_admin(db,a) or can(db,a,'source.manage',workspace_id=old.get('workspace_id'),team_id=old.get('team_id'),organization_id=org)):return err('FORBIDDEN','来源超出管理范围',403)
     name=str(b.get('name') if 'name' in b else b.get('sourceName') if 'sourceName' in b else old['source_name']).strip();status=str(b.get('status',old['status']))
     if not name or len(name)>128:return err('INVALID_SOURCE_NAME','来源名称不能为空且不得超过 128 字符')
     if status not in STATUSES:return err('INVALID_SOURCE_STATUS','来源状态无效')
-    if old['status']=='active' and status=='disabled':
-     rr=refs(c,ident)
-     if any(rr.values()):return err('SOURCE_IN_USE','来源仍被业务对象引用',409,references=rr)
     c.execute('UPDATE sources SET source_name=?,status=?,metadata_json=?,updated_at=? WHERE source_id=?',(name,status,dumps(metadata) if metadata is not None else old['metadata_json'],now_ms(),ident))
     new=one(c,'SELECT * FROM sources WHERE source_id=?',(ident,));audit(c,a,'update',ident,old,new,old['workspace_id'],b.get('reason'))
    return {'ok':True,'item':new},200
   except sqlite3.IntegrityError:return err('SOURCE_CONFLICT','来源数据冲突',409)
  if m=='DELETE' and ident:
-  if not allowed(db,a,org,'source.manage'):return err('FORBIDDEN','无来源删除权限',403)
   with db.tx() as c:
    old=one(c,'SELECT * FROM sources WHERE source_id=? AND organization_id=?',(ident,org))
    if not old:return err('SOURCE_NOT_FOUND','来源不存在',404)
+   if not (is_admin(db,a) or can(db,a,'source.manage',workspace_id=old.get('workspace_id'),team_id=old.get('team_id'),organization_id=org)):return err('FORBIDDEN','来源超出管理范围',403)
    rr=refs(c,ident)
    if any(rr.values()):return err('SOURCE_IN_USE','来源仍被业务对象引用，无法删除',409,references=rr)
    c.execute('DELETE FROM source_devices WHERE source_id=?',(ident,))

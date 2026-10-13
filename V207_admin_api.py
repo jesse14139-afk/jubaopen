@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""V208.1.7 企业综合管理 API。Schema 215；所有范围与写入均由服务端校验。"""
+"""V208.2.0 企业综合管理 API。Schema 217；所有范围与写入均由服务端校验。"""
 import hashlib, json, uuid, os, sqlite3, secrets, re
 from V207_shared_db import now_ms,dumps,loads,hash_password,default_workspace_id
-from V207_security import can,permissions,verify_password,password_strong,is_platform_admin,grant_binding_in_tx,revoke_sessions_in_tx,revoke_session_in_tx,issue_confirmation,consume_confirmation
+from V207_security import can,permissions,authorization_profile,verify_password,password_strong,is_platform_admin,grant_binding_in_tx,revoke_sessions_in_tx,revoke_session_in_tx,issue_confirmation,consume_confirmation,data_scope_clause_in_tx,validate_role_permissions_in_tx,scope_mask_names,page_capabilities_from_profile,has_permission_in_any_scope
 from V207_schema_catalog import build_schema_catalog
 from V207_version import PRODUCT_VERSION,SCHEMA_VERSION
 from V207_scope import resolve_scope, require_platform, require_account_grant
@@ -14,9 +14,11 @@ from V207_campaign_service import handle as handle_campaign
 from V207_contact_identity_service import handle as handle_contact_identity
 from V207_touchpoint_service import handle as handle_touchpoint
 from V207_attribution_service import handle as handle_attribution
+from V207_conversion_service import handle as handle_conversion
 from V207_source_link_service import handle as handle_source_link
 from V207_organization_service import handle as handle_organization_model
 from V208_account_admin_service import handle as handle_account_admin
+from V208_contact_center_service import handle as handle_contact_center
 CHANNELS=('whatsapp','instagram','facebook','messenger','telegram')
 
 def rows(c,sql,args=()): return [dict(x) for x in c.execute(sql,args)]
@@ -33,6 +35,14 @@ def page(q):
  except:p,size=1,50
  return p,size,(p-1)*size
 def pack(items,total,p,size,**extra):return {'ok':True,'items':items,'pagination':{'page':p,'pageSize':size,'total':total,'pages':(total+size-1)//size},**extra}
+import datetime
+def fmt_ts(ts_ms):
+ """将毫秒时间戳转为 YYYY/MM/DD HH:mm 格式。"""
+ if not ts_ms:return ''
+ try:
+  return datetime.datetime.fromtimestamp(ts_ms/1000).strftime('%Y/%m/%d %H:%M')
+ except Exception:
+  return str(ts_ms)
 def bad(h,code,msg,status=400):return h.sendj({'ok':False,'code':code,'message':msg},status) or True
 def _audit_workspace(c,a,wid=None):
  if wid:
@@ -139,47 +149,422 @@ def _db_policy(name,columns,scoped):
  sensitive=restricted or any(mode!='plain' for mode in modes.values())
  return ('restricted' if restricted else ('masked' if sensitive else 'full')),modes
 
+# ============================================================
+# V208.2.0 Phase 3 — 客户运营工作台 (Workbench) scope 辅助
+# ============================================================
+def _ops_scope_clause(db,c,actor,allow_admin_bypass=True,org=None,alias=''):
+ """Resolve contact.read scope; JOIN callers must identify the contacts alias."""
+ org=org or actor.get('organization_id')
+ clause,args,info=data_scope_clause_in_tx(c,actor,'contact.read',org,alias=alias,owner_column='owner_user_id',team_column='team_id',workspace_column='workspace_id')
+ if not alias:
+  clause=clause.replace('.owner_user_id','owner_user_id').replace('.team_id','team_id').replace('.workspace_id','workspace_id')
+ level=info['level']
+ return clause,args,{'user_id':actor.get('user_id'),'scope':('org' if level=='organization' else level),'level':level,'is_platform':level=='platform','team_ids':[x['scope_id'] for x in info['grants'] if x['scope_type']=='team']}
+
+def _ops_limit(value, default=20, maximum=200):
+ try:return max(1,min(int(value),maximum))
+ except (TypeError,ValueError):return default
+
+def _ops_day_start(now):
+ # 管理中心当前部署时区：Asia/Shanghai (UTC+8)
+ offset=8*3600000
+ return ((now+offset)//86400000)*86400000-offset
+
+def _ops_filter_clause(q, alias='', include_status=True):
+ """Build one canonical workbench filter.
+
+ Customer status is exclusively represented by status_tag_id.  Legacy
+ contacts.status / contacts.stage values are deliberately not consulted here.
+ """
+ pre=(alias+'.') if alias else ''
+ contact_ref=(pre+'contact_id') if pre else 'contacts.contact_id'
+ clauses=[];params=[]
+ workspace=str(q.get('workspace_id') or q.get('workspaceId') or '').strip()
+ status_tag_id=str(q.get('status_tag_id') or '').strip()
+ source=str(q.get('source') or '').strip()
+ team=str(q.get('team') or '').strip()
+ portrait=str(q.get('portrait') or '').strip()
+ if workspace:clauses.append(pre+'workspace_id=?');params.append(workspace)
+ if include_status and status_tag_id:
+  clauses.append("EXISTS (SELECT 1 FROM contact_tags octs JOIN tags ots ON ots.tag_id=octs.tag_id WHERE octs.contact_id="+contact_ref+" AND ots.tag_kind='status' AND ots.enabled=1 AND ots.tag_id=?)");params.append(status_tag_id)
+ if source:
+  clauses.append(pre+'source_id IN (SELECT source_id FROM sources WHERE source_id=? OR source_name=?)');params.extend([source,source])
+ if team:
+  clauses.append(pre+'team_id IN (SELECT team_id FROM teams WHERE team_id=? OR name=?)');params.extend([team,team])
+ if portrait:
+  clauses.append("EXISTS (SELECT 1 FROM contact_tags oct JOIN tags ot ON ot.tag_id=oct.tag_id WHERE oct.contact_id="+contact_ref+" AND ot.name=? AND ot.tag_kind='portrait')");params.append(portrait)
+ return ((' AND '+' AND '.join(clauses)) if clauses else ''),params
+
 def dispatch(h,m,p,q,a,db):
+ # Strip query string from path if not already separated
+ if '?' in p and not q:
+  from urllib.parse import urlparse, parse_qs
+  up = urlparse(p)
+  p = up.path
+  q = {k: v[-1] for k, v in parse_qs(up.query).items()}
  if not p.startswith('/api/v207/admin/'):return False
  seg=[x for x in p[len('/api/v207/admin/'):].split('/') if x]
  if not seg:return bad(h,'NOT_FOUND','管理接口不存在',404)
  root=seg[0];ident=seg[1] if len(seg)>1 else None;action=seg[2] if len(seg)>2 else None
  org=target(q,a)
+ if root=='contact-center':return handle_contact_center(h,m,seg,q,a,db,org)
  if handle_account_admin(h,m,root,ident,action,q,a,db,manage,org):return True
  # [Stage3] 权限矩阵聚合（只读）
  if root=='rbac' and ident=='matrix' and m=='GET':
-  org=target(q,a)
-  if not manage(db,a,'permission.read',org):return bad(h,'FORBIDDEN','无权限读取权限',403)
+  org=target(q,a);is_pa=platform(db,a)
+  if not (is_pa or can(db,a,'permission.read',organization_id=org)):return bad(h,'FORBIDDEN','无权限矩阵读取权限',403)
   with db.tx(False) as c:
-   roles=rows(c,"SELECT role_id,name,role_code,scope_level,status,is_system,description FROM roles WHERE organization_id=? OR organization_id IS NULL ORDER BY is_system DESC,name,role_id",(org,))
-   perms=rows(c,"SELECT permission_key,description FROM permissions ORDER BY permission_key")
-   binds=rows(c,"SELECT rp.role_id,rp.permission_key FROM role_permissions rp JOIN roles r ON r.role_id=rp.role_id WHERE r.organization_id=? OR r.organization_id IS NULL",(org,))
-  return h.sendj({'ok':True,'roles':roles,'permissions':perms,'bindings':binds}) or True
- # [Stage4-C1] 高风险操作确认凭证签发（方案乙：一次性、5分钟TTL、上下文绑定）
- if root=='rbac' and ident=='confirmations' and m=='POST':
-  org=target(q,a)
-  if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无角色管理权限',403)
-  b=h.body();act=str(b.get('actionKey') or '').strip()
-  if act not in ('role.copy','role.delete'):return bad(h,'ACTION_INVALID','不支持的操作类型')
-  ctx={'name':str(b.get('name') or ''),'organizationId':org,'sourceRoleId':str(b.get('sourceRoleId') or '')}
-  try:r=issue_confirmation(db,a,act,ctx)
-  except ValueError as e:return bad(h,'CONFIRMATION_INVALID',str(e),400)
-  return h.sendj({'ok':True,**r}) or True
- # [Stage3] 用户权限来源追溯（只读）
+   n=now_ms();roles=rows(c,"SELECT r.*,group_concat(rp.permission_key) permissions,(SELECT count(DISTINCT b.user_id) FROM role_bindings b WHERE b.role_id=r.role_id AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active' AND (b.valid_from IS NULL OR b.valid_from<=?) AND (b.expires_at IS NULL OR b.expires_at>?)) member_count FROM roles r LEFT JOIN role_permissions rp ON rp.role_id=r.role_id WHERE r.organization_id=? OR r.organization_id IS NULL GROUP BY r.role_id ORDER BY r.is_system DESC,r.name",(org,n,n,org));perms=rows(c,"SELECT * FROM permissions ORDER BY permission_key");binds=rows(c,"SELECT rp.role_id,rp.permission_key FROM role_permissions rp JOIN roles r ON r.role_id=rp.role_id WHERE r.organization_id=? OR r.organization_id IS NULL",(org,))
+  caps={'read':True,'editEnterpriseRoles':bool(is_pa or can(db,a,'permission.manage',organization_id=org) or can(db,a,'role.manage',organization_id=org)),'maintainSystemTemplates':bool(is_pa and can(db,a,'role.template.manage',organization_id=org)),'grantBindings':bool(is_pa or can(db,a,'role.binding.manage',organization_id=org) or can(db,a,'role.manage',organization_id=org)),'export':True}
+  return h.sendj({'ok':True,'roles':roles,'permissions':perms,'bindings':binds,'capabilities':caps}) or True
  if root=='users' and ident and action=='permission-sources' and m=='GET':
   org=target(q,a)
-  if not manage(db,a,'permission.read',org):return bad(h,'FORBIDDEN','无权限读取权限',403)
+  if not (platform(db,a) or can(db,a,'permission.read',organization_id=org)):return bad(h,'FORBIDDEN','无权限读取权限',403)
   with db.tx(False) as c:
-   direct=rows(c,"SELECT b.binding_id,b.role_id,r.name role_name,r.scope_level,b.scope_type,COALESCE(b.scope_id,'') scope_id,b.status,r.status role_status FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=? AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active' AND r.status='active'",(ident,org))
+   direct=rows(c,"SELECT b.binding_id,b.role_id,r.name role_name,r.role_code,r.scope_level,b.scope_type,COALESCE(b.scope_id,'') scope_id,b.status,r.status role_status,b.valid_from,b.expires_at,b.grant_reason,b.grant_type,b.approved_by FROM role_bindings b JOIN roles r ON r.role_id=b.role_id WHERE b.user_id=? AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active' AND r.status='active' AND (b.valid_from IS NULL OR b.valid_from<=?) AND (b.expires_at IS NULL OR b.expires_at>?)",(ident,org,now_ms(),now_ms()))
    inherited=rows(c,"SELECT tm.team_id,t.name team_name,tm.membership_type,tm.is_primary,tm.status FROM team_memberships tm JOIN teams t ON t.team_id=tm.team_id WHERE tm.user_id=? AND t.organization_id=? AND tm.status='active' AND t.status='active'",(ident,org))
    channel=rows(c,"SELECT (g.user_id || ':' || g.channel_account_id) grant_id,g.channel_account_id,COALESCE(ca.display_name,'已删除账号') account_name,'active' status,g.permission_scope,COALESCE(ca.status,'deleted') account_status FROM user_channel_account_grants g LEFT JOIN channel_accounts ca ON ca.channel_account_id=g.channel_account_id WHERE g.user_id=?",(ident,))
-  return h.sendj({'ok':True,'direct':direct,'inherited':inherited,'channel':channel}) or True
+  profile=authorization_profile(db,ident)
+  sensitive={'role.manage','user.manage','permission.manage','audit.read','contact.delete','contact.merge','conversion.manage','transfer.manage'}
+  conflicts=[]
+  effective=set(profile['permissions'])
+  if 'contact.delete' in effective and 'audit.read' in effective:conflicts.append('同一用户同时拥有客户删除与审计读取权限，请复核职责分离。')
+  if 'role.manage' in effective and 'user.manage' in effective:conflicts.append('同一用户同时拥有角色管理与用户管理权限，属于高权组合。')
+  return h.sendj({'ok':True,'direct':direct,'inherited':inherited,'channel':channel,'effectivePermissions':sorted(effective),'effectiveScopes':profile['effective_scopes'],'highRiskPermissions':sorted(effective & sensitive),'conflictWarnings':conflicts}) or True
 
  # session/security
  if root=='profile' and m=='GET':
+  auth=authorization_profile(db,a['user_id'])
   with db.tx(False) as c:
-   org=one(c,'SELECT * FROM organizations WHERE organization_id=?',(a['organization_id'],)); cr=one(c,'SELECT must_change,updated_at FROM user_credentials WHERE user_id=?',(a['user_id'],)); pa=one(c,'SELECT is_builtin,onboarding_completed FROM platform_administrators WHERE user_id=?',(a['user_id'],)); ws=one(c,"SELECT * FROM workspaces WHERE organization_id=? ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(a['organization_id'],)); tm=one(c,"SELECT * FROM teams WHERE organization_id=? ORDER BY created_at LIMIT 1",(a['organization_id'],))
-  return h.sendj({'ok':True,'user':{k:a[k] for k in ('user_id','login_name','display_name','organization_id')},'organization':org,'platformAdmin':platform(db,a),'permissions':sorted(permissions(db,a['user_id'])),'credential':cr,'platformIdentity':pa,'onboardingRequired':bool(pa and not pa['onboarding_completed']),'workspace':ws,'team':tm}) or True
+   org=one(c,'SELECT * FROM organizations WHERE organization_id=?',(a['organization_id'],));cr=one(c,'SELECT must_change,updated_at FROM user_credentials WHERE user_id=?',(a['user_id'],));pa=one(c,'SELECT is_builtin,onboarding_completed FROM platform_administrators WHERE user_id=?',(a['user_id'],))
+   workspaces=rows(c,"SELECT DISTINCT w.* FROM workspaces w LEFT JOIN teams t ON t.workspace_id=w.workspace_id LEFT JOIN team_memberships tm ON tm.team_id=t.team_id AND tm.user_id=? AND tm.status='active' WHERE w.organization_id=? AND w.status='active' AND (? OR tm.user_id IS NOT NULL OR EXISTS(SELECT 1 FROM role_bindings b WHERE b.user_id=? AND b.status='active' AND (b.valid_from IS NULL OR b.valid_from<=?) AND (b.expires_at IS NULL OR b.expires_at>?) AND (b.scope_type='organization' OR (b.scope_type='workspace' AND b.scope_id=w.workspace_id)))) ORDER BY CASE w.workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END,w.created_at",(a['user_id'],a['organization_id'],1 if pa else 0,a['user_id'],now_ms(),now_ms()))
+   teams=rows(c,"SELECT DISTINCT t.* FROM teams t LEFT JOIN team_memberships tm ON tm.team_id=t.team_id AND tm.user_id=? AND tm.status='active' WHERE t.organization_id=? AND t.status='active' AND (? OR tm.user_id IS NOT NULL OR EXISTS(SELECT 1 FROM role_bindings b WHERE b.user_id=? AND b.status='active' AND (b.valid_from IS NULL OR b.valid_from<=?) AND (b.expires_at IS NULL OR b.expires_at>?) AND (b.scope_type='organization' OR (b.scope_type='workspace' AND b.scope_id=t.workspace_id) OR (b.scope_type='team' AND b.scope_id=t.team_id)))) ORDER BY t.created_at",(a['user_id'],a['organization_id'],1 if pa else 0,a['user_id'],now_ms(),now_ms()))
+   departments=rows(c,"SELECT d.department_id,d.name FROM departments d JOIN positions p ON p.department_id=d.department_id JOIN user_positions up ON up.position_id=p.position_id WHERE up.user_id=? AND up.status='active' AND d.status='active'",(a['user_id'],))
+  return h.sendj({'ok':True,'user':{k:a[k] for k in ('user_id','login_name','display_name','organization_id')},'organization':org,'platformAdmin':bool(pa),'permissions':sorted(auth['permissions']),'roles':auth['roles'],'effectiveScopes':auth['effective_scopes'],'pageCapabilities':page_capabilities_from_profile(auth,bool(pa)),'memberships':{'workspaces':workspaces,'teams':teams,'departments':departments},'credential':cr,'platformIdentity':pa,'onboardingRequired':bool(pa and not pa['onboarding_completed']),'workspace':workspaces[0] if workspaces else None,'team':teams[0] if teams else None}) or True
+
+ # ============================================================
+ # V208.2.0 Phase 3 — 客户运营工作台 API
+ # ============================================================
+ # GET /api/v207/admin/workbench/me
+ if root=='workbench' and ident=='me' and m=='GET':
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',a['organization_id'])):return bad(h,'FORBIDDEN','无权限',403)
+  uid=a['user_id']
+  with db.tx(False) as c:
+   user=one(c,'SELECT user_id,login_name,display_name,status FROM users WHERE user_id=?',(uid,))
+   org_info=one(c,'SELECT organization_id,name FROM organizations WHERE organization_id=?',(a['organization_id'],))
+   team_rows=c.execute(
+    "SELECT t.team_id,t.name FROM teams t JOIN team_memberships tm ON tm.team_id=t.team_id WHERE tm.user_id=? AND tm.status='active' AND t.status='active'",
+    (uid,)
+   ).fetchall()
+   teams=[{'team_id':r[0],'name':r[1]} for r in team_rows]
+   is_manager=bool(c.execute(
+    "SELECT 1 FROM team_memberships WHERE user_id=? AND membership_type='manager' AND status='active' LIMIT 1",
+    (uid,)
+   ).fetchone())
+   ws_rows=c.execute(
+    "SELECT workspace_id,name FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at",
+    (a['organization_id'],)
+   ).fetchall()
+   workspaces=[{'workspace_id':r[0],'name':r[1]} for r in ws_rows]
+   default_ws=ws_rows[0] if ws_rows else None
+   scope_info=_ops_scope_clause(db,c,a,allow_admin_bypass=True,org=a['organization_id'])
+  return h.sendj({
+   'ok':True,
+   'actor':{'user_id':uid,'login_name':user['login_name'],'display_name':user['display_name']} if user else None,
+   'organization':org_info,
+   'workspace':{'workspace_id':default_ws[0],'name':default_ws[1]} if default_ws else None,
+   'workspaces':workspaces,
+   'teams':teams,
+   'isManager':is_manager,
+   'scope':scope_info[2],
+  }) or True
+
+ # GET /api/v207/admin/workbench/kpis
+ if root=='workbench' and ident=='kpis' and m=='GET':
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',a['organization_id'])):return bad(h,'FORBIDDEN','无权限',403)
+  org=a['organization_id'];now=now_ms();day_start=_ops_day_start(now);day_end=day_start+86400000
+  prev_day_start=day_start-86400000;week_start=day_start-6*86400000;prev_week_start=week_start-7*86400000
+  with db.tx(False) as c:
+   wc,wp,scope_info=_ops_scope_clause(db,c,a,True,org);fc,fp=_ops_filter_clause(q)
+   base=f"SELECT count(*) FROM contacts WHERE organization_id=? AND deleted_at IS NULL AND {wc}{fc}";args=[org]+wp+fp
+   def count_time(field,start,end):return c.execute(f"{base} AND {field}>=? AND {field}<?",args+[start,end]).fetchone()[0]
+   today_queue=count_time('next_follow_up_at',day_start,day_end);prev_today_queue=count_time('next_follow_up_at',prev_day_start,day_start)
+   marked_sql=" AND EXISTS (SELECT 1 FROM contact_tags mct JOIN tags mt ON mt.tag_id=mct.tag_id WHERE mct.contact_id=contacts.contact_id AND mt.tag_kind='status' AND mt.enabled=1)"
+   marked_customers=c.execute(base+marked_sql,args).fetchone()[0]
+   queue_trend=[];marked_trend=[];chat_trend=[];new_trend=[]
+   for i in range(7):
+    ds=day_start-(6-i)*86400000;de=ds+86400000
+    queue_trend.append(count_time('next_follow_up_at',ds,de))
+    marked_trend.append(c.execute(base+marked_sql+" AND updated_at>=? AND updated_at<?",args+[ds,de]).fetchone()[0])
+    chat_trend.append(count_time('last_touch_at',ds,de));new_trend.append(count_time('created_at',ds,de))
+   today_chats=chat_trend[-1];prev_today_chats=count_time('last_touch_at',prev_day_start,day_start)
+   week_new=sum(new_trend);prev_week_new=count_time('created_at',prev_week_start,week_start)
+  return h.sendj({'ok':True,'scope':scope_info,'cards':{
+   'todayQueue':{'value':today_queue,'delta':today_queue-prev_today_queue,'vs':'yesterday','trend':queue_trend},
+   'statusTagged':{'value':marked_customers,'delta':marked_trend[-1]-(sum(marked_trend[:-1])//6 if len(marked_trend)>1 else 0),'vs':'7d_avg','trend':marked_trend},
+   'todayChats':{'value':today_chats,'delta':today_chats-prev_today_chats,'vs':'yesterday','trend':chat_trend},
+   'weekNew':{'value':week_new,'delta':week_new-prev_week_new,'vs':'last_week','trend':new_trend}},'staleSeconds':30}) or True
+
+ # GET /api/v207/admin/workbench/queue
+ if root=='workbench' and ident=='queue' and m=='GET':
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',a['organization_id'])):return bad(h,'FORBIDDEN','无权限',403)
+  org=a['organization_id'];bucket=str(q.get('bucket','today'));now=now_ms();day_start=_ops_day_start(now);day_end=day_start+86400000
+  buckets={'today':(day_start,day_end),'tomorrow':(day_end,day_end+86400000),'overdue':(0,day_start),'upcoming':(day_end+86400000,day_start+4*86400000)}
+  if bucket not in buckets:bucket='today'
+  with db.tx(False) as c:
+   wc,wp,scope_info=_ops_scope_clause(db,c,a,True,org);fc,fp=_ops_filter_clause(q);base=f"organization_id=? AND deleted_at IS NULL AND {wc}{fc}";args=[org]+wp+fp
+   counts={}
+   for key,(lo,hi) in buckets.items():counts[key]=c.execute(f"SELECT count(*) FROM contacts WHERE {base} AND next_follow_up_at>=? AND next_follow_up_at<?",args+[lo,hi]).fetchone()[0]
+   lo,hi=buckets[bucket];limit=_ops_limit(q.get('limit'),50,200)
+   rs=c.execute(f"SELECT contact_id,COALESCE(NULLIF(trim(manual_name),''),display_name) name,next_follow_up_at,status,last_touch_at FROM contacts WHERE {base} AND next_follow_up_at>=? AND next_follow_up_at<? ORDER BY next_follow_up_at LIMIT ?",args+[lo,hi,limit]).fetchall()
+   items=[]
+   for r in rs:
+    name=r[1] or '未知客户';tag_rows=c.execute("SELECT t.name,t.tag_kind FROM tags t JOIN contact_tags ct ON ct.tag_id=t.tag_id WHERE ct.contact_id=? AND t.enabled=1 ORDER BY CASE t.tag_kind WHEN 'status' THEN 0 ELSE 1 END,t.sort_order,t.name LIMIT 4",(r[0],)).fetchall();tags=[x[0] for x in tag_rows];status_tag=next((x[0] for x in tag_rows if x[1]=='status'),'')
+    items.append({'id':r[0],'name':name,'avatar':name[:1] or '?','meta':((' · '.join(tags)) if tags else '未设置客户状态'),'when':fmt_ts(r[2]),'daysOverdue':max(0,(now-r[2])//86400000) if bucket=='overdue' else 0,'tags':tags,'stage':status_tag,'statusTag':status_tag,'systemStatus':r[3] or 'active','lastTouchAt':r[4],'queueBucket':bucket})
+  return h.sendj({'ok':True,'bucket':bucket,'counts':counts,'items':items,'scope':scope_info,'staleSeconds':30}) or True
+
+ # GET /api/v207/admin/workbench/funnel
+ if root=='workbench' and ident=='funnel' and m=='GET':
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',a['organization_id'])):return bad(h,'FORBIDDEN','无权限',403)
+  org=a['organization_id'];now=now_ms();day_start=_ops_day_start(now)
+  selected_status=str(q.get('status_tag_id') or '').strip()
+  with db.tx(False) as c:
+   wc,wp,scope_info=_ops_scope_clause(db,c,a,True,org)
+   # 漏斗卡片使用公共筛选（工作区/团队/来源/画像），状态维度单独计算，
+   # 避免把选中的状态先写进 base 后又与每张卡片状态重复相交。
+   common_q=dict(q);common_q.pop('status_tag_id',None)
+   fc,fp=_ops_filter_clause(common_q,include_status=False)
+   base=f"organization_id=? AND deleted_at IS NULL AND {wc}{fc}";args=[org]+wp+fp
+   workspace=str(q.get('workspace_id') or q.get('workspaceId') or '').strip()
+   tag_sql="SELECT tag_id,name,color,sort_order FROM tags WHERE tag_kind='status' AND enabled=1";tag_args=[]
+   if workspace:tag_sql+=" AND (workspace_id=? OR workspace_id IS NULL)";tag_args.append(workspace)
+   tag_sql+=' ORDER BY sort_order,name,tag_id';status_tags=c.execute(tag_sql,tag_args).fetchall();funnel=[]
+   selected_tag=None
+   if selected_status:
+    selected_tag=c.execute("SELECT tag_id FROM tags WHERE tag_kind='status' AND enabled=1 AND tag_id=? LIMIT 1",(selected_status,)).fetchone()
+    selected_tag=selected_tag[0] if selected_tag else selected_status
+   for tag in status_tags:
+    is_selected=bool(selected_tag and str(tag[0])==str(selected_tag))
+    tagged=" AND EXISTS (SELECT 1 FROM contact_tags fct WHERE fct.contact_id=contacts.contact_id AND fct.tag_id=?)"
+    cnt=c.execute(f"SELECT count(*) FROM contacts WHERE {base}{tagged}",args+[tag[0]]).fetchone()[0]
+    week_cnt=c.execute(f"SELECT count(*) FROM contacts WHERE {base}{tagged} AND updated_at>=?",args+[tag[0],day_start-6*86400000]).fetchone()[0]
+    funnel.append({'key':tag[0],'tagId':tag[0],'label':tag[1],'color':tag[2],'sortOrder':tag[3],'count':cnt,'delta':week_cnt,'selected':is_selected})
+   # 趋势及看板其他模块都使用完整筛选（含选中状态）。
+   full_fc,full_fp=_ops_filter_clause(q);full_base=f"organization_id=? AND deleted_at IS NULL AND {wc}{full_fc}";full_args=[org]+wp+full_fp
+   trend=[]
+   for i in range(7):
+    ds=day_start-(6-i)*86400000;de=ds+86400000
+    trend.append(c.execute(f"SELECT count(*) FROM contacts WHERE {full_base} AND updated_at>=? AND updated_at<?",full_args+[ds,de]).fetchone()[0])
+  return h.sendj({'ok':True,'funnel':funnel,'trend7d':trend,'scope':scope_info,'staleSeconds':60,'filterStatusTagId':selected_tag or ''}) or True
+
+ # Workbench insights
+ if root=='workbench' and ident=='insights' and action in ('new-customers','upcoming-due','communication-pulse') and m=='GET':
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',a['organization_id'])):return bad(h,'FORBIDDEN','无权限',403)
+  org=a['organization_id'];now=now_ms();limit=_ops_limit(q.get('limit'),20,100)
+  with db.tx(False) as c:
+   wc,wp,scope_info=_ops_scope_clause(db,c,a,True,org,alias='c');fc,fp=_ops_filter_clause(q,'c');base=f"c.organization_id=? AND c.deleted_at IS NULL AND {wc}{fc}";args=[org]+wp+fp
+   if action=='new-customers':
+    rs=c.execute(f"SELECT c.contact_id,COALESCE(NULLIF(trim(c.manual_name),''),c.display_name) name,c.created_at FROM contacts c WHERE {base} AND c.created_at>=? ORDER BY c.created_at DESC LIMIT ?",args+[now-7*86400000,limit]).fetchall();items=[]
+    for r in rs:
+     tag=c.execute("SELECT t.name FROM tags t JOIN contact_tags ct ON ct.tag_id=t.tag_id WHERE ct.contact_id=? LIMIT 1",(r[0],)).fetchone();diff=max(0,now-(r[2] or now));when='刚刚' if diff<60000 else ((str(diff//60000)+' 分钟前') if diff<3600000 else ((str(diff//3600000)+' 小时前') if diff<86400000 else (str(diff//86400000)+' 天前')));items.append({'id':r[0],'name':r[1] or '未知客户','tag':tag[0] if tag else '','when':when,'createdAt':r[2]})
+    return h.sendj({'ok':True,'items':items,'scope':scope_info,'staleSeconds':120}) or True
+   if action=='upcoming-due':
+    rs=c.execute(f"SELECT c.contact_id,COALESCE(NULLIF(trim(c.manual_name),''),c.display_name) name,c.next_follow_up_at,(SELECT st.name FROM contact_tags sct JOIN tags st ON st.tag_id=sct.tag_id WHERE sct.contact_id=c.contact_id AND st.tag_kind='status' AND st.enabled=1 LIMIT 1) status_tag FROM contacts c WHERE {base} AND c.next_follow_up_at>? AND c.next_follow_up_at<=? ORDER BY c.next_follow_up_at LIMIT ?",args+[now,now+3*86400000,limit]).fetchall()
+    items=[{'id':r[0],'name':r[1] or '未知客户','when':fmt_ts(r[2]),'stage':r[3] or '','statusTag':r[3] or ''} for r in rs]
+    return h.sendj({'ok':True,'items':items,'scope':scope_info,'staleSeconds':60}) or True
+   # 近24小时真实消息脉搏，4小时一个点
+   series=[];wa_total=tg_total=0
+   for i in range(6):
+    lo=now-(6-i)*4*3600000;hi=lo+4*3600000
+    rs=c.execute(f"SELECT lower(COALESCE(c.channel,'')) channel,count(*) n FROM conversation_messages m JOIN contacts c ON c.contact_id=m.contact_id WHERE {base} AND m.occurred_at>=? AND m.occurred_at<? AND m.deleted_at IS NULL GROUP BY channel",args+[lo,hi]).fetchall();wa=sum(r[1] for r in rs if 'whatsapp' in r[0] or r[0]=='wa');tg=sum(r[1] for r in rs if 'telegram' in r[0] or r[0]=='tg');wa_total+=wa;tg_total+=tg;series.append({'at':lo,'whatsapp':wa,'telegram':tg})
+   return h.sendj({'ok':True,'series':series,'totals':{'whatsapp':wa_total,'telegram':tg_total},'scope':scope_info,'staleSeconds':30}) or True
+
+ # GET /api/v207/admin/workbench/quick-filters (级联：每个维度排除自身、保留其他条件)
+ if root=='workbench' and ident=='quick-filters' and m=='GET':
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',a['organization_id'])):return bad(h,'FORBIDDEN','无权限',403)
+  org=a['organization_id']
+  with db.tx(False) as c:
+   scope_wc,wp,scope_info=_ops_scope_clause(db,c,a,True,org,alias='c')
+   def option_base(exclude=None):
+    oq=dict(q);oq.pop(exclude,None)
+    fc,fp=_ops_filter_clause(oq,'c')
+    return f"c.organization_id=? AND c.deleted_at IS NULL AND {scope_wc}{fc}",[org]+wp+fp
+   mb,ma=option_base();matching=c.execute(f"SELECT count(*) FROM contacts c WHERE {mb}",ma).fetchone()[0]
+   pb,pa=option_base('portrait');portraits=rows(c,f"SELECT DISTINCT t.name FROM contacts c JOIN contact_tags ct ON ct.contact_id=c.contact_id JOIN tags t ON t.tag_id=ct.tag_id WHERE {pb} AND t.tag_kind='portrait' ORDER BY t.name LIMIT 20",pa)
+   sb,sa=option_base('status_tag_id');statuses=rows(c,f"SELECT DISTINCT st.tag_id id,st.name FROM contacts c JOIN contact_tags sct ON sct.contact_id=c.contact_id JOIN tags st ON st.tag_id=sct.tag_id WHERE {sb} AND st.tag_kind='status' AND st.enabled=1 ORDER BY st.sort_order,st.name",sa)
+   ob,oa=option_base('source');sources=rows(c,f"SELECT DISTINCT s.source_id id,s.source_name name FROM contacts c JOIN sources s ON s.source_id=c.source_id WHERE {ob} ORDER BY s.source_name LIMIT 20",oa)
+   tb,ta=option_base('team');teams=rows(c,f"SELECT DISTINCT t.team_id id,t.name FROM contacts c JOIN teams t ON t.team_id=c.team_id WHERE {tb} ORDER BY t.name LIMIT 20",ta)
+  return h.sendj({'ok':True,'portraits':[x['name'] for x in portraits],'statuses':statuses,'sources':sources,'teams':teams,'matchingCount':matching,'scope':scope_info}) or True
+
+ # ============================================================
+ # Phase B-2 — 清单写入操作 + 抽屉置顶 (audit-first)
+ # 所有写操作只对 actor 自己负责的 contacts 生效，
+ # 即 scope 二次过滤；组织超管允许跨团队（受 allow_admin_bypass=True 控制）
+ # ============================================================
+
+ # POST /api/v207/admin/workbench/queue/{id}/done
+ # PATCH /api/v207/admin/workbench/queue/{id}/done   (兼容两种方法)
+ # seg 形态: ['workbench','queue','ct_xxx','done']
+ if root=='workbench' and ident=='queue' and m in ('POST','PATCH') and '/'.join(seg[2:]).endswith('/done'):
+  cid='/'.join(seg[2:])[:-5]
+  if not cid:return bad(h,'INVALID_CONTACT','客户 ID 不能为空')
+  if not manage(db,a,'contact.update',a['organization_id']):return bad(h,'FORBIDDEN','无联系人修改权限',403)
+  b=h.body()
+  reason=str(b.get('reason') or '').strip()
+  if not reason:return bad(h,'REASON_REQUIRED','请填写完成原因（审计必填）',400)
+  if len(reason)>500:return bad(h,'REASON_TOO_LONG','原因不能超过 500 字符',400)
+  now=now_ms()
+  with db.tx() as c:
+   scope=_ops_scope_clause(db,c,a,allow_admin_bypass=True,org=a['organization_id'])
+   wc,wp,_=scope
+   contact=c.execute(
+    f"SELECT contact_id,workspace_id,manual_name,display_name,stage,status,next_follow_up_at FROM contacts WHERE organization_id=? AND deleted_at IS NULL AND contact_id=? AND {wc}",
+    [a['organization_id'], cid]+wp
+   ).fetchone()
+   if not contact:return bad(h,'NOT_FOUND','联系人不存在或不在你的范围内',404)
+   old=dict(contact)
+   from V208_follow_up_notification_service import complete_follow_up_in_tx
+   completed=complete_follow_up_in_tx(c,cid,now,a.get('user_id'),None,'workbench',{'note':reason,'source':'workbench.queue.done'})
+   if not completed:
+    c.execute('UPDATE contacts SET next_follow_up_at=NULL,updated_at=?,version=version+1 WHERE contact_id=?',(now,cid))
+   audit_in_tx(c,a,'workbench.queue.done','contact',cid,old,{
+    'stage':contact['stage'],'contact_id':cid,'reason':reason,
+    'nextFollowUpBefore':contact['next_follow_up_at'],'nextFollowUpAfter':None,
+   },reason,contact['workspace_id'])
+  return h.sendj({'ok':True,'contactId':cid,'bucket':'today','action':'done','appliedAt':now}) or True
+
+ # POST /api/v207/admin/workbench/queue/{id}/snooze
+ # PATCH /api/v207/admin/workbench/queue/{id}/snooze
+ if root=='workbench' and ident=='queue' and m in ('POST','PATCH') and '/'.join(seg[2:]).endswith('/snooze'):
+  cid='/'.join(seg[2:])[:-7]
+  if not cid:return bad(h,'INVALID_CONTACT','客户 ID 不能为空')
+  if not manage(db,a,'contact.update',a['organization_id']):return bad(h,'FORBIDDEN','无联系人修改权限',403)
+  b=h.body()
+  until_raw=b.get('until')
+  if until_raw is None:return bad(h,'UNTIL_REQUIRED','推迟目标日期必填（ISO date 或 ms 时间戳）',400)
+  reason=str(b.get('reason') or '').strip()
+  if not reason:return bad(h,'REASON_REQUIRED','请填写推迟原因（审计必填）',400)
+  if len(reason)>500:return bad(h,'REASON_TOO_LONG','原因不能超过 500 字符',400)
+  until=None
+  if isinstance(until_raw,(int,float)):
+   until=int(until_raw)
+  else:
+   s=str(until_raw).strip()
+   import datetime as _dt
+   for fmt in ('%Y-%m-%d','%Y-%m-%dT%H:%M','%Y-%m-%dT%H:%M:%S','%Y-%m-%d %H:%M'):
+    try:
+     d=_dt.datetime.strptime(s,fmt);until=int(d.timestamp()*1000);break
+    except ValueError:pass
+  if not until:return bad(h,'INVALID_UNTIL','until 参数格式无法识别',400)
+  now=now_ms()
+  if until<=now:return bad(h,'UNTIL_IN_PAST','推迟目标必须在未来',400)
+  if until-now>30*86400000:return bad(h,'UNTIL_OUT_OF_RANGE','推迟范围 1-30 天',400)
+  target_until=until
+  with db.tx() as c:
+   scope=_ops_scope_clause(db,c,a,allow_admin_bypass=True,org=a['organization_id'])
+   wc,wp,_=scope
+   contact=c.execute(
+    f"SELECT contact_id,workspace_id,manual_name,display_name,stage,status,next_follow_up_at FROM contacts WHERE organization_id=? AND deleted_at IS NULL AND contact_id=? AND {wc}",
+    [a['organization_id'], cid]+wp
+   ).fetchone()
+   if not contact:return bad(h,'NOT_FOUND','联系人不存在或不在你的范围内',404)
+   old=dict(contact)
+   c.execute(
+    'UPDATE contacts SET next_follow_up_at=?,updated_at=?,version=version+1 WHERE contact_id=?',
+    (target_until,now,cid)
+   )
+   # Keep queue snooze and reminder plans atomic; SELECT * supplies all snapshot fields.
+   from V208_follow_up_notification_service import sync_follow_up_plan_in_tx
+   updated_contact=dict(c.execute('SELECT * FROM contacts WHERE contact_id=?',(cid,)).fetchone())
+   sync_follow_up_plan_in_tx(c,updated_contact,target_until,reason,a.get('user_id'),now)
+   audit_in_tx(c,a,'workbench.queue.snooze','contact',cid,old,{
+    'until':target_until,'reason':reason,'contact_id':cid,
+    'nextFollowUpBefore':contact['next_follow_up_at'],'nextFollowUpAfter':target_until,
+   },reason,contact['workspace_id'])
+  return h.sendj({'ok':True,'contactId':cid,'action':'snooze','until':target_until,'appliedAt':now}) or True
+
+ # POST /api/v207/admin/workbench/drawer/{contactId}/pin
+ if root=='workbench' and ident=='drawer' and m=='POST' and '/'.join(seg[2:]).endswith('/pin'):
+  cid='/'.join(seg[2:])[:-4]
+  if not cid:return bad(h,'INVALID_CONTACT','客户 ID 不能为空')
+  if not manage(db,a,'contact.update',a['organization_id']):return bad(h,'FORBIDDEN','无联系人修改权限',403)
+  b=h.body()
+  pin_type=str(b.get('type') or 'personal').lower()
+  if pin_type not in ('personal','team','unpin'):return bad(h,'INVALID_PIN_TYPE','type 仅支持 personal/team/unpin',400)
+  now=now_ms()
+  with db.tx() as c:
+   scope=_ops_scope_clause(db,c,a,allow_admin_bypass=True,org=a['organization_id'])
+   wc,wp,_=scope
+   contact=c.execute(
+    f"SELECT contact_id,workspace_id FROM contacts WHERE organization_id=? AND deleted_at IS NULL AND contact_id=? AND {wc}",
+    [a['organization_id'], cid]+wp
+   ).fetchone()
+   if not contact:return bad(h,'NOT_FOUND','联系人不存在或不在你的范围内',404)
+   if pin_type=='unpin':
+    # 取消置顶：删除 actor 自己对该 contact 的 pin 行
+    deleted=c.execute(
+     "DELETE FROM user_dashboard_pins WHERE user_id=? AND pin_key LIKE ?",
+     (a['user_id'],f'contact:{cid}:%')
+    ).rowcount
+    after={'type':None,'pin_key':None,'deleted':deleted}
+    action='workbench.drawer.unpin'
+   else:
+    pin_key=f'contact:{cid}:{pin_type}'
+    # INSERT OR REPLACE 幂等
+    c.execute(
+     'INSERT OR REPLACE INTO user_dashboard_pins(user_id,pin_key,pinned_at) VALUES(?,?,?)',
+     (a['user_id'],pin_key,now)
+    )
+    after={'type':pin_type,'pin_key':pin_key}
+    action=f'workbench.drawer.pin.{pin_type}'
+   audit_in_tx(c,a,action,'contact',cid,{},after,'workbench drawer pin',contact['workspace_id'])
+  return h.sendj({'ok':True,'contactId':cid,'pin':after,'appliedAt':now}) or True
+
+ # POST /api/v207/admin/workbench/filter/applied
+ # 用于记录过滤器切换行为，提供 audit 和分析依据
+ if root=='workbench' and ident=='filter' and action=='applied' and m=='POST':
+  b=h.body()
+  filters=b.get('filters') or {}
+  if not isinstance(filters,dict):return bad(h,'INVALID_INPUT','filters 必须是对象',400)
+  with db.tx() as c:
+   workspace=default_workspace_id(c,a['organization_id'])
+   audit_in_tx(c,a,'workbench.filter.applied','workbench_session',a['user_id'],{},{'filters':filters},None,workspace)
+  return h.sendj({'ok':True,'recordedAt':now_ms()}) or True
+
+ # POST /api/v207/admin/workbench/scope/changed
+ if root=='workbench' and ident=='scope' and action=='changed' and m=='POST':
+  b=h.body()
+  new_workspace=str(b.get('workspaceId') or '').strip()
+  if not new_workspace:return bad(h,'WORKSPACE_REQUIRED','workspaceId 必填',400)
+  if not manage(db,a,'contact.read',a['organization_id']):return bad(h,'FORBIDDEN','无权限',403)
+  with db.tx() as c:
+   ws=c.execute(
+    "SELECT workspace_id FROM workspaces WHERE workspace_id=? AND organization_id=? AND status='active'",
+    (new_workspace,a['organization_id'])
+   ).fetchone()
+   if not ws:return bad(h,'WORKSPACE_NOT_FOUND','工作区不存在',404)
+   workspace=new_workspace
+   audit_in_tx(c,a,'workbench.scope.changed','workbench_session',a['user_id'],{},{'workspace_id':new_workspace,'organization_id':a['organization_id']},None,workspace)
+  return h.sendj({'ok':True,'workspaceId':new_workspace,'appliedAt':now_ms()}) or True
+
+ # GET /api/v207/admin/workbench/drawer/pins
+ # 抽屉内读取当前用户的 pin 列表（用于『我钉的』chip）
+ if root=='workbench' and ident=='drawer' and action=='pins' and m=='GET':
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',a['organization_id'])):return bad(h,'FORBIDDEN','无权限',403)
+  with db.tx(False) as c:
+   pin_rows=c.execute(
+    "SELECT pin_key,pinned_at FROM user_dashboard_pins WHERE user_id=? AND pin_key LIKE 'contact:%' ORDER BY pinned_at DESC LIMIT 50",
+    (a['user_id'],)
+   ).fetchall()
+  pins=[]
+  for r in pin_rows:
+   k=str(r[0])
+   # 格式: contact:ct_xxx:personal|team
+   parts=k.split(':')
+   if len(parts)>=3:
+    pins.append({'contactId':parts[1],'type':parts[2],'pinnedAt':r[1]})
+  return h.sendj({'ok':True,'pins':pins,'scope':{'user_id':a['user_id']}}) or True
+
  if root=='change-password' and m=='POST':
   b=h.body();old=str(b.get('oldPassword') or b.get('currentPassword') or b.get('current_password') or '');new=str(b.get('newPassword') or b.get('new_password') or '')
   if not password_strong(new):return bad(h,'WEAK_PASSWORD','新密码至少 12 位，且必须同时包含字母和数字')
@@ -248,6 +633,15 @@ def dispatch(h,m,p,q,a,db):
 # common organization scope
  org=target(q,a)
  if not org_ok(db,a,org):return bad(h,'FORBIDDEN','无权访问目标企业',403)
+ if root=='rbac' and ident=='changes' and m=='GET':
+  if not (platform(db,a) or can(db,a,'audit.read',organization_id=org) or can(db,a,'role.read',organization_id=org)):return bad(h,'FORBIDDEN','无角色授权变更记录读取权限',403)
+  pno,psz,off=page(q);kind=str(q.get('kind') or '').strip();where=["l.organization_id=?","l.entity_type IN ('role','role_binding','role_template')"];args=[org]
+  if kind:where.append('l.entity_type=?');args.append(kind)
+  clause=' AND '.join(where)
+  with db.tx(False) as c:
+   total=c.execute('SELECT count(*) FROM audit_logs l WHERE '+clause,args).fetchone()[0]
+   its=rows(c,"SELECT l.*,COALESCE(u.display_name,u.login_name,l.actor_id) actor_name FROM audit_logs l LEFT JOIN users u ON u.user_id=l.actor_id WHERE "+clause+' ORDER BY l.created_at DESC,l.audit_id DESC LIMIT ? OFFSET ?',tuple(args+[psz,off]))
+  return h.sendj(pack(its,total,pno,psz)) or True
  if root=='rbac' and ident=='confirmations' and m=='POST':
   if not (platform(db,a) or can(db,a,'user.manage',organization_id=org)):return bad(h,'FORBIDDEN','无权限管理权限',403)
   b=h.body(); action=str(b.get('actionKey') or '').strip(); context=b.get('context') or {}
@@ -256,7 +650,7 @@ def dispatch(h,m,p,q,a,db):
   if not isinstance(context,dict):return bad(h,'INVALID_CONTEXT','确认上下文必须为对象')
   context={**context,'organizationId':org}
   try:result=issue_confirmation(db,a,action,context,int(b.get('ttlMs') or 300000))
-  except ValueError as e:return bad(h,str(e),'无法签发确认凭证')
+  except ValueError as e:return bad(h,'INVALID_CONFIRMATION',str(e),400)
   return h.sendj({'ok':True,**result}) or True
  # V207.3 organization operating model APIs (Admin UI deferred).
  if root in ('departments','business-lines','markets') or (root=='workspaces' and ident and action in ('teams','business-lines','markets')):
@@ -664,39 +1058,48 @@ def dispatch(h,m,p,q,a,db):
  # enterprise role bindings (platform grants intentionally excluded)
  if root=='role-bindings':
   if m=='GET' and not ident:
-   if not (platform(db,a) or can(db,a,'user.read',organization_id=org)):return bad(h,'FORBIDDEN','无授权读取权限',403)
+   if not (platform(db,a) or can(db,a,'role.binding.read',organization_id=org) or can(db,a,'role.read',organization_id=org) or can(db,a,'user.read',organization_id=org)):return bad(h,'FORBIDDEN','无授权读取权限',403)
    status=str(q.get('status') or 'active').strip(); user_id=str(q.get('userId') or q.get('user_id') or '').strip(); role_id=str(q.get('roleId') or q.get('role_id') or '').strip(); scope_type=str(q.get('scopeType') or q.get('scope_type') or '').strip()
    if status not in ('active','disabled','archived','all'):return bad(h,'INVALID_STATUS','授权状态不合法')
    if scope_type and scope_type not in ('organization','workspace','department','team','self'):return bad(h,'INVALID_SCOPE','授权作用域不合法')
    pno,psz,off=page(q);where=['b.organization_id=?',"b.scope_type<>'platform'"];args=[org]
-   if status!='all':where.append('b.status=?');args.append(status)
+   if status!='all':
+    where.append('b.status=?');args.append(status)
+    if status=='active':where.append('(b.valid_from IS NULL OR b.valid_from<=?) AND (b.expires_at IS NULL OR b.expires_at>?)');args.extend([now_ms(),now_ms()])
    if user_id:where.append('b.user_id=?');args.append(user_id)
    if role_id:where.append('b.role_id=?');args.append(role_id)
    if scope_type:where.append('b.scope_type=?');args.append(scope_type)
    clause=' AND '.join(where)
    with db.tx(False) as c:
     total=c.execute('SELECT count(*) FROM role_bindings b WHERE '+clause,tuple(args)).fetchone()[0]
-    its=rows(c,"SELECT b.*,u.login_name,u.display_name,r.name role_name,r.role_code FROM role_bindings b JOIN users u ON u.user_id=b.user_id JOIN roles r ON r.role_id=b.role_id WHERE "+clause+' ORDER BY b.updated_at DESC,b.binding_id LIMIT ? OFFSET ?',tuple(args+[psz,off]))
+    its=rows(c,"""SELECT b.*,u.login_name,u.display_name,r.name role_name,r.role_code,r.is_system,r.scope_level role_scope,
+     (SELECT p.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) position_name,
+     (SELECT d.name FROM user_positions up JOIN positions p ON p.position_id=up.position_id LEFT JOIN departments d ON d.department_id=p.department_id WHERE up.user_id=u.user_id AND up.is_primary=1 AND up.status='active' LIMIT 1) department_name,
+     COALESCE((SELECT name FROM workspaces WHERE b.scope_type='workspace' AND workspace_id=b.scope_id),(SELECT name FROM departments WHERE b.scope_type='department' AND department_id=b.scope_id),(SELECT name FROM teams WHERE b.scope_type='team' AND team_id=b.scope_id),CASE WHEN b.scope_type='organization' THEN '当前企业' WHEN b.scope_type='self' THEN u.display_name END,b.scope_id) scope_name,
+     COALESCE((SELECT display_name FROM users WHERE user_id=b.approved_by),b.approved_by,'—') approved_by_name
+     FROM role_bindings b JOIN users u ON u.user_id=b.user_id JOIN roles r ON r.role_id=b.role_id WHERE """+clause+' ORDER BY b.updated_at DESC,b.binding_id LIMIT ? OFFSET ?',tuple(args+[psz,off]))
+    now=now_ms()
+    for item in its:item['effective_status']='revoked' if item['status']!='active' else ('pending' if item.get('valid_from') and item['valid_from']>now else ('expired' if item.get('expires_at') and item['expires_at']<=now else ('expiring' if item.get('expires_at') and item['expires_at']<=now+7*86400000 else 'active')))
    return h.sendj(pack(its,total,pno,psz)) or True
   if m=='POST' and not ident:
-   if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无授权管理权限',403)
-   b=h.body();user_id=str(b.get('userId') or '').strip();role_id=str(b.get('roleId') or '').strip();scope_type=str(b.get('scopeType') or '').strip();scope_id=str(b.get('scopeId') or '').strip()
+   if not (platform(db,a) or can(db,a,'role.binding.manage',organization_id=org) or can(db,a,'role.manage',organization_id=org)):return bad(h,'FORBIDDEN','无授权管理权限',403)
+   b=h.body();user_id=str(b.get('userId') or '').strip();role_id=str(b.get('roleId') or '').strip();scope_type=str(b.get('scopeType') or '').strip();scope_id=str(b.get('scopeId') or '').strip();valid_from=b.get('validFrom');expires_at=b.get('expiresAt');grant_reason=str(b.get('reason') or '').strip();grant_type=str(b.get('grantType') or 'standard').strip()
    if not all((user_id,role_id,scope_type,scope_id)):return bad(h,'INVALID_INPUT','用户、角色、作用域类型和作用域 ID 均不能为空')
+   if not grant_reason:return bad(h,'GRANT_REASON_REQUIRED','授权原因不能为空')
    if scope_type not in ('organization','workspace','department','team','self'):return bad(h,'INVALID_SCOPE','通用授权接口不允许平台作用域')
-   ctx={'organizationId':org,'roleId':role_id,'scopeId':scope_id,'scopeType':scope_type,'userId':user_id}
+   ctx={'expiresAt':expires_at,'grantType':grant_type,'organizationId':org,'roleId':role_id,'scopeId':scope_id,'scopeType':scope_type,'userId':user_id,'validFrom':valid_from}
    if not consume_confirmation(db,a,'binding.grant',h.headers.get('X-RBAC-Confirmation',''),ctx):return bad(h,'CONFIRMATION_REQUIRED','高风险确认凭证无效或已过期',428)
    try:
     with db.tx() as c:
      w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
      if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
      active_sessions=c.execute("SELECT count(*) FROM sessions WHERE user_id=? AND revoked_at IS NULL AND expires_at>?",(user_id,now_ms())).fetchone()[0]
-     bid=grant_binding_in_tx(c,user_id,role_id,org,scope_type,scope_id,a['user_id'])
+     bid=grant_binding_in_tx(c,user_id,role_id,org,scope_type,scope_id,a['user_id'],valid_from,expires_at,grant_reason,grant_type,a['user_id'])
      item=one(c,'SELECT * FROM role_bindings WHERE binding_id=?',(bid,));audit_in_tx(c,a,'grant','role_binding',bid,{},item,str(b.get('reason') or ''),w[0])
-   except ValueError as e:return bad(h,str(e),'授权主体、角色或作用域无效',400)
    except sqlite3.IntegrityError as e:return bad(h,'BINDING_CONFLICT','授权与租户或作用域约束冲突',409)
    return h.sendj({'ok':True,'bindingId':bid,'item':item,'revokedSessionCount':active_sessions},201) or True
   if ident and m=='DELETE' and action is None:
-   if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无授权管理权限',403)
+   if not (platform(db,a) or can(db,a,'role.binding.manage',organization_id=org) or can(db,a,'role.manage',organization_id=org)):return bad(h,'FORBIDDEN','无授权管理权限',403)
    with db.tx(False) as c:old=one(c,"SELECT * FROM role_bindings WHERE binding_id=? AND organization_id=? AND scope_type<>'platform' AND status='active'",(ident,org))
    if not old:return bad(h,'NOT_FOUND','有效授权不存在',404)
    ctx={'bindingId':ident,'organizationId':org,'roleId':old['role_id'],'scopeId':old['scope_id'],'scopeType':old['scope_type'],'userId':old['user_id']}
@@ -713,7 +1116,7 @@ def dispatch(h,m,p,q,a,db):
   return bad(h,'METHOD_NOT_ALLOWED','授权接口方法不受支持',405)
  # roles and permission matrix
  if root=='permissions' and m=='GET':
-  if not (platform(db,a) or can(db,a,'user.manage',organization_id=org)):return bad(h,'FORBIDDEN','无权限元数据读取权限',403)
+  if not (platform(db,a) or can(db,a,'permission.read',organization_id=org) or can(db,a,'role.read',organization_id=org)):return bad(h,'FORBIDDEN','无权限元数据读取权限',403)
   with db.tx(False) as c:its=rows(c,'SELECT * FROM permissions ORDER BY permission_key')
   resource_zh={'account':'渠道账号','attribution':'归因','audit':'审计','campaign':'营销活动','contact':'联系人','device':'设备','organization':'企业组织','permission':'权限','platform':'平台','role':'角色','source':'来源','team':'团队','touchpoint':'客户触点','user':'用户','workspace':'工作区'}
   action_zh={'read':'查看','manage':'管理','create':'新建','update':'修改','delete':'删除','restore':'恢复','recalculate':'重新计算','disable':'停用','rename':'重命名','bind':'绑定','identity':'身份管理','export':'导出','approve':'审批','path':'路径','structure':'组织架构','self':'本人','admin':'管理员'}
@@ -722,23 +1125,36 @@ def dispatch(h,m,p,q,a,db):
    # 始终根据 permission_key 生成权威中文释义，避免数据库中遗留的英文 key 被原样返回
    x['display_name']=' · '.join(resource_zh.get(p,action_zh.get(p,p)) for p in parts)
    x['resource']=resource_zh.get(resource,resource or '其他')
-   if not x.get('risk_level'):x['risk_level']='high' if action in ('delete','manage','approve') else ('sensitive' if action in ('create','update','bind','export','restore','recalculate','disable','rename','identity') else 'normal')
+   if not x.get('description') or x.get('description')==x.get('permission_key'):x['description']='用于'+x['display_name']+'；实际数据可见性由角色绑定范围决定。'
+   x['recommendation']=('仅建议授予受控管理员并定期复核。' if action in ('delete','manage','approve') else ('建议按职责授予并限制数据范围。' if action in ('create','update','bind','export','restore','recalculate','disable','rename','identity') else '可按岗位需要授予只读访问。'))
+   risk=str(x.get('risk_level') or '').lower();x['risk_level']=risk if risk in ('low','medium','high','critical') else ('high' if action in ('delete','manage','approve') else ('medium' if action in ('create','update','bind','export','restore','recalculate','disable','rename','identity') else 'low'))
+   x['recommendation']=x.get('recommendation') or ('仅建议授予受控管理员并定期复核。' if x['risk_level'] in ('high','critical') else '遵循岗位职责和最小范围授予。')
+   x['scope_names']=scope_mask_names(x.get('scope_mask'))
   return h.sendj({'ok':True,'items':its}) or True
  if root=='roles':
-  if not (platform(db,a) or can(db,a,'user.manage',organization_id=org)):return bad(h,'FORBIDDEN','无角色读取权限',403)
+  if not (platform(db,a) or can(db,a,'role.read',organization_id=org)):return bad(h,'FORBIDDEN','无角色读取权限',403)
   if m=='GET' and not ident:
-   with db.tx(False) as c:its=rows(c,"SELECT r.*,group_concat(rp.permission_key) permissions,(SELECT count(DISTINCT b.user_id) FROM role_bindings b WHERE b.role_id=r.role_id AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active') member_count FROM roles r LEFT JOIN role_permissions rp ON rp.role_id=r.role_id WHERE r.organization_id IS NULL OR r.organization_id=? GROUP BY r.role_id ORDER BY r.is_system DESC,r.scope_level,r.name",(org,org))
+   with db.tx(False) as c:
+    n=now_ms();soon=n+7*86400000;its=rows(c,"""SELECT r.*,group_concat(rp.permission_key) permissions,
+     (SELECT count(DISTINCT b.user_id) FROM role_bindings b WHERE b.role_id=r.role_id AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active' AND (b.valid_from IS NULL OR b.valid_from<=?) AND (b.expires_at IS NULL OR b.expires_at>?)) member_count,
+     (SELECT count(*) FROM role_bindings b WHERE b.role_id=r.role_id AND b.status='active' AND b.valid_from>?) pending_count,
+     (SELECT count(*) FROM role_bindings b WHERE b.role_id=r.role_id AND b.status='active' AND b.expires_at>? AND b.expires_at<=?) expiring_count,
+     (SELECT count(*) FROM role_permissions x JOIN permissions p ON p.permission_key=x.permission_key WHERE x.role_id=r.role_id AND p.risk_level IN ('high','critical')) high_risk_count
+     FROM roles r LEFT JOIN role_permissions rp ON rp.role_id=r.role_id WHERE r.organization_id IS NULL OR r.organization_id=? GROUP BY r.role_id ORDER BY r.is_system DESC,r.scope_level,r.name""",(org,n,n,n,n,soon,org))
+    for item in its:item['role_type']='platform_protected' if item['role_id']=='role_superadmin' else ('standard_template' if item.get('is_system') or item.get('organization_id') is None else 'enterprise_custom')
    return h.sendj({'ok':True,'items':its}) or True
   if ident and m=='GET' and action is None:
    with db.tx(False) as c:
     item=one(c,'SELECT * FROM roles WHERE role_id=? AND (organization_id IS NULL OR organization_id=?)',(ident,org))
-    if item:item['permissionKeys']=[x[0] for x in c.execute('SELECT permission_key FROM role_permissions WHERE role_id=? ORDER BY permission_key',(ident,))]
+    if item:
+      item['permissionKeys']=[x[0] for x in c.execute('SELECT permission_key FROM role_permissions WHERE role_id=? ORDER BY permission_key',(ident,))]
+      item['members']=rows(c,"SELECT b.*,u.login_name,u.display_name FROM role_bindings b JOIN users u ON u.user_id=b.user_id WHERE b.role_id=? AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active' AND (b.valid_from IS NULL OR b.valid_from<=?) AND (b.expires_at IS NULL OR b.expires_at>?) ORDER BY u.display_name",(ident,org,now_ms(),now_ms()))
    if not item:return bad(h,'NOT_FOUND','角色不存在',404)
    return h.sendj({'ok':True,'item':item}) or True
   if ident and action=='members' and m=='GET':
    with db.tx(False) as c:
     role=one(c,'SELECT role_id FROM roles WHERE role_id=? AND (organization_id IS NULL OR organization_id=?)',(ident,org))
-    its=rows(c,"SELECT b.*,u.login_name,u.display_name FROM role_bindings b JOIN users u ON u.user_id=b.user_id WHERE b.role_id=? AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active' ORDER BY u.display_name,b.created_at",(ident,org)) if role else []
+    its=rows(c,"SELECT b.*,u.login_name,u.display_name FROM role_bindings b JOIN users u ON u.user_id=b.user_id WHERE b.role_id=? AND (b.organization_id=? OR b.organization_id IS NULL) AND b.status='active' AND (b.valid_from IS NULL OR b.valid_from<=?) AND (b.expires_at IS NULL OR b.expires_at>?) ORDER BY u.display_name,b.created_at",(ident,org,now_ms(),now_ms())) if role else []
    if not role:return bad(h,'NOT_FOUND','角色不存在',404)
    return h.sendj({'ok':True,'items':its,'total':len(its)}) or True
   if ident and action=='delete-preview' and m=='GET':
@@ -748,7 +1164,7 @@ def dispatch(h,m,p,q,a,db):
    if not role:return bad(h,'NOT_FOUND','角色不存在',404)
    return h.sendj({'ok':True,'roleId':ident,'systemRole':bool(role.get('is_system') or role.get('organization_id') is None),'activeBindingCount':cnt,'canDelete':bool(role.get('organization_id')==org and not role.get('is_system') and cnt==0)}) or True
   if m=='POST' and not ident:
-   if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无角色管理权限',403)
+   if not (platform(db,a) or can(db,a,'role.manage',organization_id=org)):return bad(h,'FORBIDDEN','无角色管理权限',403)
    b=h.body();name=str(b.get('name') or '').strip();code=str(b.get('roleCode') or '').strip() or None;scope=str(b.get('scopeLevel') or 'organization').strip();desc=str(b.get('description') or '').strip();perms=sorted(set(str(x) for x in (b.get('permissionKeys') or [])))
    if not name:return bad(h,'NAME_REQUIRED','角色名称不能为空')
    if scope not in ('organization','workspace','department','team','self'):return bad(h,'INVALID_SCOPE','自定义角色不允许平台作用域')
@@ -757,17 +1173,17 @@ def dispatch(h,m,p,q,a,db):
    rid='role_'+uuid.uuid4().hex;w=None
    try:
     with db.tx() as c:
-     valid={x[0] for x in c.execute('SELECT permission_key FROM permissions')}
-     if any(x not in valid for x in perms):return bad(h,'INVALID_PERMISSION','包含不存在的权限')
+     perms=validate_role_permissions_in_tx(c,scope,perms)
      w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
      if not w:return bad(h,'WORKSPACE_REQUIRED','当前企业缺少有效业务空间',409)
      c.execute("INSERT INTO roles(role_id,organization_id,name,scope_level,status,role_code,description,is_system) VALUES(?,?,?,?,?,?,?,0)",(rid,org,name,scope,'active',code or rid,desc))
      c.executemany('INSERT INTO role_permissions(role_id,permission_key) VALUES(?,?)',[(rid,x) for x in perms])
      item=one(c,'SELECT * FROM roles WHERE role_id=?',(rid,));audit_in_tx(c,a,'create','role',rid,{},item,wid=w[0])
+   except ValueError as e:return bad(h,str(e),'权限不存在或不允许授予到该角色范围',400)
    except sqlite3.IntegrityError:return bad(h,'ROLE_CONFLICT','角色名称、代码或权限冲突',409)
    return h.sendj({'ok':True,'roleId':rid,'item':item},201) or True
   if ident and action=='copy' and m=='POST':
-   if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无角色管理权限',403)
+   if not (platform(db,a) or can(db,a,'role.manage',organization_id=org)):return bad(h,'FORBIDDEN','无角色管理权限',403)
    b=h.body();name=str(b.get('name') or '').strip()
    if not name:return bad(h,'NAME_REQUIRED','新角色名称不能为空')
    ctx={'name':name,'organizationId':org,'sourceRoleId':ident}
@@ -784,7 +1200,7 @@ def dispatch(h,m,p,q,a,db):
    except sqlite3.IntegrityError:return bad(h,'ROLE_CONFLICT','新角色名称冲突',409)
    return h.sendj({'ok':True,'roleId':rid,'item':item},201) or True
   if ident and m=='PATCH' and action is None:
-   if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无角色管理权限',403)
+   if not (platform(db,a) or can(db,a,'role.manage',organization_id=org)):return bad(h,'FORBIDDEN','无角色管理权限',403)
    b=h.body()
    with db.tx(False) as c:old=one(c,'SELECT * FROM roles WHERE role_id=? AND organization_id=? AND is_system=0',(ident,org));oldperms=sorted(x[0] for x in c.execute('SELECT permission_key FROM role_permissions WHERE role_id=?',(ident,))) if old else []
    if not old:return bad(h,'ROLE_IMMUTABLE','角色不存在或系统角色不可编辑',403)
@@ -794,17 +1210,17 @@ def dispatch(h,m,p,q,a,db):
    if not consume_confirmation(db,a,'role.update',h.headers.get('X-RBAC-Confirmation',''),ctx):return bad(h,'CONFIRMATION_REQUIRED','高风险确认凭证无效或已过期',428)
    try:
     with db.tx() as c:
-     valid={x[0] for x in c.execute('SELECT permission_key FROM permissions')}
-     if any(x not in valid for x in perms):return bad(h,'INVALID_PERMISSION','包含不存在的权限')
+     perms=validate_role_permissions_in_tx(c,scope,perms)
      w=c.execute("SELECT workspace_id FROM workspaces WHERE organization_id=? AND status='active' ORDER BY CASE workspace_id WHEN 'ws-global' THEN 0 ELSE 1 END, created_at, workspace_id LIMIT 1",(org,)).fetchone()
      c.execute('UPDATE roles SET name=?,scope_level=?,status=?,description=? WHERE role_id=?',(name,scope,status,desc,ident));c.execute('DELETE FROM role_permissions WHERE role_id=?',(ident,));c.executemany('INSERT INTO role_permissions(role_id,permission_key) VALUES(?,?)',[(ident,x) for x in perms])
      affected=0
      for u in c.execute("SELECT DISTINCT user_id FROM role_bindings WHERE role_id=? AND status='active'",(ident,)).fetchall():affected+=revoke_sessions_in_tx(c,u[0],a['user_id'],'role_permissions_changed')
      item=one(c,'SELECT * FROM roles WHERE role_id=?',(ident,));audit_in_tx(c,a,'update','role',ident,old,item,str(b.get('reason') or ''),w[0] if w else None)
+   except ValueError as e:return bad(h,str(e),'权限不存在或不允许授予到该角色范围',400)
    except sqlite3.IntegrityError:return bad(h,'ROLE_CONFLICT','角色名称、代码或权限冲突',409)
    return h.sendj({'ok':True,'item':item,'revokedSessionCount':affected}) or True
   if ident and m=='DELETE' and action is None:
-   if not manage(db,a,'user.manage',org):return bad(h,'FORBIDDEN','无角色管理权限',403)
+   if not (platform(db,a) or can(db,a,'role.manage',organization_id=org)):return bad(h,'FORBIDDEN','无角色管理权限',403)
    ctx={'organizationId':org,'roleId':ident}
    if not consume_confirmation(db,a,'role.delete',h.headers.get('X-RBAC-Confirmation',''),ctx):return bad(h,'CONFIRMATION_REQUIRED','高风险确认凭证无效或已过期',428)
    with db.tx() as c:
@@ -930,6 +1346,10 @@ def dispatch(h,m,p,q,a,db):
   b=h.body() if m in ('POST','PATCH','DELETE') else {}
   payload,status=handle_touchpoint(db,a,org,m,seg[1] if len(seg)>1 else None,q,b)
   return h.sendj(payload,status) or True
+ if root=='conversions':
+  b=h.body() if m in ('POST','PATCH','DELETE') else {}
+  payload,status=handle_conversion(db,a,org,m,seg[1] if len(seg)>1 else None,q,b)
+  return h.sendj(payload,status) or True
  if root=='attributions':
   b=h.body() if m in ('POST','PATCH','DELETE') else {}
   ident=seg[1] if len(seg)>1 else None
@@ -993,29 +1413,54 @@ def dispatch(h,m,p,q,a,db):
  if root=='devices':
   if not ident and m=='GET':
    if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备读取权限',403)
-   with db.tx(False) as c:its=rows(c,"""SELECT d.*,t.name team_name,u.display_name assigned_user,
-    (SELECT count(*) FROM source_devices sd WHERE sd.device_id=d.device_id) source_count,
-    (SELECT count(*) FROM plugin_sessions ps WHERE ps.device_id=d.device_id AND ps.status='active' AND ps.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000) active_plugin_sessions,
-    (SELECT ps.client_version FROM plugin_sessions ps WHERE ps.device_id=d.device_id ORDER BY ps.last_seen_at DESC LIMIT 1) client_version,
-    (SELECT group_concat(ca.display_name||' ['||p.platform_code||']') FROM device_channel_account_bindings b JOIN channel_accounts ca ON ca.channel_account_id=b.channel_account_id JOIN platforms p ON p.platform_id=b.platform_id WHERE b.device_id=d.device_id AND b.status='active') running_accounts,
-    (SELECT count(*) FROM account_identity_discoveries ad WHERE ad.device_id=d.device_id AND ad.organization_id=d.organization_id AND ad.status='pending') pending_identity_count,
-    (SELECT group_concat(ad.canonical_value||' ['||p.platform_code||' · 待审批]') FROM account_identity_discoveries ad JOIN platforms p ON p.platform_id=ad.platform_id WHERE ad.device_id=d.device_id AND ad.organization_id=d.organization_id AND ad.status='pending') pending_identities,
-    (SELECT count(*) FROM account_identity_discoveries ad WHERE ad.device_id=d.device_id AND ad.organization_id=d.organization_id AND ad.status='approved' AND ad.channel_account_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM device_channel_account_bindings b WHERE b.device_id=d.device_id AND b.channel_account_id=ad.channel_account_id AND b.platform_id=ad.platform_id AND b.status='active')) awaiting_recheck_count,
-    (SELECT group_concat(ad.canonical_value||' ['||p.platform_code||' · 已批准，等待插件重新检测]') FROM account_identity_discoveries ad JOIN platforms p ON p.platform_id=ad.platform_id WHERE ad.device_id=d.device_id AND ad.organization_id=d.organization_id AND ad.status='approved' AND ad.channel_account_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM device_channel_account_bindings b WHERE b.device_id=d.device_id AND b.channel_account_id=ad.channel_account_id AND b.platform_id=ad.platform_id AND b.status='active')) awaiting_recheck_identities
-    FROM devices d LEFT JOIN teams t ON t.team_id=d.team_id LEFT JOIN users u ON u.user_id=d.assigned_user_id
-    WHERE d.organization_id=? ORDER BY d.last_seen_at DESC""",(org,))
-   now=now_ms()
-   online_threshold_ms=120000;offline_threshold_ms=600000
+   with db.tx(False) as c:
+    its=rows(c,"""SELECT d.*,t.name team_name,u.display_name assigned_user,
+     (SELECT count(*) FROM source_devices sd WHERE sd.device_id=d.device_id) source_count,
+     (SELECT count(*) FROM plugin_sessions ps WHERE ps.device_id=d.device_id AND ps.status='active' AND ps.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000) active_plugin_sessions,
+     (SELECT ps.client_version FROM plugin_sessions ps WHERE ps.device_id=d.device_id ORDER BY ps.last_seen_at DESC LIMIT 1) client_version,
+     (SELECT MAX(ps.last_seen_at) FROM plugin_sessions ps WHERE ps.device_id=d.device_id AND ps.status='active' AND ps.expires_at>CAST(strftime('%s','now') AS INTEGER)*1000) last_session_seen
+     FROM devices d LEFT JOIN teams t ON t.team_id=d.team_id LEFT JOIN users u ON u.user_id=d.assigned_user_id
+     WHERE d.organization_id=? ORDER BY d.last_seen_at DESC""",(org,))
+    bindings=rows(c,"""SELECT b.device_id,b.binding_id,b.channel_account_id,b.platform_id,b.external_account_key,b.status,b.bound_at,b.last_verified_at,
+     ca.display_name account_name,p.platform_code,p.platform_name
+     FROM device_channel_account_bindings b
+     LEFT JOIN channel_accounts ca ON ca.channel_account_id=b.channel_account_id
+     LEFT JOIN platforms p ON p.platform_id=b.platform_id
+     WHERE b.organization_id=? AND b.status='active' ORDER BY b.last_verified_at DESC""",(org,))
+    discoveries=rows(c,"""SELECT ad.device_id,ad.discovery_id,ad.channel_account_id,ad.platform_id,ad.identity_type,ad.canonical_value,ad.status,ad.reason_code,ad.last_seen_at,
+     ca.display_name account_name,p.platform_code,p.platform_name
+     FROM account_identity_discoveries ad
+     LEFT JOIN channel_accounts ca ON ca.channel_account_id=ad.channel_account_id
+     LEFT JOIN platforms p ON p.platform_id=ad.platform_id
+     WHERE ad.organization_id=? AND ad.device_id IS NOT NULL AND ad.status IN ('pending','conflict','approved','auto_claimed')
+     ORDER BY ad.last_seen_at DESC""",(org,))
+   bind_by={};disc_by={}
+   for z in bindings:bind_by.setdefault(z.get('device_id'),[]).append(z)
+   for z in discoveries:disc_by.setdefault(z.get('device_id'),[]).append(z)
+   now=now_ms();online_threshold_ms=120000;offline_threshold_ms=600000
    for x in its:
-    last=x.get('last_seen_at');age=max(0,now-int(last or 0)) if last else None
+    last=int(x.get('last_session_seen') or 0) or None;age=max(0,now-int(last)) if last else None
+    # Online status is session-liveness only; the device-level timestamp is a legacy snapshot.
+    x['last_heartbeat_at']=last
+    x['legacy_device_last_seen_at']=x.get('last_seen_at')
     x['heartbeat_age_ms']=age;x['online_threshold_ms']=online_threshold_ms;x['offline_threshold_ms']=offline_threshold_ms
     if x.get('status')!='active':x['online_status']='disabled'
     elif last is None:x['online_status']='unknown'
     elif age<=online_threshold_ms:x['online_status']='online'
     elif age<=offline_threshold_ms:x['online_status']='unstable'
     else:x['online_status']='offline'
-    displays=[v for v in (x.get('running_accounts'),x.get('pending_identities'),x.get('awaiting_recheck_identities')) if v]
-    x['running_accounts_display']='；'.join(displays) if displays else None
+    active=bind_by.get(x.get('device_id'),[]);found=disc_by.get(x.get('device_id'),[])
+    active_keys={(z.get('channel_account_id'),z.get('platform_id')) for z in active}
+    pending=[z for z in found if z.get('status') in ('pending','conflict')]
+    awaiting=[z for z in found if z.get('status') in ('approved','auto_claimed') and z.get('channel_account_id') and (z.get('channel_account_id'),z.get('platform_id')) not in active_keys]
+    x['running_accounts']=active;x['pending_identities']=pending;x['awaiting_recheck_identities']=awaiting
+    x['pending_identity_count']=len(pending);x['awaiting_recheck_count']=len(awaiting)
+    x['effective_account_count']=len({z.get('channel_account_id') for z in active+awaiting if z.get('channel_account_id')})
+    labels=[]
+    labels += [(z.get('account_name') or z.get('channel_account_id') or '未知账号')+' ['+(z.get('platform_code') or z.get('platform_id') or '未知平台')+' · 运行中]' for z in active]
+    labels += [(z.get('canonical_value') or '未知身份')+' ['+(z.get('platform_code') or z.get('platform_id') or '未知平台')+' · '+('身份冲突' if z.get('status')=='conflict' else '待审批')+']' for z in pending]
+    labels += [(z.get('canonical_value') or z.get('account_name') or '未知身份')+' ['+(z.get('platform_code') or z.get('platform_id') or '未知平台')+' · 已批准待复检]' for z in awaiting]
+    x['running_accounts_display']='；'.join(labels) if labels else None
    return h.sendj({'ok':True,'items':its}) or True
   if ident and action=='sessions' and len(seg)==3 and m=='GET':
    if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备会话读取权限',403)
@@ -1041,6 +1486,46 @@ def dispatch(h,m,p,q,a,db):
     if not one(c,'SELECT 1 ok FROM devices WHERE device_id=? AND organization_id=?',(ident,org)):return bad(h,'NOT_FOUND','设备不存在',404)
     its=rows(c,"SELECT da.*,u.display_name assigned_user,t.name team_name FROM device_assignments da LEFT JOIN users u ON u.user_id=da.assigned_user_id LEFT JOIN teams t ON t.team_id=da.team_id WHERE da.device_id=? ORDER BY da.assigned_at DESC",(ident,))
    return h.sendj({'ok':True,'items':its}) or True
+  if ident and action=='rebind' and m=='GET':
+   if not (platform(db,a) or can(db,a,'device.read')):return bad(h,'FORBIDDEN','无设备读取权限',403)
+   with db.tx() as c:
+    now=now_ms();c.execute("UPDATE device_rebind_requests SET status='expired' WHERE device_id=? AND organization_id=? AND status='pending' AND expires_at<?",(ident,org,now))
+    its=rows(c,"SELECT r.rebind_id,r.device_id,r.from_user_id,r.to_user_id,r.from_team_id,r.to_team_id,r.to_workspace_id,r.status,r.expires_at,r.created_by,r.created_at,r.consumed_at,r.revoked_at,r.revoked_by,r.reason,u.display_name target_user,t.name target_team FROM device_rebind_requests r LEFT JOIN users u ON u.user_id=r.to_user_id LEFT JOIN teams t ON t.team_id=r.to_team_id WHERE r.device_id=? AND r.organization_id=? ORDER BY r.created_at DESC",(ident,org))
+   return h.sendj({'ok':True,'items':its}) or True
+  if ident and action=='rebind' and len(seg)==3 and m=='POST':
+   if not (platform(db,a) or manage(db,a,'device.bind',org)):return bad(h,'FORBIDDEN','无设备换绑权限',403)
+   b=h.body();tid=str(b.get('teamId') or '').strip();uid=str(b.get('assignedUserId') or '').strip();reason=str(b.get('reason') or '').strip()
+   if not tid or not uid or not reason:return bad(h,'INVALID_INPUT','目标团队、目标用户和操作原因必填')
+   try:minutes=max(5,min(1440,int(b.get('validMinutes') or 30)))
+   except Exception:return bad(h,'INVALID_INPUT','有效分钟数必须为整数')
+   with db.tx() as c:
+    old=one(c,'SELECT * FROM devices WHERE device_id=? AND organization_id=?',(ident,org))
+    if not old:return bad(h,'NOT_FOUND','设备不存在',404)
+    if old.get('status')!='active':return bad(h,'DEVICE_DISABLED','只有启用设备可以换绑',409)
+    team=one(c,"SELECT * FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(tid,org))
+    if not team:return bad(h,'TEAM_NOT_FOUND','目标团队不存在或未启用',404)
+    wid=team['workspace_id']
+    if not one(c,"SELECT 1 ok FROM users u JOIN team_memberships tm ON tm.user_id=u.user_id AND tm.team_id=? AND tm.status='active' WHERE u.user_id=? AND u.organization_id=? AND u.status='active'",(tid,uid,org)):return bad(h,'USER_TEAM_MISMATCH','用户不是目标团队的有效成员',409)
+    now=now_ms();c.execute("UPDATE device_rebind_requests SET status='expired' WHERE device_id=? AND organization_id=? AND status='pending' AND expires_at<?",(ident,org,now))
+    if one(c,"SELECT 1 ok FROM device_rebind_requests WHERE device_id=? AND organization_id=? AND status='pending'",(ident,org)):return bad(h,'REBIND_PENDING','该设备已有待核销换绑请求，请先撤销',409)
+    raw=''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(20));code='-'.join(raw[i:i+4] for i in range(0,20,4));rid='rbd_'+secrets.token_hex(12);exp=now+minutes*60000
+    c.execute("INSERT INTO device_rebind_requests(rebind_id,organization_id,device_id,from_user_id,to_user_id,from_team_id,to_team_id,to_workspace_id,code_hash,status,expires_at,created_by,created_at,reason) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?,?,?)",(rid,org,ident,old.get('assigned_user_id'),uid,old.get('team_id'),tid,wid,hashlib.sha256(raw.encode()).hexdigest(),exp,a['user_id'],now,reason))
+    revoked=c.execute("UPDATE plugin_sessions SET status='revoked',revoked_at=?,revoked_by=?,revoked_reason='device_rebind_pending' WHERE device_id=? AND organization_id=? AND status='active'",(now,a['user_id'],ident,org)).rowcount
+    disabled=c.execute("UPDATE device_channel_account_bindings SET status='disabled' WHERE device_id=? AND organization_id=? AND status='active'",(ident,org)).rowcount
+    item=one(c,'SELECT * FROM device_rebind_requests WHERE rebind_id=?',(rid,));audit_in_tx(c,a,'create','device_rebind_request',rid,None,{k:v for k,v in item.items() if k!='code_hash'},reason,old.get('workspace_id'))
+   return h.sendj({'ok':True,'item':{k:v for k,v in item.items() if k!='code_hash'},'rebindCode':code,'revokedSessionCount':revoked,'disabledBindingCount':disabled},201) or True
+  if ident and action=='rebind' and len(seg)==5 and seg[4]=='revoke' and m=='POST':
+   if not (platform(db,a) or manage(db,a,'device.bind',org)):return bad(h,'FORBIDDEN','无设备换绑权限',403)
+   rid=seg[3];b=h.body();reason=str(b.get('reason') or '').strip()
+   if not reason:return bad(h,'REASON_REQUIRED','撤销原因必填')
+   with db.tx() as c:
+    old=one(c,"SELECT * FROM device_rebind_requests WHERE rebind_id=? AND device_id=? AND organization_id=?",(rid,ident,org))
+    if not old:return bad(h,'NOT_FOUND','换绑请求不存在',404)
+    if old['status']!='pending':return bad(h,'STATE_CONFLICT','只有待核销换绑请求可以撤销',409)
+    now=now_ms();changed=c.execute("UPDATE device_rebind_requests SET status='revoked',revoked_at=?,revoked_by=? WHERE rebind_id=? AND status='pending'",(now,a['user_id'],rid)).rowcount
+    if changed!=1:return bad(h,'STATE_CONFLICT','换绑请求状态已变化',409)
+    new=one(c,'SELECT * FROM device_rebind_requests WHERE rebind_id=?',(rid,));audit_in_tx(c,a,'revoke','device_rebind_request',rid,{k:v for k,v in old.items() if k!='code_hash'},{k:v for k,v in new.items() if k!='code_hash'},reason,old.get('to_workspace_id'))
+   return h.sendj({'ok':True,'item':{k:v for k,v in new.items() if k!='code_hash'}}) or True
   if ident and action=='assign' and m=='POST':
    if not (platform(db,a) or manage(db,a,'device.bind',org)):return bad(h,'FORBIDDEN','无设备分配权限',403)
    b=h.body();tid=str(b.get('teamId') or '').strip();uid=str(b.get('assignedUserId') or '').strip();reason=str(b.get('reason') or '').strip()
@@ -1093,8 +1578,11 @@ def dispatch(h,m,p,q,a,db):
   if not (platform(db,a) or can(db,a,'contact.read')):return bad(h,'FORBIDDEN','无联系人读取权限',403)
   pno,size,off=page(q)
   with db.tx(False) as c:
-   total=c.execute('SELECT count(*) FROM contact_identities WHERE organization_id=?',(org,)).fetchone()[0]
-   its=rows(c,'SELECT i.*,p.platform_name,p.platform_code,c.manual_name,c.display_name FROM contact_identities i LEFT JOIN platforms p ON p.platform_id=i.platform_id JOIN contacts c ON c.contact_id=i.contact_id WHERE i.organization_id=? ORDER BY i.last_seen_at DESC LIMIT ? OFFSET ?',(org,size,off))
+   scope,scope_args,_=data_scope_clause_in_tx(c,a,'contact.read',org,alias='c')
+   where='i.organization_id=? AND c.organization_id=? AND c.deleted_at IS NULL AND ('+scope+')'
+   args=[org,org]+scope_args
+   total=c.execute('SELECT count(*) FROM contact_identities i JOIN contacts c ON c.contact_id=i.contact_id WHERE '+where,args).fetchone()[0]
+   its=rows(c,'SELECT i.*,p.platform_name,p.platform_code,c.manual_name,c.display_name FROM contact_identities i LEFT JOIN platforms p ON p.platform_id=i.platform_id JOIN contacts c ON c.contact_id=i.contact_id WHERE '+where+' ORDER BY i.last_seen_at DESC,i.contact_identity_id LIMIT ? OFFSET ?',args+[size,off])
   return h.sendj(pack(its,total,pno,size)) or True
  if root=='contacts':
   # Parse locally because earlier route branches reuse contact_id/action.
@@ -1117,19 +1605,64 @@ def dispatch(h,m,p,q,a,db):
     audit_in_tx(c,a,'create','contact',cid,{},b,wid=wid)
    return h.sendj({'ok':True,'contactId':cid,'identityId':iid},201) or True
   if len(seg)==1 and m=='GET':
-   pno,size,off=page(q);search='%'+str(q.get('q') or '')+'%';deleted=q.get('deleted','all')
-   cond="c.organization_id=? AND (?='all' OR (?='yes' AND c.deleted_at IS NOT NULL) OR (?='no' AND c.deleted_at IS NULL)) AND (c.display_name LIKE ? OR c.manual_name LIKE ? OR c.observed_phone LIKE ? OR c.manual_phone LIKE ?)";args=(org,deleted,deleted,deleted,search,search,search,search)
-   with db.tx(False) as c:total=c.execute('SELECT count(*) FROM contacts c WHERE '+cond,args).fetchone()[0];its=rows(c,'SELECT c.*,s.source_name,t.name team_name FROM contacts c LEFT JOIN sources s ON s.source_id=c.source_id LEFT JOIN teams t ON t.team_id=c.team_id WHERE '+cond+' ORDER BY c.updated_at DESC LIMIT ? OFFSET ?',args+(size,off))
+   pno,size,off=page(q);search='%'+str(q.get('q') or '')+'%';deleted=str(q.get('deleted','all')).lower();deleted={'only':'yes','deleted':'yes','1':'yes','true':'yes','none':'no','active':'no','0':'no','false':'no'}.get(deleted,deleted)
+   base_cond="c.organization_id=? AND (?='all' OR (?='yes' AND c.deleted_at IS NOT NULL) OR (?='no' AND c.deleted_at IS NULL)) AND (c.display_name LIKE ? OR c.manual_name LIKE ? OR c.observed_phone LIKE ? OR c.manual_phone LIKE ?)";base_args=[org,deleted,deleted,deleted,search,search,search,search]
+   with db.tx(False) as c:
+    scope,scope_args,_=data_scope_clause_in_tx(c,a,'contact.read',org,alias='c');cond=base_cond+' AND ('+scope+')';args=base_args+scope_args
+    total=c.execute('SELECT count(*) FROM contacts c WHERE '+cond,args).fetchone()[0];its=rows(c,'SELECT c.*,s.source_name,t.name team_name FROM contacts c LEFT JOIN sources s ON s.source_id=c.source_id LEFT JOIN teams t ON t.team_id=c.team_id WHERE '+cond+' ORDER BY c.updated_at DESC LIMIT ? OFFSET ?',args+[size,off])
    return h.sendj(pack(its,total,pno,size)) or True
+  if contact_id and len(seg)==2 and m=='DELETE':
+   if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无联系人软删除权限',403)
+   b=h.body();reason=str(b.get('reason') or '').strip()
+   if not reason:return bad(h,'REASON_REQUIRED','软删除原因必填')
+   with db.tx() as c:
+    scope,scope_args,_=data_scope_clause_in_tx(c,a,'contact.read',org,alias='c');old=one(c,'SELECT c.* FROM contacts c WHERE c.contact_id=? AND c.organization_id=? AND ('+scope+')',[contact_id,org]+scope_args)
+    if not old:return bad(h,'NOT_FOUND','联系人不存在',404)
+    if old.get('deleted_at') is not None:return h.sendj({'ok':True,'item':old,'alreadyDeleted':True}) or True
+    n=now_ms();c.execute('UPDATE contacts SET deleted_at=?,deleted_by=?,delete_reason=?,updated_at=?,version=version+1 WHERE contact_id=? AND organization_id=? AND deleted_at IS NULL',(n,a['user_id'],reason,n,contact_id,org));new=one(c,'SELECT * FROM contacts WHERE contact_id=? AND organization_id=?',(contact_id,org))
+    audit_in_tx(c,a,'soft_delete','contact',contact_id,old,new,reason,old['workspace_id'])
+   return h.sendj({'ok':True,'item':new,'alreadyDeleted':False}) or True
   if contact_id and len(seg)==2 and m=='PATCH':
    if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无联系人修改权限',403)
    b=h.body()
    with db.tx() as c:
-    old=one(c,'SELECT * FROM contacts WHERE contact_id=? AND organization_id=?',(contact_id,org))
+    scope,scope_args,_=data_scope_clause_in_tx(c,a,'contact.read',org,alias='c');old=one(c,'SELECT c.* FROM contacts c WHERE c.contact_id=? AND c.organization_id=? AND ('+scope+')',[contact_id,org]+scope_args)
     if not old:return bad(h,'NOT_FOUND','联系人不存在',404)
     c.execute('UPDATE contacts SET manual_name=?,manual_phone=?,remark=?,status=?,updated_at=?,version=version+1 WHERE contact_id=?',(str(b.get('manualName') if b.get('manualName') is not None else old['manual_name']),str(b.get('manualPhone') if b.get('manualPhone') is not None else old['manual_phone']),str(b.get('remark') if b.get('remark') is not None else old['remark']),str(b.get('status') if b.get('status') is not None else old['status']),now_ms(),contact_id));new=one(c,'SELECT * FROM contacts WHERE contact_id=?',(contact_id,))
     audit_in_tx(c,a,'update','contact',contact_id,old,new,b.get('reason'),old['workspace_id'])
    return h.sendj({'ok':True,'item':new}) or True
+
+ # GET /api/v207/admin/contacts/{contactId}  — OpsDrawer 详情
+ if root=='contacts' and contact_id and len(seg)==2 and m=='GET':
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',org)):return bad(h,'FORBIDDEN','无联系人读取权限',403)
+  with db.tx(False) as c:
+   # 允许本人/团队等有效读取授权进入；目标客户继续由行级 scope 限制，避免越权。
+   wc,wp,_=_ops_scope_clause(db,c,a,True,org,alias='c');fc,fp=_ops_filter_clause(q,'c')
+   r=one(c,f"SELECT c.*,s.source_name,t.name team_name FROM contacts c LEFT JOIN sources s ON s.source_id=c.source_id LEFT JOIN teams t ON t.team_id=c.team_id WHERE c.contact_id=? AND c.organization_id=? AND c.deleted_at IS NULL AND {wc}{fc}",[contact_id,org]+wp+fp)
+   if not r:return bad(h,'NOT_FOUND','联系人不存在',404)
+   logs=rows(c,'SELECT l.*,u.display_name actor_name FROM audit_logs l LEFT JOIN users u ON u.user_id=l.actor_id WHERE l.entity_id=? AND l.entity_type=? ORDER BY l.created_at DESC LIMIT 20',(contact_id,'contact'))
+   touchpoints=rows(c,'SELECT touchpoint_id,touchpoint_type,direction,initiated_by,occurred_at,metadata_json FROM source_touchpoints WHERE contact_id=? ORDER BY occurred_at DESC LIMIT 10',(contact_id,))
+   raw_requested=str(q.get('raw') or '').strip().lower() in ('1','true','yes')
+   allow_raw=False
+   if raw_requested:
+    allow_raw=can(db,a,'message.read.raw',workspace_id=r.get('workspace_id'),team_id=r.get('team_id'),organization_id=org)
+    if not allow_raw:return bad(h,'FORBIDDEN','无消息原文读取权限',403)
+   text_column='text_content' if allow_raw else 'redacted_text'
+   messages=rows(c,f"SELECT m.message_id,m.conversation_id,m.direction,m.sender_type,m.content_type,CASE WHEN m.content_deleted_at IS NOT NULL THEN NULL ELSE m.{text_column} END AS text,m.occurred_at,m.collected_at,m.status,m.content_deleted_at,m.metadata_json,ca.display_name channel_account_name,p.platform_name platform_name FROM conversation_messages m LEFT JOIN conversations v ON v.conversation_id=m.conversation_id LEFT JOIN channel_accounts ca ON ca.channel_account_id=v.channel_account_id LEFT JOIN platforms p ON p.platform_id=v.platform_id WHERE m.contact_id=? AND m.deleted_at IS NULL ORDER BY m.occurred_at IS NULL,m.occurred_at DESC,m.collected_at DESC,m.message_id DESC LIMIT 10",(contact_id,))
+  for m in messages:
+   try:
+    meta=json.loads(m.pop('metadata_json',None) or '{}');tr=meta.get('translation') if isinstance(meta,dict) else None
+    safe_meta={k:meta[k] for k in ('timestampResolved','timestampSource','timestampConfidence','timestampPrecision') if isinstance(meta,dict) and k in meta}
+    if m.get('content_deleted_at') is None and isinstance(tr,dict) and isinstance(tr.get('text'),str) and bool(tr.get('visible',True)):
+     from V208_privacy import redact_text
+     translated=tr['text'] if allow_raw else redact_text(tr['text'])[0]
+     safe_tr={'text':translated[:65536],'source':str(tr.get('source') or 'page')[:80],'visible':True}
+     safe_meta['translation']=safe_tr;m['translation']=safe_tr
+    m['metadata']=safe_meta
+   except Exception:m['metadata']={}
+   if allow_raw:audit_in_tx(c,a,'read_raw','contact_messages',contact_id,{}, {'contactId':contact_id,'workspaceId':r.get('workspace_id'),'teamId':r.get('team_id'),'scope':'latest_10'},'explicit raw message access',r.get('workspace_id'))
+  return h.sendj({'ok':True,'contact':r,'auditLogs':logs,'touchpoints':touchpoints,'messages':messages,'messageContent':'raw' if allow_raw else 'redacted'}) or True
+
  # graph with explicit relations
  if root=='graph' and m=='GET':
   if not (platform(db,a) or can(db,a,'organization.read')):return bad(h,'FORBIDDEN','无组织读取权限',403)
@@ -1175,9 +1708,11 @@ def dispatch(h,m,p,q,a,db):
   return h.sendj(pack_dict) or True
  # recycle bin (deleted contacts)
  if root=='recycle' and m=='GET':
-  if not (platform(db,a) or can(db,a,'contact.read')):return bad(h,'FORBIDDEN','无联系人读取权限',403)
+  if not (platform(db,a) or has_permission_in_any_scope(db,a,'contact.read',org)):return bad(h,'FORBIDDEN','无联系人读取权限',403)
   pno,size,off=page(q)
-  with db.tx(False) as c:total=c.execute('SELECT count(*) FROM contacts WHERE organization_id=? AND deleted_at IS NOT NULL',(org,)).fetchone()[0];its=rows(c,'SELECT c.*,s.source_name FROM contacts c LEFT JOIN sources s ON s.source_id=c.source_id WHERE c.organization_id=? AND c.deleted_at IS NOT NULL ORDER BY c.deleted_at DESC LIMIT ? OFFSET ?',(org,size,off))
+  with db.tx(False) as c:
+   scope,scope_args,_=data_scope_clause_in_tx(c,a,'contact.read',org,alias='c');cond='c.organization_id=? AND c.deleted_at IS NOT NULL AND ('+scope+')';args=[org]+scope_args
+   total=c.execute('SELECT count(*) FROM contacts c WHERE '+cond,args).fetchone()[0];its=rows(c,'SELECT c.*,s.source_name,t.name team_name FROM contacts c LEFT JOIN sources s ON s.source_id=c.source_id LEFT JOIN teams t ON t.team_id=c.team_id WHERE '+cond+' ORDER BY c.deleted_at DESC LIMIT ? OFFSET ?',args+[size,off])
   return h.sendj(pack(its,total,pno,size)) or True
  if root=='recycle' and ident and m=='POST':
   if not manage(db,a,'contact.update',org):return bad(h,'FORBIDDEN','无联系人恢复权限',403)
@@ -1187,6 +1722,35 @@ def dispatch(h,m,p,q,a,db):
    c.execute('UPDATE contacts SET deleted_at=NULL,updated_at=?,version=version+1 WHERE contact_id=?',(now_ms(),ident));new=one(c,'SELECT * FROM contacts WHERE contact_id=?',(ident,))
    audit_in_tx(c,a,'restore','contact',ident,old,new,'从回收站恢复',old['workspace_id'])
   return h.sendj({'ok':True,'item':new}) or True
+ if root=='recycle' and ident and m=='DELETE':
+  if not (platform(db,a) or manage(db,a,'contact.delete',org)):return bad(h,'FORBIDDEN','无联系人永久删除权限',403)
+  b=h.body();
+  if str(b.get('confirm') or '')!='PURGE':return bad(h,'PURGE_CONFIRMATION_REQUIRED','永久删除需要明确确认',428)
+  try:
+   with db.tx() as c:
+    scope,scope_args,_=data_scope_clause_in_tx(c,a,'contact.read',org,alias='c');old=one(c,'SELECT c.* FROM contacts c WHERE c.contact_id=? AND c.organization_id=? AND c.deleted_at IS NOT NULL AND ('+scope+')',[ident,org]+scope_args)
+    if not old:return bad(h,'NOT_FOUND','联系人不存在、未在回收站或不在授权范围',404)
+    # 只清理数据库声明为直接引用 contacts 的行；事务保证任何遗漏引用都会整体回滚。
+    tables=[r[0] for r in c.execute("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()]
+    deleted={}
+    for table in tables:
+     if table in ('contacts','audit_logs'):continue
+     refs=[]
+     try:
+      for fk in c.execute('PRAGMA foreign_key_list("'+table.replace('"','""')+'")').fetchall():
+       if str(fk[2])=='contacts' and str(fk[4])=='contact_id':refs.append(str(fk[3]))
+     except sqlite3.DatabaseError:continue
+     # 兼容历史表未声明 FK 但使用标准 contact_id 字段的情况。
+     cols=[str(x[1]) for x in c.execute('PRAGMA table_info("'+table.replace('"','""')+'")').fetchall()]
+     if 'contact_id' in cols and 'contact_id' not in refs:refs.append('contact_id')
+     if not refs:continue
+     where=' OR '.join('"'+col.replace('"','""')+'"=?' for col in refs);cur=c.execute('DELETE FROM "'+table.replace('"','""')+'" WHERE '+where,[ident]*len(refs))
+     if cur.rowcount:deleted[table]=cur.rowcount
+    cur=c.execute('DELETE FROM contacts WHERE contact_id=? AND organization_id=? AND deleted_at IS NOT NULL',(ident,org))
+    if cur.rowcount!=1:raise RuntimeError('CONTACT_PURGE_RACE')
+    audit_in_tx(c,a,'purge','contact_tombstone',ident,{'contactId':ident,'workspaceId':old['workspace_id'],'deletedAt':old.get('deleted_at')},{'purged':True,'relatedRows':deleted},'回收站永久删除',old['workspace_id'])
+   return h.sendj({'ok':True,'contactId':ident,'purgedRelatedRows':deleted}) or True
+  except sqlite3.IntegrityError:return bad(h,'CONTACT_PURGE_BLOCKED','联系人仍被受保护业务记录引用，永久删除已整体回滚',409)
  # sessions management
  if root=='sessions' and m=='GET':
   if not (platform(db,a) or can(db,a,'user.read')):return bad(h,'FORBIDDEN','无会话读取权限',403)
@@ -1282,6 +1846,24 @@ def dispatch(h,m,p,q,a,db):
     vals=(label,ftype,order,enabled,n,role,zone,quick,json.dumps(opts,ensure_ascii=False),placeholder)
     if m=='POST':c.execute('INSERT INTO custom_field_definitions(workspace_id,field_key,label,field_type,sort_order,enabled,created_at,updated_at,field_role,display_zone,is_quick_edit,options_json,placeholder) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(wid,key,label,ftype,order,enabled,n,n,role,zone,quick,json.dumps(opts,ensure_ascii=False),placeholder))
     else:c.execute('UPDATE custom_field_definitions SET label=?,field_type=?,sort_order=?,enabled=?,updated_at=?,field_role=?,display_zone=?,is_quick_edit=?,options_json=?,placeholder=? WHERE workspace_id=? AND field_key=?',vals+(wid,key))
+    # 定义更新后立即协调已有值，插件与客户档案下一次读取即采用新定义。
+    if m=='PATCH':
+     value_rows=c.execute('SELECT v.contact_id,v.value_json FROM contact_custom_values v JOIN contacts ct ON ct.contact_id=v.contact_id WHERE ct.workspace_id=? AND v.field_key=?',(wid,key)).fetchall()
+     allowed=set(opts)
+     for vr in value_rows:
+      try:value=json.loads(vr[1])
+      except Exception:value=None
+      if ftype=='multi_select':
+       seq=value if isinstance(value,list) else ([] if value in (None,'') else [value]);clean=[]
+       for v in seq:
+        if isinstance(v,str) and v in allowed and v not in clean:clean.append(v)
+       value=clean
+      elif ftype=='single_select':value=value if isinstance(value,str) and value in allowed else None
+      elif ftype in ('text','date'):value=value if isinstance(value,str) else ''
+      elif ftype=='number':value=value if isinstance(value,(int,float)) and not isinstance(value,bool) else None
+      elif ftype=='boolean':value=value if isinstance(value,bool) else None
+      if value is None:c.execute('DELETE FROM contact_custom_values WHERE contact_id=? AND field_key=?',(vr[0],key))
+      else:c.execute('UPDATE contact_custom_values SET value_json=?,updated_at=?,updated_by=? WHERE contact_id=? AND field_key=?',(json.dumps(value,ensure_ascii=False,separators=(',',':')),n,a['user_id'],vr[0],key))
     item=one(c,'SELECT * FROM custom_field_definitions WHERE workspace_id=? AND field_key=?',(wid,key));audit_in_tx(c,a,'create' if m=='POST' else 'update','field_definition',key,old or {},item,wid)
    return h.sendj({'ok':True,'item':item},201 if m=='POST' else 200) or True
   except (sqlite3.IntegrityError,ValueError):return bad(h,'FIELD_CONFLICT','字段配置冲突或排序无效',409)

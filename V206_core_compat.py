@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib,re,secrets,uuid,sqlite3
 from V207_shared_db import now_ms,dumps,loads
 from V208_name_sanitize import sanitize_observed_name
+from V208_avatar import sanitize_avatar
 
 from V207_version import PRODUCT_VERSION as VERSION, SCHEMA_VERSION
 CHANNELS={"whatsapp","instagram","facebook","messenger","telegram","other"}
@@ -198,7 +199,7 @@ def _contact(c,e,dev,src,org_id):
    c.execute(
     "INSERT INTO contacts(contact_id,workspace_id,source_id,channel,external_contact_id,display_name,observed_phone,avatar_url,observed_json,observation_hash,last_observed_device_id,last_observed_at,created_at,updated_at,last_seen_at,organization_id,team_id) "
     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    (cid,wid,sid,ch,ext,observed_name,str(p.get("observedPhone") or ""),str(p.get("avatarUrl") or ""),dumps(stable(p.get("observed") or {})),oh,did,t,t,t,t,org_id,src["team_id"]))
+    (cid,wid,sid,ch,ext,observed_name,str(p.get("observedPhone") or ""),sanitize_avatar(p.get("avatarUrl")),dumps(stable(p.get("observed") or {})),oh,did,t,t,t,t,org_id,src["team_id"]))
    ver=1;action="create"
   else:
    cid=row["contact_id"]
@@ -210,8 +211,8 @@ def _contact(c,e,dev,src,org_id):
     return dict(ok=True,eventId=eid,entityId=cid,version=row["version"],unchanged=True,deviceChanged=device_changed,contact=data),200
    ver=row["version"]+1
    c.execute(
-    "UPDATE contacts SET display_name=CASE WHEN ?<>'' THEN ? ELSE display_name END,observed_phone=?,avatar_url=?,observed_json=?,observation_hash=?,last_observed_device_id=?,last_observed_at=?,version=?,updated_at=?,last_seen_at=? WHERE contact_id=?",
-    (observed_name,observed_name,str(p.get("observedPhone") or ""),str(p.get("avatarUrl") or ""),dumps(stable(p.get("observed") or {})),oh,did,t,ver,t,t,cid))
+    "UPDATE contacts SET display_name=CASE WHEN ?<>'' THEN ? ELSE display_name END,observed_phone=?,avatar_url=CASE WHEN ?<>'' THEN ? ELSE avatar_url END,observed_json=?,observation_hash=?,last_observed_device_id=?,last_observed_at=?,version=?,updated_at=?,last_seen_at=? WHERE contact_id=?",
+    (observed_name,observed_name,str(p.get("observedPhone") or ""),sanitize_avatar(p.get("avatarUrl")),sanitize_avatar(p.get("avatarUrl")),dumps(stable(p.get("observed") or {})),oh,did,t,ver,t,t,cid))
    action="observe"
   data=public_contact(c,c.execute("SELECT * FROM contacts WHERE contact_id=?",(cid,)).fetchone())
   add_change(c,wid,"contact",cid,action,ver,sid,did,data,eid)

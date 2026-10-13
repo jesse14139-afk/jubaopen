@@ -119,13 +119,13 @@ def seed_p1(db_path, org_id='jubaopen'):
                     "INSERT INTO teams(team_id,organization_id,workspace_id,department_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?,'active',?,?)",
                     (team_id, org_id, ws_id, dept_id, team_name, n, n)
                 )
-                c.execute(
-                    "INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,?,?,'manage','active',?,?)",
-                    (ws_id, team_id, org_id, 'primary' if team_index == 0 else 'collaborator', 1 if team_index == 0 else 0, n, n)
-                )
                 print(f"✓ 创建团队：{team_id} - {team_name}")
-            else:
-                print(f"○ 团队已存在：{team_id} - {team_name}，跳过")
+            # 实体存在不代表关系存在：逐项幂等补齐工作区—团队关系。
+            c.execute(
+                "INSERT INTO workspace_teams(workspace_id,team_id,organization_id,relation_type,is_primary,access_level,status,created_at,updated_at) VALUES(?,?,?,?,?,'manage','active',?,?) "
+                "ON CONFLICT(workspace_id,team_id) DO UPDATE SET organization_id=excluded.organization_id,relation_type=excluded.relation_type,is_primary=excluded.is_primary,access_level='manage',status='active',updated_at=excluded.updated_at",
+                (ws_id, team_id, org_id, 'primary' if team_index == 0 else 'collaborator', 1 if team_index == 0 else 0, n, n)
+            )
     
     # ===== 4. 业务线 =====
     business_lines = [
@@ -144,13 +144,13 @@ def seed_p1(db_path, org_id='jubaopen'):
                     "INSERT INTO business_lines(business_line_id,organization_id,name,code,description,status,sort_order,created_at,updated_at) VALUES(?,?,?,?,'P1预设业务线',?,?,?,?)",
                     (bl_id, org_id, bl_name, bl_id, 'active', sort_order, n, n)
                 )
-                c.execute(
-                    "INSERT INTO workspace_business_lines(workspace_id,business_line_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,?,'active',?,?)",
-                    (WS_GLOBAL_ID, bl_id, org_id, 1 if bl_index == 0 else 0, n, n)
-                )
                 print(f"✓ 创建业务线：{bl_id} - {bl_name}")
-            else:
-                print(f"○ 业务线已存在：{bl_id} - {bl_name}，跳过")
+            # 实体存在不代表关系存在：逐项幂等补齐工作区—业务线关系。
+            c.execute(
+                "INSERT INTO workspace_business_lines(workspace_id,business_line_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,?,'active',?,?) "
+                "ON CONFLICT(workspace_id,business_line_id) DO UPDATE SET organization_id=excluded.organization_id,is_primary=excluded.is_primary,status='active',updated_at=excluded.updated_at",
+                (WS_GLOBAL_ID, bl_id, org_id, 1 if bl_index == 0 else 0, n, n)
+            )
     
     # ===== 5. 市场树 =====
     markets = [
@@ -275,7 +275,7 @@ def seed_p1(db_path, org_id='jubaopen'):
 def main():
     _configure_output()
     p = argparse.ArgumentParser(description="P1 企业组织预设初始化")
-    p.add_argument('--db', default=str(ROOT / 'data' / 'jubaopen-v208.db'))
+    p.add_argument('--db', default=str(Path('I:\\jubaopen_data\\jubaopen-v208.db')))
     args = p.parse_args()
     
     db_path = Path(args.db).expanduser().resolve()

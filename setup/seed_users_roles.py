@@ -29,6 +29,14 @@ WS_READONLY_PERMS = (
 
 P1_ROLES = (
     {
+        'role_id': 'role-jbp-sales-self',
+        'name': '业务员本人客户岗',
+        'scope_level': 'self',
+        'role_code': 'jbp_sales_self',
+        'description': '普通业务员可在已授权设备和本人作用域内采集会话、新建并维护本人客户。',
+        'permissions': ('collector.session.issue','collector.write','collector.account.resolve','collector.conversation.resolve','contact.create','contact.read.assigned','contact.update.assigned','conversation.read.self','message.read.self','transfer.create','contact.read','contact.update','team.read','account.read','source.read','source.path.read','campaign.read','touchpoint.read','attribution.read','contact.identity.link','contact.duplicate.review'),
+    },
+    {
         'role_id': 'role-jbp-risk-admin',
         'name': '风控审计岗',
         'scope_level': 'organization',
@@ -126,9 +134,9 @@ P1_USERS = (
         'affiliate_teams': (),
         'org_role_id': None,
         'workspace_role_id': None,
-        'team_role_id': 'role_operator',
+        'team_role_id': 'role-jbp-sales-self',
         'membership_type': 'member',
-        'data_scope': ('team', 'TEAM-JBP'),
+        'data_scope': ('self', 'usr-p1-sales-jbp'),
     },
     {
         'user_id': 'usr-p1-sales-zcm',
@@ -140,9 +148,9 @@ P1_USERS = (
         'affiliate_teams': (),
         'org_role_id': None,
         'workspace_role_id': None,
-        'team_role_id': 'role_operator',
+        'team_role_id': 'role-jbp-sales-self',
         'membership_type': 'member',
-        'data_scope': ('team', 'TEAM-ZCM'),
+        'data_scope': ('self', 'usr-p1-sales-zcm'),
     },
     {
         'user_id': 'usr-p1-lead-rjdj',
@@ -254,48 +262,63 @@ def _bind(c, user_id, role_id, org_id, scope_type, scope_id, granted_by):
 
 
 def _ensure_users(c, org_id, workspace_id, n, granted_by):
+    """创建缺失用户，并对已存在模板用户逐项补齐关系；绝不重置已有密码。"""
     created = 0
     password_hash = salt = iterations = None
     for spec in P1_USERS:
         if spec['org_role_id'] in FORBIDDEN_TEMPLATE_ROLES or spec['workspace_role_id'] in FORBIDDEN_TEMPLATE_ROLES or spec['team_role_id'] in FORBIDDEN_TEMPLATE_ROLES:
             raise RuntimeError('P1_FORBIDDEN_ROLE: 模板用户不得授予企业管理员或平台超级管理员')
-        existing = c.execute(
+        row = c.execute(
             "SELECT user_id FROM users WHERE organization_id=? AND login_name=? COLLATE NOCASE",
             (org_id, spec['login_name']),
         ).fetchone()
-        if existing:
-            continue
-        if password_hash is None:
-            password_hash, salt, iterations = hash_password(P1_PASSWORD)
-        uid = spec['user_id']
-        c.execute(
-            "INSERT INTO users(user_id,organization_id,login_name,display_name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-            (uid, org_id, spec['login_name'], spec['display_name'], 'active', n, n),
-        )
-        c.execute(
-            'INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,1,?)',
-            (uid, password_hash, salt, iterations, n),
-        )
-        c.execute(
-            "INSERT INTO user_positions(user_id,position_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,1,'active',?,?)",
-            (uid, spec['position_id'], org_id, n, n),
-        )
-        if spec['primary_team_id']:
-            kind = spec.get('membership_type') or 'member'
+        if row:
+            uid = row[0]
+            c.execute("UPDATE users SET status='active',updated_at=? WHERE user_id=?", (n, uid))
+        else:
+            uid = spec['user_id']
+            if password_hash is None:
+                password_hash, salt, iterations = hash_password(P1_PASSWORD)
             c.execute(
-                "INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,1,'active',?,NULL,?,?)",
-                (uid, spec['primary_team_id'], kind, n, n, n),
+                "INSERT INTO users(user_id,organization_id,login_name,display_name,status,created_at,updated_at) VALUES(?,?,?,?,? ,?,?)",
+                (uid, org_id, spec['login_name'], spec['display_name'], 'active', n, n),
             )
-        for team_id, kind in spec['affiliate_teams']:
             c.execute(
-                "INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,0,'active',?,NULL,?,?)",
-                (uid, team_id, kind, n, n, n),
+                'INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,1,?)',
+                (uid, password_hash, salt, iterations, n),
+            )
+            created += 1
+        # 仅在凭据完全缺失时为模板账号创建初始凭据，不覆盖已有密码。
+        if not c.execute('SELECT 1 FROM user_credentials WHERE user_id=?', (uid,)).fetchone():
+            if password_hash is None:
+                password_hash, salt, iterations = hash_password(P1_PASSWORD)
+            c.execute('INSERT INTO user_credentials(user_id,password_hash,salt,iterations,must_change,updated_at) VALUES(?,?,?,?,1,?)', (uid,password_hash,salt,iterations,n))
+        c.execute("UPDATE user_positions SET is_primary=0,updated_at=? WHERE user_id=? AND is_primary=1 AND position_id<>?", (n,uid,spec['position_id']))
+        c.execute(
+            "INSERT INTO user_positions(user_id,position_id,organization_id,is_primary,status,created_at,updated_at) VALUES(?,?,?,1,'active',?,?) "
+            "ON CONFLICT(user_id,position_id) DO UPDATE SET organization_id=excluded.organization_id,is_primary=1,status='active',updated_at=excluded.updated_at",
+            (uid,spec['position_id'],org_id,n,n),
+        )
+        desired = []
+        if spec['primary_team_id']:
+            desired.append((spec['primary_team_id'], spec.get('membership_type') or 'member', 1))
+        desired.extend((team_id, kind, 0) for team_id, kind in spec['affiliate_teams'])
+        if spec['primary_team_id']:
+            c.execute("UPDATE team_memberships SET is_primary=0,updated_at=? WHERE user_id=? AND is_primary=1 AND team_id<>?", (n,uid,spec['primary_team_id']))
+        for team_id, kind, primary in desired:
+            c.execute(
+                "INSERT INTO team_memberships(user_id,team_id,membership_type,is_primary,status,joined_at,left_at,created_at,updated_at) VALUES(?,?,?,?, 'active',?,NULL,?,?) "
+                "ON CONFLICT(user_id,team_id) DO UPDATE SET membership_type=excluded.membership_type,is_primary=excluded.is_primary,status='active',left_at=NULL,updated_at=excluded.updated_at",
+                (uid,team_id,kind,primary,n,n,n),
             )
         _bind(c, uid, spec['org_role_id'], org_id, 'organization', org_id, granted_by)
         _bind(c, uid, spec['workspace_role_id'], org_id, 'workspace', workspace_id, granted_by)
-        if spec['primary_team_id']:
-            _bind(c, uid, spec['team_role_id'], org_id, 'team', spec['primary_team_id'], granted_by)
-        created += 1
+        if spec['team_role_id']:
+            scope_type, scope_id = spec.get('data_scope') or ('team', spec['primary_team_id'])
+            if scope_type == 'self':
+                # Upgrade existing installs: remove the historical team-wide operator grant.
+                c.execute("DELETE FROM role_bindings WHERE user_id=? AND organization_id=? AND scope_type='team' AND role_id IN ('role_operator','role-jbp-sales-self')", (uid, org_id))
+            _bind(c, uid, spec['team_role_id'], org_id, scope_type, scope_id, granted_by)
     return created
 
 

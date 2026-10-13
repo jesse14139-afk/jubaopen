@@ -2,7 +2,7 @@
 """V207 联系人外部身份领域服务。负责租户隔离、验证、事务与审计。"""
 import re, sqlite3, uuid
 from V207_shared_db import now_ms, dumps, loads
-from V207_security import can,is_platform_admin
+from V207_security import can,is_platform_admin,data_scope_clause_in_tx
 from V207_scope import resolve_scope
 
 IDENTITY_TYPES={'external_id','email','login','username','handle','phone','mobile','whatsapp','telegram','instagram','facebook','messenger','line','wechat','tiktok'}
@@ -19,6 +19,12 @@ def platform(db,a):return is_platform_admin(db,a)
 
 def allowed(db,a,permission,org):
  return bool(org) and (platform(db,a) or (org==a.get('organization_id') and can(db,a,permission)))
+
+def scoped_contact(c,a,org,contact_id):
+ # Exact-row authorization: no target-derived workspace/team and no broad org fallback.
+ if not org or org!=a.get('organization_id'):return None
+ clause,args,_=data_scope_clause_in_tx(c,a,'contact.read',org,alias='c')
+ return one(c,'SELECT c.* FROM contacts c WHERE c.organization_id=? AND c.contact_id=? AND c.deleted_at IS NULL AND ('+clause+')',[org,contact_id]+args)
 
 def canonical_identity(identity_type,value):
  v=str(value or '').strip();typ=str(identity_type or 'external_id').strip().lower()
@@ -48,8 +54,8 @@ def handle(h,m,seg,q,a,db,org):
   if identity_id:return bad(h,'METHOD_NOT_ALLOWED','身份详情不支持 GET',405)
   if not allowed(db,a,'contact.read',org):return bad(h,'FORBIDDEN','无联系人读取权限',403)
   with db.tx(False) as c:
-   try:scope=resolve_scope(c,org,contact=contact_id)
-   except LookupError:return bad(h,'CONTACT_NOT_FOUND','联系人不存在',404)
+   scope=scoped_contact(c,a,org,contact_id)
+   if not scope:return bad(h,'CONTACT_NOT_FOUND','联系人不存在或无权访问',404)
    its=rows(c,'SELECT i.*,p.platform_name,p.platform_code FROM contact_identities i LEFT JOIN platforms p ON p.platform_id=i.platform_id WHERE i.organization_id=? AND i.workspace_id=? AND i.contact_id=? ORDER BY i.is_primary DESC,i.first_seen_at,i.contact_identity_id',(org,scope['workspace_id'],contact_id))
   return h.sendj({'ok':True,'items':its}) or True
  if m=='POST' and identity_id!='merge':
@@ -62,7 +68,9 @@ def handle(h,m,seg,q,a,db,org):
   typ,canonical=validated;pid=str(b.get('platformId') or '').strip() or None
   try:
    with db.tx() as c:
-    scope=resolve_scope(c,org,contact=contact_id);wid=scope['workspace_id']
+    scope=scoped_contact(c,a,org,contact_id)
+    if not scope:return bad(h,'CONTACT_NOT_FOUND','联系人不存在或无权访问',404)
+    wid=scope['workspace_id']
     if pid and not one(c,"SELECT platform_id FROM platforms WHERE platform_id=? AND status='active'",(pid,)):return bad(h,'PLATFORM_NOT_FOUND','平台不存在或未启用',404)
     if one(c,'SELECT contact_identity_id FROM contact_identities WHERE organization_id=? AND platform_id IS ? AND identity_type=? AND canonical_value=?',(org,pid,typ,canonical)):return bad(h,'IDENTITY_CONFLICT','该外部身份已绑定联系人',409)
     n=now_ms();iid='cid_'+uuid.uuid4().hex;primary=1 if b.get('isPrimary') or not one(c,'SELECT contact_identity_id FROM contact_identities WHERE organization_id=? AND workspace_id=? AND contact_id=?',(org,wid,contact_id)) else 0
@@ -78,7 +86,9 @@ def handle(h,m,seg,q,a,db,org):
   if 'isPrimary' in b and not isinstance(b['isPrimary'],bool):return bad(h,'INVALID_IS_PRIMARY','isPrimary 必须是布尔值')
   try:
    with db.tx() as c:
-    scope=resolve_scope(c,org,contact=contact_id);wid=scope['workspace_id'];old=one(c,'SELECT * FROM contact_identities WHERE contact_identity_id=? AND organization_id=? AND workspace_id=? AND contact_id=?',(identity_id,org,wid,contact_id))
+    scope=scoped_contact(c,a,org,contact_id)
+    if not scope:return bad(h,'CONTACT_NOT_FOUND','联系人不存在或无权访问',404)
+    wid=scope['workspace_id'];old=one(c,'SELECT * FROM contact_identities WHERE contact_identity_id=? AND organization_id=? AND workspace_id=? AND contact_id=?',(identity_id,org,wid,contact_id))
     if not old:return bad(h,'IDENTITY_NOT_FOUND','联系人身份不存在',404)
     if old.get('is_primary') and b.get('isPrimary') is False:return bad(h,'PRIMARY_REQUIRED','不能直接取消主身份，请将其他身份设为主身份',409)
     value=str(b.get('identityValue') if 'identityValue' in b else old['identity_value']).strip();status=str(b.get('verificationStatus',old.get('verification_status') or 'unverified'));metadata=b.get('metadata') if 'metadata' in b else loads(old.get('metadata_json'),{})
@@ -98,7 +108,9 @@ def handle(h,m,seg,q,a,db,org):
   if not allowed(db,a,'contact.identity.manage',org):return bad(h,'FORBIDDEN','无联系人身份管理权限',403)
   try:
    with db.tx() as c:
-    scope=resolve_scope(c,org,contact=contact_id);wid=scope['workspace_id'];old=one(c,'SELECT * FROM contact_identities WHERE contact_identity_id=? AND organization_id=? AND workspace_id=? AND contact_id=?',(identity_id,org,wid,contact_id))
+    scope=scoped_contact(c,a,org,contact_id)
+    if not scope:return bad(h,'CONTACT_NOT_FOUND','联系人不存在或无权访问',404)
+    wid=scope['workspace_id'];old=one(c,'SELECT * FROM contact_identities WHERE contact_identity_id=? AND organization_id=? AND workspace_id=? AND contact_id=?',(identity_id,org,wid,contact_id))
     if not old:return bad(h,'IDENTITY_NOT_FOUND','联系人身份不存在',404)
     count=c.execute('SELECT count(*) FROM contact_identities WHERE organization_id=? AND workspace_id=? AND contact_id=?',(org,wid,contact_id)).fetchone()[0]
     if count<=1:return bad(h,'LAST_IDENTITY','不能删除联系人的最后一个身份',409)
@@ -110,18 +122,19 @@ def handle(h,m,seg,q,a,db,org):
   except sqlite3.IntegrityError:return bad(h,'IDENTITY_CONFLICT','身份或主身份约束冲突',409)
   return h.sendj({'ok':True}) or True
  if len(seg)==4 and seg[3]=='merge' and m=='POST':
+  return bad(h,'LEGACY_MERGE_DISABLED','旧版身份迁移式合并已停用，请使用客户原子合并或提交审批申请',410)
   if not allowed(db,a,'contact.identity.manage',org):return bad(h,'FORBIDDEN','无联系人身份管理权限',403)
   b=h.body();src=str(b.get('sourceContactId') or '').strip()
   if not src:return bad(h,'INVALID_SOURCE','sourceContactId 不能为空')
   if src==contact_id:return bad(h,'INVALID_SOURCE','不能合并自身')
   try:
    with db.tx() as c:
-    scope=resolve_scope(c,org,contact=contact_id);wid=scope['workspace_id']
-    try:sscope=resolve_scope(c,org,contact=src)
-    except LookupError:return bad(h,'CONTACT_NOT_FOUND','来源联系人不存在',404)
-    if sscope['workspace_id']!=wid:return bad(h,'WORKSPACE_MISMATCH','两个联系人不在同一工作区，无法合并',409)
-    src_row=one(c,'SELECT contact_id,display_name,deleted_at FROM contacts WHERE contact_id=? AND organization_id=? AND workspace_id=?',(src,org,wid))
-    if not src_row:return bad(h,'CONTACT_NOT_FOUND','来源联系人不存在',404)
+    scope=scoped_contact(c,a,org,contact_id)
+    if not scope:return bad(h,'CONTACT_NOT_FOUND','联系人不存在或无权访问',404)
+    wid=scope['workspace_id']
+    src_row=scoped_contact(c,a,org,src)
+    if not src_row:return bad(h,'CONTACT_NOT_FOUND','来源联系人不存在或无权访问',404)
+    if src_row['workspace_id']!=wid:return bad(h,'WORKSPACE_MISMATCH','两个联系人不在同一工作区，无法合并',409)
     if src_row.get('deleted_at'):return bad(h,'CONTACT_DELETED','来源联系人已删除',409)
     moved=0;dedup=0
     for it in rows(c,'SELECT * FROM contact_identities WHERE organization_id=? AND workspace_id=? AND contact_id=? ORDER BY is_primary DESC,first_seen_at',(org,wid,src)):

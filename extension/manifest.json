@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "208.1.7",
-  "description": "JubaOpen WA/TG 零接触接入、数据采集与客户互动面板",
+  "version": "210.2.75",
+  "version_name": "210.2.75",
+  "description": "JubaOpen 210.2.75 跟进弹窗与独立桌面通知、全组件版本统一修复",
   "permissions": [
     "storage",
     "tabs",
-    "alarms"
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "http://*/*",
@@ -32,15 +34,68 @@
     },
     {
       "matches": [
-        "https://web.whatsapp.com/*",
+        "https://www.instagram.com/direct/*",
+        "https://www.messenger.com/*",
+        "https://www.facebook.com/messages/*"
+      ],
+      "js": [
+        "content/meta-page-probe.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "content/message-normalizer.js",
+        "content/adapters/whatsapp.js",
+        "content/chat-panel.js",
+        "content/bootstrap.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "https://web.telegram.org/a/*",
         "https://web.telegram.org/k/*"
       ],
       "js": [
-        "content/adapters/whatsapp.js",
+        "content/message-normalizer.js",
         "content/adapters/telegram.js",
         "content/chat-panel.js",
         "content/bootstrap.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.instagram.com/direct/*",
+        "https://www.messenger.com/*",
+        "https://www.facebook.com/messages/*"
+      ],
+      "js": [
+        "content/message-normalizer.js",
+        "content/adapters/meta-common.js",
+        "content/adapters/instagram.js",
+        "content/adapters/messenger.js",
+        "content/adapters/facebook.js",
+        "content/chat-panel.js",
+        "content/bootstrap.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://web.whatsapp.com/*",
+        "https://www.instagram.com/*",
+        "https://www.messenger.com/*",
+        "https://www.facebook.com/messages/*",
+        "https://web.telegram.org/*"
+      ],
+      "js": [
+        "content/followup-notifications.js"
       ],
       "run_at": "document_idle"
     }

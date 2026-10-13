@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Schema 214 只读数据字典：合并运行时 SQLite 元数据与中文业务释义。"""
+"""Schema 222 只读数据字典：合并运行时 SQLite 元数据与中文业务释义。"""
 from V207_version import SCHEMA_VERSION, PRODUCT_VERSION, CATALOG_VERSION
 
 CATEGORIES={
@@ -43,6 +43,8 @@ TABLES={
  'devices':('device','设备表','保存安装实例、系统名称、用户别名、管理员名称及归属。'),
  'device_assignments':('device','设备分配记录表','记录设备分配给用户和团队的时间历史。'),
  'device_enrollments':('device','设备接入邀请表','保存管理员创建的设备接入邀请、预分配归属、绑定码摘要、有效期、核销设备及撤销状态。'),
+ 'device_rebind_requests':('device','设备换绑请求表','保存设备一次性换绑码摘要、目标归属、有效期、核销与撤销状态。'),
+ 'user_dashboard_pins':('identity','用户工作台置顶表','保存用户在管理工作台中置顶的功能入口及置顶时间。'),
  'channel_types':('channel','渠道类型定义表','定义不同平台支持的渠道形态、收发方向、启用状态和排序规则，供渠道账号与来源统一引用。'),
  'source_type_definitions':('source','来源类型定义表','维护直接访问、广告、推荐、导入等来源类型标准字典，统一来源识别、筛选和归因口径。'),
  'contacts':('contact','联系人表','保存联系人观测资料、人工资料、业务状态、来源和软删除信息。'),
@@ -86,7 +88,7 @@ LABELS={
  'contact_id':'联系人 ID','external_contact_id':'外部联系人 ID','observed_phone':'观测电话','avatar_url':'头像地址','observed_json':'观测资料','observation_hash':'观测摘要','manual_name':'人工姓名','manual_phone':'人工电话','remark':'备注','business_json':'业务扩展资料','last_observed_device_id':'最后观测设备 ID','last_observed_at':'最后观测时间','version':'数据版本','deleted_at':'删除时间','deleted_by':'删除人','delete_reason':'删除原因',
  'campaign_id':'活动 ID','campaign_name':'活动名称','campaign_code':'活动代码','campaign_type':'活动类型','platform_name':'平台名称','platform_code':'平台代码','platform_kind':'平台类型','touchpoint_type':'触点类型','path_position':'路径位置','verification_status':'验证状态','team_name':'团队名称','workspace_name':'工作区名称','security_event_id':'安全事件 ID','event_type':'事件类型','migration_id':'迁移编号','migration_name':'迁移名称','checksum':'校验值','applied_by':'执行人', 'source_link_id':'来源关系 ID','from_source_id':'父来源 ID','to_source_id':'子来源 ID','link_type':'关系类型','tag_id':'标签 ID','color':'颜色','category':'分类','sort_order':'排序值','enabled':'是否启用','field_key':'字段键','label':'字段名称','field_type':'字段类型','options':'候选选项','value_json':'字段值','updated_by':'更新人',
  'event_id':'事件 ID','request_id':'请求 ID','entity_type':'实体类型','entity_id':'实体 ID','operation':'操作类型','base_version':'基础版本','payload_json':'事件载荷','payload_hash':'载荷摘要','result_version':'结果版本','error_code':'错误编码','applied_at':'应用时间','result_json':'处理结果','change_id':'变更游标','changed_at':'变更时间',
- 'audit_id':'审计 ID','actor_id':'操作者 ID','before_json':'变更前内容','after_json':'变更后内容','reason':'操作原因','confirmation_id':'确认凭证 ID','expected_version':'预期版本','impact_hash':'影响范围摘要','used_at':'使用时间','created_by':'创建人','revision':'配置修订号','items_json':'配置内容'}
+ 'audit_id':'审计 ID','actor_id':'操作者 ID','before_json':'变更前内容','after_json':'变更后内容','reason':'操作原因','confirmation_id':'确认凭证 ID','expected_version':'预期版本','impact_hash':'影响范围摘要','used_at':'使用时间','created_by':'创建人','revision':'配置修订号','items_json':'配置内容','stage':'业务阶段','owner_user_id':'负责人用户 ID','next_follow_up_at':'下次跟进时间','last_touch_at':'最后触达时间','pin_key':'置顶入口编码','pinned_at':'置顶时间'}
 
 SPECIAL={
  'meta.key':'系统元数据项的唯一名称。','meta.value':'对应元数据项的文本值。',
@@ -112,9 +114,85 @@ SPECIAL={
 
 LABELS.update({
  'enrollment_id':'设备接入邀请 ID','binding_code_hash':'绑定码摘要','consumed_at':'核销时间','consumed_device_id':'核销设备 ID',
- 'created_by':'创建人','revoked_by':'撤销人','channel_type_id':'渠道类型 ID','channel_type_code':'渠道类型编码',
+ 'created_by':'创建人','revoked_by':'撤销人','rebind_id':'换绑请求 ID','from_user_id':'原用户 ID','to_user_id':'目标用户 ID','from_team_id':'原团队 ID','to_team_id':'目标团队 ID','to_workspace_id':'目标工作区 ID','code_hash':'换绑码摘要','revoked_at':'撤销时间','channel_type_id':'渠道类型 ID','channel_type_code':'渠道类型编码',
  'source_type_id':'来源类型 ID','source_type_code':'来源类型编码','direction':'收发方向','is_active':'是否启用','sort_order':'排序顺序'
 })
+
+
+# Schema 219：联系人中心用户偏好。
+TABLES.update({
+ 'user_contact_center_preferences':('identity','联系人中心用户偏好表','保存企业用户在联系人中心的界面筛选、排序及展示偏好，并通过版本号支持并发更新。')
+})
+LABELS.update({'preferences_json':'联系人中心偏好配置'})
+SPECIAL.update({'user_contact_center_preferences.preferences_json':'保存联系人中心筛选、排序和展示设置的 JSON 配置。'})
+
+# Schema 218/219：业务场景、来源解析、交互幂等与转化领域数据字典。
+TABLES.update({
+ 'interaction_idempotency':('event','交互幂等记录表','保存交互操作的请求摘要与响应结果，防止客户端重试造成重复建档或重复写入。'),
+ 'source_resolution_logs':('source','来源解析日志表','记录来源解析器的输入摘要、解析方法、置信度、结果及错误，支持来源识别审计与排障。'),
+ 'contact_conversions':('attribution','联系人转化记录表','记录联系人转化金额、币种、状态、来源与归因关联，并支持幂等创建和受控状态流转。')
+})
+LABELS.update({
+ 'business_scene':'业务场景','contact_entry_policy':'联系人建档策略','default_market_id':'默认市场 ID','suggested_source_type_id':'建议来源类型 ID',
+ 'conversion_id':'转化 ID','conversion_status':'转化状态','amount_minor':'最小货币单位金额','converted_at':'转化时间','external_conversion_key':'外部转化幂等键',
+ 'idempotency_id':'幂等记录 ID','idempotency_key':'幂等键','request_hash':'请求摘要','response_json':'响应 JSON',
+ 'resolution_log_id':'来源解析日志 ID','input_digest':'解析输入摘要','resolver_version':'解析器版本','resolution_method':'解析方法','input_summary_json':'输入摘要 JSON',
+ 'event_key':'事件幂等键','source_fingerprint':'来源指纹','entry_url':'入口 URL','referrer_url':'引荐 URL',
+ 'platform_object_type':'平台对象类型','platform_object_id':'平台对象 ID','platform_actor_id':'平台主体 ID','platform_actor_name':'平台主体名称',
+ 'ad_set_name':'广告组名称','ad_name':'广告名称','utm_source':'UTM 来源','utm_medium':'UTM 媒介','utm_campaign':'UTM 活动',
+ 'utm_content':'UTM 内容','utm_term':'UTM 关键词','resolution_confidence':'解析置信度'
+})
+SPECIAL.update({
+ 'channel_accounts.business_scene':'定义渠道账号承载的业务场景，用于约束业务用途、采集开关与建档策略的合法组合。',
+ 'channel_accounts.contact_entry_policy':'定义渠道账号何时创建联系人，包括人工建档、首次入站消息、仅已有联系人或禁用。',
+ 'contact_conversions.conversion_status':'转化生命周期状态；支持 pending、won、lost、cancelled 和 refunded，并按状态机受控流转。',
+ 'contact_conversions.amount_minor':'以币种最小单位保存的整数金额，例如人民币分或美元美分。',
+ 'contact_conversions.external_conversion_key':'企业范围内的外部幂等键，用于避免同一外部转化被重复创建。',
+ 'interaction_idempotency.request_hash':'对规范化请求内容计算的摘要，用于识别同一幂等键下的参数冲突。',
+ 'interaction_idempotency.response_json':'首次成功操作的响应快照，以 JSON 文本保存并供安全重放。',
+ 'source_resolution_logs.input_digest':'对来源解析原始输入计算的不可逆摘要，支持去重与审计且不暴露原文。',
+ 'source_resolution_logs.resolution_method':'记录解析来源所采用的方法，例如确定性规则、平台对象映射或降级策略。',
+ 'source_resolution_logs.input_summary_json':'来源解析输入的脱敏摘要，以 JSON 文本保存用于诊断。',
+ 'sources.source_fingerprint':'由稳定来源属性生成的指纹，用于企业工作区范围内的来源去重。',
+ 'source_nodes.source_fingerprint':'来源节点视图中的稳定来源指纹，用于统一来源识别与去重。',
+ 'sources.resolution_confidence':'来源解析结果的置信度，取值用于衡量自动识别结果的可靠程度。',
+ 'source_nodes.resolution_confidence':'来源节点视图中的解析置信度，反映自动识别结果可靠程度。'
+})
+
+# Schema 222：跨平台会话、稳定消息分页与客户转交状态机。
+TABLES.update({
+ 'contact_transfer_events':('contact','客户转交事件表','按时间顺序保存客户转交的创建、匹配、确认、拒绝、取消、失败、过期及目标会话关联事件。')
+})
+LABELS.update({
+ 'closed_at':'关闭时间','closed_by':'关闭人','archived_at':'归档时间','archived_by':'归档人',
+ 'last_message_id':'最后消息 ID','last_message_direction':'最后消息方向','last_message_type':'最后消息类型','last_message_preview':'最后消息摘要',
+ 'message_count':'消息总数','inbound_count':'入站消息数','outbound_count':'出站消息数',
+ 'reply_to_message_id':'回复消息 ID','attachment_count':'附件数量','has_sensitive_content':'是否包含敏感内容','source_event_id':'来源事件 ID','ingestion_version':'采集版本',
+ 'transfer_type':'转交类型','from_platform_id':'来源平台 ID','to_platform_id':'目标平台 ID','requested_by':'发起人','requested_at':'发起时间',
+ 'accepted_by':'确认人','accepted_at':'确认时间','rejected_by':'拒绝人','rejected_at':'拒绝时间','cancelled_by':'取消人','cancelled_at':'取消时间',
+ 'failed_at':'失败时间','expired_at':'过期处理时间','rejection_reason':'拒绝原因','failure_code':'失败编码','failure_reason':'失败原因',
+ 'matched_identity_id':'匹配身份 ID','match_confidence':'匹配置信度','match_evidence_json':'匹配证据 JSON','from_status':'原状态','to_status':'目标状态','details_json':'事件详情 JSON'
+})
+SPECIAL.update({
+ 'conversations.closed_at':'会话被关闭的毫秒时间戳；重新打开后清空。','conversations.closed_by':'执行会话关闭操作的用户标识。',
+ 'conversations.archived_at':'会话被归档的毫秒时间戳；恢复后清空。','conversations.archived_by':'执行会话归档操作的用户标识。',
+ 'conversations.last_message_id':'列表摘要对应的最后一条消息标识，避免列表查询重复扫描消息表。',
+ 'conversations.last_message_direction':'最后消息的入站或出站方向，用于列表筛选和展示。','conversations.last_message_type':'最后消息的内容类型。',
+ 'conversations.last_message_preview':'已脱敏的最后消息摘要，可在不读取原文时安全展示。','conversations.message_count':'会话累计消息总数的缓存计数。',
+ 'conversations.inbound_count':'会话累计入站消息数的缓存计数。','conversations.outbound_count':'会话累计出站消息数的缓存计数。',
+ 'conversation_messages.reply_to_message_id':'当前消息所回复的消息标识，用于还原引用关系。','conversation_messages.attachment_count':'当前消息包含的附件数量。',
+ 'conversation_messages.has_sensitive_content':'标识消息是否检测到敏感内容，常规读取仍使用脱敏正文。','conversation_messages.source_event_id':'采集端来源事件标识，用于追踪和辅助去重。',
+ 'conversation_messages.ingestion_version':'消息采集和规范化规则版本，用于后续审计。',
+ 'contact_transfers.transfer_type':'转交业务类型；当前页面开放跨渠道转交。','contact_transfers.from_platform_id':'来源会话所属平台标识。',
+ 'contact_transfers.to_platform_id':'目标渠道账号所属平台标识。','contact_transfers.requested_by':'发起客户转交的用户标识。','contact_transfers.requested_at':'转交申请创建的毫秒时间戳。',
+ 'contact_transfers.accepted_by':'最终确认转交的用户标识。','contact_transfers.accepted_at':'转交确认完成的毫秒时间戳。','contact_transfers.rejected_by':'拒绝转交的用户标识。',
+ 'contact_transfers.rejected_at':'转交被拒绝的毫秒时间戳。','contact_transfers.cancelled_by':'取消转交的用户标识。','contact_transfers.cancelled_at':'转交被取消的毫秒时间戳。',
+ 'contact_transfers.failed_at':'转交被标记失败的毫秒时间戳。','contact_transfers.expired_at':'系统或用户将转交处理为过期的时间。','contact_transfers.rejection_reason':'拒绝转交时填写的业务原因。',
+ 'contact_transfers.failure_code':'转交失败的标准错误编码。','contact_transfers.failure_reason':'转交失败的详细业务原因。','contact_transfers.matched_identity_id':'用于确认同一客户的目标平台身份标识。',
+ 'contact_transfers.match_confidence':'身份与目标会话匹配置信度。','contact_transfers.match_evidence_json':'脱敏后的身份匹配证据 JSON。',
+ 'contact_transfer_events.from_status':'事件发生前的转交状态。','contact_transfer_events.to_status':'事件完成后的转交状态。','contact_transfer_events.details_json':'事件附加信息 JSON，用于时间线和审计排障。'
+})
+
 SENSITIVE={'password_hash','salt','access_token_hash','identity_value','observed_phone','manual_phone','payload_json','before_json','after_json','result_json','ip','user_agent'}
 JSON_FIELDS={x for x in LABELS if x.endswith('_json')}|{'items_json'}
 TIME_FIELDS={x for x in LABELS if x.endswith('_at')}
@@ -202,6 +280,79 @@ def _scope_type(fields):
  if 'workspace_id' in names:return 'workspace'
  return 'global/system'
 
+
+# 210.1.16 follow-up notification center catalog
+# Keep Schema 222 documentation in the source-controlled, read-only catalog used by release_gate.py.
+TABLES.update({
+ 'follow_up_notifications':('contact','客户跟进通知表','保存客户跟进计划、到期状态、负责人、渠道快照及完成或取消证据。'),
+ 'follow_up_notification_receipts':('contact','客户跟进通知回执表','按接收用户保存提醒、阅读、稍后、不再提醒及消费者领取租约。'),
+ 'platform_admin_notification_subscriptions':('contact','平台管理员通知代管表','记录平台超级管理员按企业选择代管的业务员通知范围。'),
+})
+LABELS.update({
+ 'notification_id':'通知标识','receipt_id':'回执标识','recipient_user_id':'接收用户','owner_user_id':'负责人',
+ 'follow_up_at':'计划跟进时间','follow_up_reason':'跟进事由','customer_name':'客户名称快照',
+ 'platform_code':'平台代码','platform_abbr':'平台简称','channel_account_name':'渠道账号名称',
+ 'source_device_id':'来源设备标识','source_device_name':'来源设备名称','completed_at':'完成时间',
+ 'completed_by_user_id':'完成人员','completion_mode':'完成方式','completion_message_id':'完成依据消息',
+ 'completion_evidence_json':'完成证据','cancelled_at':'取消时间','cancellation_reason':'取消或改期原因',
+ 'first_due_at':'首次到期时间','last_scanned_at':'最近扫描时间','contact_version':'联系人版本快照',
+ 'first_alerted_at':'首次提醒时间','last_alerted_at':'最近提醒时间','next_alert_at':'下次提醒时间',
+ 'alert_count':'提醒次数','read_at':'阅读时间','snooze_until':'稍后提醒截止时间','dismissed_at':'不再提醒时间',
+ 'claimed_by_consumer':'领取消费者','claim_expires_at':'领取租约到期时间',
+ 'last_consumer_type':'最近消费者类型','last_consumer_id':'最近消费者标识',
+})
+SPECIAL.update({
+ 'follow_up_notifications.notification_id':'客户跟进通知计划的唯一标识。',
+ 'follow_up_notifications.organization_id':'通知所属企业，用于租户隔离。',
+ 'follow_up_notifications.workspace_id':'通知所属工作区。',
+ 'follow_up_notifications.team_id':'客户及通知当前所属团队。',
+ 'follow_up_notifications.contact_id':'需要执行跟进的客户标识。',
+ 'follow_up_notifications.owner_user_id':'通知生成时的客户负责人；负责人变化后重新同步回执。',
+ 'follow_up_notifications.follow_up_at':'客户计划跟进的毫秒级 Unix 时间戳。',
+ 'follow_up_notifications.follow_up_reason':'设置跟进计划时填写的业务事由。',
+ 'follow_up_notifications.customer_name':'生成或同步通知时保存的客户名称快照。',
+ 'follow_up_notifications.platform_id':'客户最近会话对应的平台标识。',
+ 'follow_up_notifications.platform_code':'客户最近会话对应的平台代码快照。',
+ 'follow_up_notifications.platform_abbr':'客户最近会话对应的平台简称快照。',
+ 'follow_up_notifications.channel_account_id':'客户最近会话使用的渠道账号标识。',
+ 'follow_up_notifications.channel_account_name':'客户最近会话使用的渠道账号名称快照。',
+ 'follow_up_notifications.source_device_id':'最近观测该客户的来源设备标识。',
+ 'follow_up_notifications.source_device_name':'最近观测该客户的来源设备名称快照。',
+ 'follow_up_notifications.status':'通知生命周期状态，包括待到期、已到期、逾期、完成、取消或改期替代。',
+ 'follow_up_notifications.completed_at':'通知任务完成时的毫秒级 Unix 时间戳。',
+ 'follow_up_notifications.completed_by_user_id':'执行或触发完成动作的用户标识。',
+ 'follow_up_notifications.completion_mode':'完成方式，例如人工完成、出站消息或对账完成。',
+ 'follow_up_notifications.completion_message_id':'自动完成通知时作为证据的出站消息标识。',
+ 'follow_up_notifications.completion_evidence_json':'以 JSON 文本保存通知完成依据和上下文。',
+ 'follow_up_notifications.cancelled_at':'通知被取消或改期替代时的毫秒级 Unix 时间戳。',
+ 'follow_up_notifications.cancellation_reason':'记录取消、改期或被新计划替代的业务原因。',
+ 'follow_up_notifications.first_due_at':'通知首次进入已到期状态的毫秒级 Unix 时间戳。',
+ 'follow_up_notifications.last_scanned_at':'扫描器最近检查并对账该通知的毫秒级 Unix 时间戳。',
+ 'follow_up_notifications.contact_version':'最近同步通知时保存的联系人乐观锁版本。',
+ 'follow_up_notifications.version':'通知主记录的乐观锁版本。',
+ 'follow_up_notifications.created_at':'通知主记录创建时的毫秒级 Unix 时间戳。',
+ 'follow_up_notifications.updated_at':'通知主记录最后更新时的毫秒级 Unix 时间戳。',
+ 'follow_up_notification_receipts.receipt_id':'每位通知接收人的回执唯一标识。',
+ 'follow_up_notification_receipts.notification_id':'回执所关联的客户跟进通知标识。',
+ 'follow_up_notification_receipts.organization_id':'回执所属企业，用于租户隔离。',
+ 'follow_up_notification_receipts.recipient_user_id':'实际接收铃声、桌面通知及待处理任务的用户标识。',
+ 'follow_up_notification_receipts.status':'个人回执状态，包括未读、已读、稍后提醒、不再提醒或关闭。',
+ 'follow_up_notification_receipts.first_alerted_at':'该接收人首次收到提醒的毫秒级 Unix 时间戳。',
+ 'follow_up_notification_receipts.last_alerted_at':'该接收人最近一次收到提醒的毫秒级 Unix 时间戳。',
+ 'follow_up_notification_receipts.next_alert_at':'根据首次延迟或重复周期计算的下次允许提醒时间。',
+ 'follow_up_notification_receipts.alert_count':'该接收人已经触发的提醒累计次数。',
+ 'follow_up_notification_receipts.read_at':'接收人首次标记已读时的毫秒级 Unix 时间戳。',
+ 'follow_up_notification_receipts.snooze_until':'服务端依据用户偏好计算的稍后提醒截止时间。',
+ 'follow_up_notification_receipts.dismissed_at':'接收人选择不再提醒时的毫秒级 Unix 时间戳。',
+ 'follow_up_notification_receipts.claimed_by_consumer':'当前原子领取该提醒的管理中心或扩展消费者标识。',
+ 'follow_up_notification_receipts.claim_expires_at':'当前消费者领取租约失效的毫秒级 Unix 时间戳。',
+ 'follow_up_notification_receipts.last_consumer_type':'最近处理该回执的消费者类型。',
+ 'follow_up_notification_receipts.last_consumer_id':'最近处理该回执的消费者实例标识。',
+ 'follow_up_notification_receipts.version':'个人回执记录的乐观锁版本。',
+ 'follow_up_notification_receipts.created_at':'个人回执创建时的毫秒级 Unix 时间戳。',
+ 'follow_up_notification_receipts.updated_at':'个人回执最后更新时的毫秒级 Unix 时间戳。',
+})
+
 def build_schema_catalog(db):
  """只读取 sqlite_schema 与 PRAGMA 结构元数据；不读取任何业务表记录。"""
  with db.tx(False) as c:
@@ -288,6 +439,7 @@ LABELS.update({
     'action_key':'操作动作编码','token_digest':'确认令牌摘要','context_json':'操作上下文',
     'consumed_at':'消费时间','onboarding_completed':'是否完成首次引导','is_builtin':'是否内置',
     'link_type':'关系类型','occurred_at':'发生时间','link_id':'关系 ID',
+    'grant_reason':'授权原因','grant_type':'授权类型','approved_by':'授权审批人',
 })
 
 SPECIAL.update({
@@ -296,6 +448,9 @@ SPECIAL.update({
     'role_bindings.scope_type':           '授权作用域层级：platform/organization/workspace/department/team/self。',
     'role_bindings.scope_id':             '作用域对象 ID，含义随 scope_type 变化；self 时对应用户自身。',
     'role_bindings.granted_by':           '授权操作者，用户删除时置空以保留审计线索。',
+    'role_bindings.grant_reason':         '角色授权的业务原因，授权操作必须填写并保留审计。',
+    'role_bindings.grant_type':           '授权类型：standard/temporary/acting/emergency；非标准授权必须设置到期时间。',
+    'role_bindings.approved_by':          '授权审批人用户 ID，用于追溯高风险授权责任。',
     'platform_administrators.is_builtin': '是否系统内置管理员，内置账号不可删除。',
     'rbac_confirmations.token_digest':    '确认令牌摘要，原文不落库，单次有效。',
     'rbac_confirmations.expires_at':      '凭证过期时间（约 5 分钟 TTL），过期即作废。',
@@ -319,6 +474,7 @@ LOGICAL_RELATIONS.extend([
     ('role_bindings','role_id','roles','role_id','绑定的角色'),
     ('role_bindings','organization_id','organizations','organization_id','企业级绑定限定企业'),
     ('role_bindings','granted_by','users','user_id','授权操作者'),
+    ('role_bindings','approved_by','users','user_id','授权审批人'),
     ('platform_administrators','user_id','users','user_id','平台管理员对应登录用户'),
     ('rbac_confirmations','user_id','users','user_id','确认凭证所属用户'),
     # 归因主链路
@@ -372,7 +528,7 @@ LABELS.update({
     'placeholder':'输入提示','external_account_key':'外部账号键','bound_at':'绑定时间','bound_by':'绑定操作者',
     'last_verified_at':'最后核验时间','market_type':'市场类型','country_code':'国家代码',
     'region_code':'区域代码','timezone':'时区','resource':'权限资源','action':'权限动作',
-    'scope_mask':'作用域掩码','risk_level':'风险等级','capabilities_json':'平台能力配置',
+    'scope_mask':'作用域掩码','risk_level':'风险等级','module_code':'权限模块编码','recommendation':'授权建议','related_pages_json':'关联页面清单','related_apis_json':'关联接口清单','capabilities_json':'平台能力配置',
     'platform_abbr':'平台简称','plugin_session_id':'插件会话 ID','token_hash':'令牌摘要',
     'issued_at':'签发时间','revoked_reason':'撤销原因','client_version':'客户端版本',
     'role_code':'角色编码','is_system':'是否系统内置','detail_json':'事件详情',
@@ -407,6 +563,10 @@ SPECIAL.update({
     'custom_field_definitions.options_json':'选择类字段的候选项配置 JSON，写入时执行严格结构校验。',
     'tags.tag_kind':'标签种类；status 表示状态标签，并对单个联系人执行单选约束。',
     'permissions.scope_mask':'权限允许作用的范围掩码，用于限制平台、企业、工作区或个人层级。',
+    'permissions.module_code':'权限所属功能模块的稳定编码，用于权限目录分组和管理界面导航。',
+    'permissions.recommendation':'该权限的最小授权、风险控制和定期复核建议。',
+    'permissions.related_pages_json':'使用该权限的前端页面编码清单，以 JSON 数组保存。',
+    'permissions.related_apis_json':'受该权限保护的服务端接口清单，以 JSON 数组保存。',
     'user_credentials.failed_attempts':'当前连续认证失败次数，成功登录后按认证策略清零。',
     'user_credentials.locked_until':'账号因连续认证失败被锁定至该时间；为空表示未锁定。',
     'account_binding_slots.claim_policy':'账号认领策略；auto 表示满足唯一槽位和身份预期时自动认领，approval 表示必须由管理员审批。',
@@ -435,4 +595,114 @@ LOGICAL_RELATIONS.extend([
     ('account_identity_discoveries','platform_id','platforms','platform_id','身份发现对应平台'),
     ('account_identity_discoveries','slot_id','account_binding_slots','slot_id','身份发现匹配绑定槽位'),
     ('account_identity_discoveries','channel_account_id','channel_accounts','channel_account_id','身份发现解析渠道账号'),
+])
+
+# 【Schema 221 客户身份与访问控制数据字典】2026-09-30
+TABLES.update({
+    'contact_team_access': ('contact','客户团队访问授权表','记录客户对团队的访问授权级别、授权来源、生效状态及授予和撤销审计信息。'),
+    'contact_match_reviews': ('contact','客户重复匹配审核表','记录两个疑似重复客户之间的匹配类型、证据、审核结论及审核操作信息。'),
+    'contact_merge_history': ('contact','客户合并历史表','记录源客户合并至目标客户时的合并前版本、字段解决方案、影响范围及执行审计信息。'),
+})
+
+LABELS.update({
+    'access_id':'访问授权 ID',
+    'review_id':'匹配审核 ID',
+    'contact_id_a':'候选客户 A ID',
+    'contact_id_b':'候选客户 B ID',
+    'match_type':'匹配类型',
+    'evidence_json':'匹配证据',
+    'reviewed_by':'审核人',
+    'reviewed_at':'审核时间',
+    'merge_id':'客户合并 ID',
+    'target_contact_id':'目标客户 ID',
+    'source_contact_id':'源客户 ID',
+    'target_version_before':'目标客户合并前版本',
+    'source_version_before':'源客户合并前版本',
+    'resolution_json':'字段解决方案',
+    'impact_json':'合并影响范围',
+    'merged_by':'合并执行人',
+})
+
+SPECIAL.update({
+    'contact_team_access.access_id':'客户团队访问授权记录的唯一标识，用于授权变更和撤销审计。',
+    'contact_match_reviews.review_id':'疑似重复客户匹配审核记录的唯一标识。',
+    'contact_match_reviews.contact_id_a':'参与重复匹配判断的第一位候选客户标识。',
+    'contact_match_reviews.contact_id_b':'参与重复匹配判断的第二位候选客户标识。',
+    'contact_match_reviews.match_type':'说明疑似重复关系的识别类型，例如身份、联系方式或人工规则匹配。',
+    'contact_match_reviews.evidence_json':'以 JSON 文本保存支持或排除重复判断的结构化匹配证据。',
+    'contact_match_reviews.reviewed_by':'记录执行重复匹配审核并作出结论的用户标识。',
+    'contact_match_reviews.reviewed_at':'记录重复匹配审核完成时的毫秒级 Unix 时间戳；为空表示尚未审核。',
+    'contact_merge_history.merge_id':'一次不可变客户合并审计记录的唯一标识。',
+    'contact_merge_history.target_contact_id':'合并后保留并承接业务数据的目标客户标识。',
+    'contact_merge_history.source_contact_id':'合并后被归并至目标客户的源客户标识。',
+    'contact_merge_history.target_version_before':'执行合并前目标客户的版本号，用于并发校验和审计追踪。',
+    'contact_merge_history.source_version_before':'执行合并前源客户的版本号，用于并发校验和审计追踪。',
+    'contact_merge_history.resolution_json':'以 JSON 文本保存冲突字段的选择、覆盖或合并解决方案。',
+    'contact_merge_history.impact_json':'以 JSON 文本保存本次合并影响的身份、关系及业务记录范围。',
+    'contact_merge_history.merged_by':'记录执行并确认客户合并操作的用户标识。',
+})
+
+
+
+# 【Schema 222 跨平台会话与客户转交数据字典】2026-09-30
+TABLES.update({
+ 'contact_transfer_events':('audit','客户转交事件表','按时间记录客户跨渠道转交的创建、匹配、确认、拒绝、取消、失败、过期及目标会话关联事件。'),
+ 'contact_transfers':('contact','客户跨渠道转交表','保存客户从来源平台会话转向目标渠道账号的状态、匹配证据、幂等键、版本及处理审计信息。'),
+ 'conversations':('contact','跨平台渠道会话表','保存客户在各平台渠道账号中的独立会话及状态、负责人、最后消息摘要和聚合计数。'),
+ 'conversation_messages':('contact','跨平台会话消息表','保存消息原始归属、稳定排序时间、回复关系、敏感标记、附件数量和采集版本。'),
+})
+LABELS.update({
+ 'transfer_type':'转交类型','from_platform_id':'来源平台 ID','to_platform_id':'目标平台 ID',
+ 'requested_by':'发起人','requested_at':'发起时间','accepted_by':'接收人','accepted_at':'接收时间',
+ 'rejected_by':'拒绝人','rejected_at':'拒绝时间','cancelled_by':'取消人','cancelled_at':'取消时间',
+ 'failed_at':'失败时间','expired_at':'实际过期时间','rejection_reason':'拒绝原因','failure_code':'失败编码',
+ 'failure_reason':'失败原因','matched_identity_id':'匹配身份 ID','match_confidence':'匹配置信度',
+ 'match_evidence_json':'匹配证据 JSON','from_status':'原状态','to_status':'目标状态','details_json':'事件详情 JSON',
+ 'reply_to_message_id':'回复消息 ID','attachment_count':'附件数量','has_sensitive_content':'是否含敏感内容',
+ 'source_event_id':'来源事件 ID','ingestion_version':'采集版本','closed_at':'关闭时间','closed_by':'关闭人',
+ 'archived_at':'归档时间','archived_by':'归档人','last_message_id':'最后消息 ID',
+ 'last_message_direction':'最后消息方向','last_message_type':'最后消息类型','last_message_preview':'最后消息摘要',
+ 'message_count':'消息总数','inbound_count':'入站消息数','outbound_count':'出站消息数',
+})
+SPECIAL.update({
+ 'contact_transfer_events.from_status':'事件发生前的转交状态；创建事件允许为空。',
+ 'contact_transfer_events.to_status':'事件完成后的转交状态，用于重建不可变状态时间线。',
+ 'contact_transfer_events.details_json':'保存匹配证据更新、关联结果等事件扩展信息的 JSON。',
+ 'contact_transfers.match_evidence_json':'保存身份、号码或用户名等脱敏匹配依据的结构化 JSON。',
+ 'contact_transfers.match_confidence':'目标身份匹配置信度，范围为零到一百。',
+ 'conversation_messages.has_sensitive_content':'标识消息是否检测到敏感内容，常规读取优先返回脱敏正文。',
+ 'conversation_messages.source_event_id':'采集端来源事件标识，用于跨批次追踪和诊断。',
+ 'conversation_messages.ingestion_version':'记录写入消息时使用的采集协议版本。',
+ 'conversations.last_message_preview':'会话列表直接使用的脱敏末条消息摘要，避免重复聚合查询。',
+ 'conversations.message_count':'会话消息总数的增量汇总值，用于列表和统计快速读取。',
+ 'conversations.inbound_count':'会话入站消息增量汇总值。',
+ 'conversations.outbound_count':'会话出站消息增量汇总值。',
+})
+
+# 【V210.1.11 WhatsApp 可信身份与会话别名数据字典】2026-10-04
+TABLES.update({
+ 'conversation_external_aliases':('contact','会话外部身份别名表','记录直接会话观测到的平台原生会话标识及其可信证据，使 LID 与 JID 切换时仍复用同一会话。'),
+ 'whatsapp_identity_links':('contact','WhatsApp 身份映射表','记录从同一 WhatsApp Chat 或 Contact 模型共同观测到的 LID、JID 与内部客户之间的可信映射。'),
+})
+LABELS.update({
+ 'alias_id':'会话别名 ID','alias_type':'会话别名类型','alias_value':'会话别名值',
+ 'evidence_source':'可信证据来源','link_id':'身份映射 ID','lid_canonical':'LID 规范值',
+ 'jid_canonical':'JID 规范值','verification_status':'核验状态','first_seen_at':'首次观测时间',
+ 'last_seen_at':'最后观测时间','metadata_json':'扩展元数据 JSON',
+})
+SPECIAL.update({
+ 'conversation_external_aliases.alias_id':'会话外部身份别名记录的全局唯一标识。',
+ 'conversation_external_aliases.alias_type':'标明别名是 WhatsApp LID、WhatsApp JID 或其他平台原生会话标识。',
+ 'conversation_external_aliases.alias_value':'从平台原生模型观测到的会话或联系人身份值；不得由显示名称或页面手机号文本推导。',
+ 'conversation_external_aliases.evidence_source':'记录会话别名的可信来源，用于阻止基于页面展示文本建立身份关联。',
+ 'whatsapp_identity_links.link_id':'一组可信 WhatsApp LID 与 JID 映射记录的全局唯一标识。',
+ 'whatsapp_identity_links.lid_canonical':'经过标准化的 WhatsApp LID；在企业、工作区和平台范围内唯一。',
+ 'whatsapp_identity_links.jid_canonical':'经过标准化的 WhatsApp JID；在企业、工作区和平台范围内唯一。',
+ 'whatsapp_identity_links.evidence_source':'证明 LID 与 JID 同时来自同一 WhatsApp Chat 或 Contact 模型的证据来源。',
+ 'whatsapp_identity_links.verification_status':'身份映射核验状态，仅允许 observed、verified 或 revoked。',
+})
+LOGICAL_RELATIONS.extend([
+ ('conversation_external_aliases','conversation_id','conversations','conversation_id','会话别名所属的内部会话'),
+ ('conversation_external_aliases','contact_id','contacts','contact_id','会话别名解析到的内部客户'),
+ ('whatsapp_identity_links','contact_id','contacts','contact_id','WhatsApp 身份映射所属的内部客户'),
 ])

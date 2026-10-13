@@ -32,9 +32,10 @@ def _scope_valid(c,a,slot):
  member=c.execute("SELECT 1 FROM team_memberships WHERE user_id=? AND team_id=? AND status='active'",(a['user_id'],a['team_id'])).fetchone()
  admin=c.execute("SELECT 1 FROM platform_administrators WHERE user_id=?",(a['user_id'],)).fetchone()
  workspace=c.execute("SELECT 1 FROM workspaces WHERE workspace_id=? AND organization_id=? AND status='active'",(a['workspace_id'],a['organization_id'])).fetchone()
- team=c.execute("SELECT 1 FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(a['team_id'],a['organization_id'])).fetchone()
+ team=c.execute("SELECT workspace_id FROM teams WHERE team_id=? AND organization_id=? AND status='active'",(a['team_id'],a['organization_id'])).fetchone()
  relation=c.execute("SELECT 1 FROM workspace_teams WHERE workspace_id=? AND team_id=? AND organization_id=? AND status='active'",(a['workspace_id'],a['team_id'],a['organization_id'])).fetchone()
- return bool((member or admin) and workspace and team and relation)
+ direct=bool(team and team['workspace_id']==a['workspace_id'])
+ return bool((member or admin) and workspace and team and (direct or relation))
 
 
 def _expectation_matches(platform_code,slot,identity_type,raw_value,canonical):
@@ -74,14 +75,17 @@ def discover_or_auto_claim_in_tx(c,a,platform,identity_type,raw_value,canonical,
  if not account:
   d=record_discovery_in_tx(c,a,platform,identity_type,raw_value,canonical,'pending','slot_account_invalid',sid,aid)
   return {'outcome':'pending','reason':'slot_account_invalid','discovery':d}
- conflicts=c.execute("""SELECT DISTINCT channel_account_id FROM channel_account_identities WHERE platform_id=? AND identity_type=? AND canonical_value=? AND status='active' AND channel_account_id<>?""",
-  (platform['platform_id'],identity_type,canonical,aid)).fetchall()
+ conflicts=c.execute("""SELECT DISTINCT i.channel_account_id FROM channel_account_identities i
+ JOIN channel_accounts ca ON ca.channel_account_id=i.channel_account_id
+ WHERE ca.organization_id=? AND ca.platform_id=? AND ca.status='active'
+ AND i.platform_id=? AND i.identity_type=? AND i.canonical_value=? AND i.status='active' AND i.channel_account_id<>?""",
+  (a['organization_id'],platform['platform_id'],platform['platform_id'],identity_type,canonical,aid)).fetchall()
  if conflicts:
   d=record_discovery_in_tx(c,a,platform,identity_type,raw_value,canonical,'conflict','identity_conflict',sid,aid)
   return {'outcome':'conflict','reason':'identity_conflict','matches':len(conflicts)+1,'discovery':d}
  n=now_ms()
- changed=c.execute("""UPDATE account_binding_slots SET status='claimed',claimed_identity_type=?,claimed_canonical_value=?,claimed_device_id=?,claimed_at=?,updated_at=? WHERE slot_id=? AND status='pending'""",
-  (identity_type,canonical,a.get('device_id'),n,n,sid)).rowcount
+ changed=c.execute("""UPDATE account_binding_slots SET status='claimed',claimed_identity_type=?,claimed_canonical_value=?,claimed_device_id=?,claimed_at=?,updated_at=? WHERE slot_id=? AND organization_id=? AND workspace_id=? AND team_id=? AND user_id=? AND platform_id=? AND status='pending'""",
+  (identity_type,canonical,a.get('device_id'),n,n,sid,a['organization_id'],a['workspace_id'],a['team_id'],a['user_id'],platform['platform_id'])).rowcount
  if changed!=1:
   d=record_discovery_in_tx(c,a,platform,identity_type,raw_value,canonical,'pending','slot_claim_race',sid,aid)
   return {'outcome':'pending','reason':'slot_claim_race','discovery':d}
