@@ -8,6 +8,7 @@ PLATFORM_IDENTITY_TYPES = {
  'instagram': frozenset(('instagram_user_id','instagram_username')),
  'messenger': frozenset(('facebook_user_id','messenger_participant_id')),
  'facebook': frozenset(('facebook_user_id',)),
+ 'threads': frozenset(('threads_user_id','threads_username')),
 }
 
 def _digits(value):
@@ -44,6 +45,12 @@ def normalize_identity(platform, identity_type, value):
    blocked={'direct','accounts','explore','reels','stories','settings','help'}
    return typ,raw,name if re.fullmatch(r'[a-z0-9._]{1,64}',name) and name not in blocked else None
   return 'instagram_user_id',raw,raw if re.fullmatch(r'[0-9]{5,30}',raw) and int(raw)>0 else None
+ if code=='threads':
+  if typ=='threads_username':
+   name=raw.strip().lstrip('@').strip('/').lower()
+   blocked={'messages','activity','search','settings','privacy','accounts','login','signup'}
+   return typ,raw,name if re.fullmatch(r'[a-z0-9._]{1,64}',name) and name not in blocked else None
+  return 'threads_user_id',raw,raw if re.fullmatch(r'[0-9]{5,30}',raw) and int(raw)>0 else None
  if code in ('messenger','facebook'):
   # Thread IDs are deliberately not accepted as people identities.
   return typ,raw,raw if re.fullmatch(r'[0-9]{5,30}',raw) and int(raw)>0 else None

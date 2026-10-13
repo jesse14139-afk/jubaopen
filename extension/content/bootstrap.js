@@ -1,7 +1,7 @@
 "use strict";
 (async()=>{
  const adapter=Object.values(window.JubaAdapters||{}).find(x=>x.matches());if(!adapter)return;
- const platformLabels={whatsapp:"WhatsApp",telegram:"Telegram",instagram:"Instagram",messenger:"Messenger",facebook:"Facebook"};
+ const platformLabels={whatsapp:"WhatsApp",telegram:"Telegram",instagram:"Instagram",messenger:"Messenger",facebook:"Facebook",threads:"Threads"};
  window.__jubaAdapterDiagnostics=()=>adapter.diagnostics?.()||{platform:adapter.code};
  window.JubaPanel.mount();
  /* 210.1.11: stable WA row resolution, alias-aware plans and incremental badges. */

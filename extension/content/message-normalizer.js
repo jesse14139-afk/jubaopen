@@ -26,7 +26,7 @@ window.JubaMessageProtocol=(()=>{
   const contentType=clean(x.contentType||"unknown",32)||"unknown";const original=separate(x.text,tr);
   return {externalMessageId:clean(x.externalMessageId,500),clientEventId:clean(x.clientEventId||x.externalMessageId,500),direction,senderType:clean(x.senderType||(direction==="outbound"?"agent":direction==="inbound"?"contact":"system"),80),contentType,text:original||null,...(occurredAt?{occurredAt}:{}),metadata};
  }
- const capabilities=Object.freeze({
+ const capabilities=Object.freeze({threads:Object.freeze({translation:"explicit",timestamp:"best-effort",stableMessageId:false,historyBackfill:true}),
   whatsapp:Object.freeze({translation:"explicit",timestamp:"reliable",stableMessageId:true,historyBackfill:true}),
   telegram:Object.freeze({translation:"explicit-or-immersive",timestamp:"platform-dependent",stableMessageId:true,historyBackfill:true}),
   instagram:Object.freeze({translation:"probe-dependent",timestamp:"probe-dependent",stableMessageId:"probe-dependent",historyBackfill:true}),

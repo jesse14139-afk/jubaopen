@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "210.2.75",
-  "version_name": "210.2.75",
-  "description": "JubaOpen 210.2.75 跟进弹窗与独立桌面通知、全组件版本统一修复",
+  "version": "210.3.0",
+  "version_name": "210.3.0",
+  "description": "JubaOpen 210.3.0 Threads Messages 适配与全组件版本统一",
   "permissions": [
     "storage",
     "tabs",
@@ -92,10 +92,36 @@
         "https://www.instagram.com/*",
         "https://www.messenger.com/*",
         "https://www.facebook.com/messages/*",
-        "https://web.telegram.org/*"
+        "https://web.telegram.org/*",
+        "https://www.threads.com/messages/*",
+        "https://threads.com/messages/*"
       ],
       "js": [
         "content/followup-notifications.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.threads.com/messages/*",
+        "https://threads.com/messages/*"
+      ],
+      "js": [
+        "content/threads-page-probe.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.threads.com/messages/*",
+        "https://threads.com/messages/*"
+      ],
+      "js": [
+        "content/message-normalizer.js",
+        "content/adapters/threads.js",
+        "content/chat-panel.js",
+        "content/bootstrap.js"
       ],
       "run_at": "document_idle"
     }
