@@ -1,6 +1,6 @@
 "use strict";
 /*
- * JubaOpen Threads page probe 210.3.4
+ * JubaOpen Threads page probe 210.3.5
  *
  * 运行环境：MAIN world
  * 页面范围：https://www.threads.com/messages/*

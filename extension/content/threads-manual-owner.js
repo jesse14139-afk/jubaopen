@@ -15,7 +15,7 @@
 
   window.__jubaThreadsManualOwner210303 = true;
 
-  const VERSION = "210.3.4";
+  const VERSION = "210.3.5";
 
   /*
    * 与 210.3.1 Probe 保持兼容。
