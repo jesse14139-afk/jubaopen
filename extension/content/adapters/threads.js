@@ -1,6 +1,6 @@
 "use strict";
 /*
- * JubaOpen Threads Adapter 210.3.0
+ * JubaOpen Threads Adapter 210.3.1
  *
  * 读取 MAIN world threads-page-probe.js 写入的 DOM 快照。
  * 无可靠 ownIdentity 时 account() 返回 null，保持安全只读状态。
@@ -114,7 +114,10 @@
       identityValue: normalized,
       displayName: clean(identity.displayName, 200),
       metadata: {
-        source: "threads-page-probe",
+        source: clean(
+          identity.source || "threads-page-probe",
+          80
+        ),
         confidence: "high"
       }
     };
@@ -199,7 +202,7 @@
 
     return {
       platform: "threads",
-      adapterVersion: "210.3.0",
+      adapterVersion: "210.3.1",
       snapshotAvailable: Boolean(value),
       ...(value?.diagnostics || {})
     };

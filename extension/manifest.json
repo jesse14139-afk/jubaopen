@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "210.3.0",
-  "version_name": "210.3.0",
-  "description": "JubaOpen 210.3.0 Threads Messages 适配与全组件版本统一",
+  "version": "210.3.1",
+  "version_name": "210.3.1",
+  "description": "JubaOpen 210.3.1 Threads 本人稳定身份识别修复",
   "permissions": [
     "storage",
     "tabs",
@@ -103,8 +103,8 @@
     },
     {
       "matches": [
-        "https://www.threads.com/messages/*",
-        "https://threads.com/messages/*"
+        "https://www.threads.com/*",
+        "https://threads.com/*"
       ],
       "js": [
         "content/threads-page-probe.js"

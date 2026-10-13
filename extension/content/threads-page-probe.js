@@ -1,6 +1,6 @@
 "use strict";
 /*
- * JubaOpen Threads page probe 210.3.0
+ * JubaOpen Threads page probe 210.3.1
  *
  * 运行环境：MAIN world
  * 页面范围：https://www.threads.com/messages/*
@@ -13,8 +13,8 @@
   const VERSION = 1;
   const MAX_MESSAGES = 500;
 
-  if (window.__jubaThreadsProbe210300) return;
-  window.__jubaThreadsProbe210300 = true;
+  if (window.__jubaThreadsProbe210301) return;
+  window.__jubaThreadsProbe210301 = true;
 
   const state = {
     sequence: 0,
@@ -64,7 +64,12 @@
   };
 
   const isThreads = () =>
-    /^(?:www\.)?threads\.com$/i.test(location.hostname) &&
+    /^(?:www\.)?threads\.com$/i.test(
+      location.hostname
+    );
+
+  const isMessageRoute = () =>
+    isThreads() &&
     location.pathname.startsWith("/messages");
 
   const route = () =>
@@ -120,6 +125,526 @@
       return "";
     }
   };
+
+
+  /*
+   * JUBAOPEN_THREADS_OWNER_IDENTITY_FIX_210_3_1
+   *
+   * 本人身份只能来自消息区域之外的显式账号菜单或个人资料入口。
+   * 消息参与者、动态作者、搜索结果不能单独作为本人身份。
+   */
+  const OWNER_STORAGE_KEY =
+    "jubaopen.threads.ownerIdentity.v210301";
+  const OWNER_PENDING_KEY =
+    "jubaopen.threads.pendingOwner.v210301";
+
+  const OWNER_MAX_AGE = 30 * 60 * 1000;
+  const OWNER_PENDING_MAX_AGE = 60 * 1000;
+  const OWNER_STABLE_MS = 500;
+  const OWNER_REQUIRED_HITS = 2;
+
+  const ownerState = {
+    value: "",
+    displayName: "",
+    profileUrl: "",
+    avatarUrl: "",
+    source: "",
+    score: 0,
+    hits: 0,
+    firstSeenAt: 0,
+    lastSeenAt: 0,
+    accepted: null,
+    conflict: false,
+    clickHooked: false
+  };
+
+  function safeSessionGet(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object"
+        ? parsed
+        : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function safeSessionSet(key, value) {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(value));
+    } catch (_) {}
+  }
+
+  function safeSessionRemove(key) {
+    try {
+      sessionStorage.removeItem(key);
+    } catch (_) {}
+  }
+
+  function profileData(anchor) {
+    if (!anchor || anchor.tagName !== "A") return null;
+
+    let url;
+
+    try {
+      url = new URL(anchor.href, location.href);
+    } catch (_) {
+      return null;
+    }
+
+    if (!/^(?:www\.)?threads\.com$/i.test(url.hostname)) {
+      return null;
+    }
+
+    const firstPart =
+      url.pathname.split("/").filter(Boolean)[0] || "";
+
+    const identityValue = username(firstPart);
+    if (!identityValue) return null;
+
+    const image = anchor.querySelector("img");
+
+    return {
+      identityType: "threads_username",
+      identityValue,
+      displayName: clean(
+        image?.alt || anchor.textContent || "",
+        200
+      ),
+      profileUrl: clean(url.href, 2048),
+      avatarUrl: clean(
+        image?.currentSrc || image?.src || "",
+        4096
+      )
+    };
+  }
+
+  function semanticText(element) {
+    const parts = [];
+    let current = element;
+
+    for (
+      let depth = 0;
+      current && depth < 5;
+      depth += 1
+    ) {
+      parts.push(
+        current.getAttribute?.("aria-label") || "",
+        current.getAttribute?.("title") || "",
+        current.getAttribute?.("data-testid") || "",
+        current.getAttribute?.("role") || "",
+        current.textContent || ""
+      );
+
+      current = current.parentElement;
+    }
+
+    return clean(parts.join(" "), 1600).toLowerCase();
+  }
+
+  function ownerSemanticScore(anchor) {
+    if (!anchor || !visible(anchor)) return -10000;
+
+    /*
+     * 消息区中的资料链接属于会话参与者，不能作为本人证据。
+     */
+    if (
+      anchor.closest('[role="grid"]') ||
+      anchor.closest('[role="gridcell"]')
+    ) {
+      return -10000;
+    }
+
+    /*
+     * 动态、帖子、搜索结果中的作者也不能作为本人证据。
+     */
+    if (
+      anchor.closest(
+        "article,[role='article']," +
+        "[role='feed'],[role='listbox']"
+      )
+    ) {
+      return -10000;
+    }
+
+    const semantic = semanticText(anchor);
+    let score = 0;
+
+    const strongPatterns = [
+      /\bmy profile\b/i,
+      /\bview profile\b/i,
+      /\baccount menu\b/i,
+      /\bprofile menu\b/i,
+      /\baccount center\b/i,
+      /我的主页/,
+      /我的个人主页/,
+      /个人资料/,
+      /個人資料/,
+      /账号菜单/,
+      /帳號選單/,
+      /プロフィール/,
+      /アカウント/,
+      /내 프로필/,
+      /계정/
+    ];
+
+    const weakPatterns = [
+      /\bprofile\b/i,
+      /\baccount\b/i,
+      /\bsettings\b/i,
+      /主页/,
+      /帳號/,
+      /账号/,
+      /设置/,
+      /設定/
+    ];
+
+    if (
+      strongPatterns.some(pattern => pattern.test(semantic))
+    ) {
+      score += 80;
+    } else if (
+      weakPatterns.some(pattern => pattern.test(semantic))
+    ) {
+      score += 30;
+    }
+
+    if (anchor.closest("[role='menu']")) score += 35;
+    if (anchor.closest("[role='menuitem']")) score += 30;
+    if (anchor.closest("nav,[role='navigation']")) score += 25;
+    if (anchor.closest("header")) score += 15;
+    if (anchor.querySelector("img")) score += 8;
+
+    return score;
+  }
+
+  function explicitOwnerCandidates() {
+    const candidates = [];
+
+    document.querySelectorAll("a[href]").forEach(anchor => {
+      const identity = profileData(anchor);
+      if (!identity) return;
+
+      const score = ownerSemanticScore(anchor);
+      if (score < 55) return;
+
+      candidates.push({
+        ...identity,
+        score,
+        source: anchor.closest("[role='menu']")
+          ? "threads-account-menu"
+          : "threads-profile-navigation"
+      });
+    });
+
+    candidates.sort(
+      (left, right) => right.score - left.score
+    );
+
+    return candidates;
+  }
+
+  function clearAcceptedOwner(reason) {
+    ownerState.accepted = null;
+    ownerState.value = "";
+    ownerState.displayName = "";
+    ownerState.profileUrl = "";
+    ownerState.avatarUrl = "";
+    ownerState.source = "";
+    ownerState.score = 0;
+    ownerState.hits = 0;
+    ownerState.firstSeenAt = 0;
+    ownerState.lastSeenAt = 0;
+    ownerState.conflict = true;
+
+    safeSessionRemove(OWNER_STORAGE_KEY);
+
+    state.lastError = clean(
+      reason || "THREADS_OWNER_IDENTITY_CONFLICT",
+      300
+    );
+  }
+
+  function acceptOwner(candidate, sourceOverride = "") {
+    const value = username(candidate?.identityValue);
+    if (!value) return null;
+
+    const accepted = {
+      identityType: "threads_username",
+      identityValue: value,
+      displayName: clean(candidate.displayName, 200),
+      profileUrl: clean(candidate.profileUrl, 2048),
+      avatarUrl: clean(candidate.avatarUrl, 4096),
+      role: "IS_OWNER",
+      stable: true,
+      confidence: "high",
+      source: clean(
+        sourceOverride ||
+        candidate.source ||
+        "threads-owner-detector",
+        80
+      ),
+      verifiedAt: Date.now()
+    };
+
+    ownerState.accepted = accepted;
+    ownerState.value = value;
+    ownerState.conflict = false;
+
+    safeSessionSet(OWNER_STORAGE_KEY, accepted);
+
+    return { ...accepted };
+  }
+
+  function observeOwnerCandidate(candidate) {
+    const value = username(candidate?.identityValue);
+    if (!value) return null;
+
+    const now = Date.now();
+
+    if (
+      ownerState.accepted &&
+      ownerState.accepted.identityValue !== value
+    ) {
+      clearAcceptedOwner(
+        "THREADS_OWNER_IDENTITY_CHANGED"
+      );
+    }
+
+    if (ownerState.value !== value) {
+      ownerState.value = value;
+      ownerState.displayName =
+        clean(candidate.displayName, 200);
+      ownerState.profileUrl =
+        clean(candidate.profileUrl, 2048);
+      ownerState.avatarUrl =
+        clean(candidate.avatarUrl, 4096);
+      ownerState.source =
+        clean(candidate.source, 80);
+      ownerState.score = Number(candidate.score) || 0;
+      ownerState.hits = 1;
+      ownerState.firstSeenAt = now;
+      ownerState.lastSeenAt = now;
+      ownerState.conflict = false;
+      return null;
+    }
+
+    ownerState.hits += 1;
+    ownerState.lastSeenAt = now;
+    ownerState.score = Math.max(
+      ownerState.score,
+      Number(candidate.score) || 0
+    );
+
+    if (
+      ownerState.hits >= OWNER_REQUIRED_HITS &&
+      now - ownerState.firstSeenAt >= OWNER_STABLE_MS
+    ) {
+      return acceptOwner({
+        ...candidate,
+        identityValue: value,
+        displayName:
+          candidate.displayName ||
+          ownerState.displayName,
+        profileUrl:
+          candidate.profileUrl ||
+          ownerState.profileUrl,
+        avatarUrl:
+          candidate.avatarUrl ||
+          ownerState.avatarUrl,
+        source:
+          candidate.source ||
+          ownerState.source
+      });
+    }
+
+    return null;
+  }
+
+  function loadStoredOwner() {
+    const stored = safeSessionGet(OWNER_STORAGE_KEY);
+    if (!stored) return null;
+
+    const verifiedAt = Number(stored.verifiedAt);
+
+    if (
+      !Number.isFinite(verifiedAt) ||
+      Date.now() - verifiedAt > OWNER_MAX_AGE ||
+      verifiedAt - Date.now() > 5000
+    ) {
+      safeSessionRemove(OWNER_STORAGE_KEY);
+      return null;
+    }
+
+    const value = username(stored.identityValue);
+
+    if (!value) {
+      safeSessionRemove(OWNER_STORAGE_KEY);
+      return null;
+    }
+
+    return {
+      identityType: "threads_username",
+      identityValue: value,
+      displayName: clean(stored.displayName, 200),
+      profileUrl: clean(stored.profileUrl, 2048),
+      avatarUrl: clean(stored.avatarUrl, 4096),
+      role: "IS_OWNER",
+      stable: true,
+      confidence: "high",
+      source: clean(
+        stored.source || "threads-session-owner",
+        80
+      ),
+      verifiedAt
+    };
+  }
+
+  function pendingProfileCandidate() {
+    const pending = safeSessionGet(OWNER_PENDING_KEY);
+    if (!pending) return null;
+
+    const recordedAt = Number(pending.at);
+
+    if (
+      !Number.isFinite(recordedAt) ||
+      Date.now() - recordedAt > OWNER_PENDING_MAX_AGE ||
+      recordedAt - Date.now() > 5000
+    ) {
+      safeSessionRemove(OWNER_PENDING_KEY);
+      return null;
+    }
+
+    const current = username(
+      location.pathname.split("/").filter(Boolean)[0] || ""
+    );
+
+    if (!current || current !== pending.identityValue) {
+      return null;
+    }
+
+    safeSessionRemove(OWNER_PENDING_KEY);
+
+    return {
+      identityType: "threads_username",
+      identityValue: current,
+      displayName: clean(pending.displayName, 200),
+      profileUrl: clean(location.href, 2048),
+      avatarUrl: clean(pending.avatarUrl, 4096),
+      score: 100,
+      source: "threads-explicit-profile-click"
+    };
+  }
+
+  function hookOwnerClicks() {
+    if (ownerState.clickHooked) return;
+
+    ownerState.clickHooked = true;
+
+    document.addEventListener(
+      "click",
+      event => {
+        const anchor = event.target?.closest?.("a[href]");
+        if (!anchor) return;
+
+        const identity = profileData(anchor);
+        if (!identity) return;
+
+        const score = ownerSemanticScore(anchor);
+        if (score < 55) return;
+
+        const pending = {
+          ...identity,
+          score: Math.max(score, 100),
+          source: "threads-explicit-profile-click",
+          at: Date.now()
+        };
+
+        safeSessionSet(OWNER_PENDING_KEY, pending);
+
+        ownerState.value = identity.identityValue;
+        ownerState.hits = OWNER_REQUIRED_HITS;
+        ownerState.firstSeenAt =
+          Date.now() - OWNER_STABLE_MS;
+        ownerState.lastSeenAt = Date.now();
+
+        acceptOwner(
+          pending,
+          "threads-explicit-profile-click"
+        );
+      },
+      true
+    );
+  }
+
+  function detectOwnIdentity() {
+    hookOwnerClicks();
+
+    const pending = pendingProfileCandidate();
+
+    if (pending) {
+      return acceptOwner(
+        pending,
+        "threads-explicit-profile-click"
+      );
+    }
+
+    const candidates = explicitOwnerCandidates();
+
+    if (candidates.length) {
+      const top = candidates[0];
+
+      const conflict = candidates.some(candidate =>
+        candidate.identityValue !== top.identityValue &&
+        candidate.score >= top.score - 5
+      );
+
+      if (conflict) {
+        clearAcceptedOwner(
+          "THREADS_OWNER_MULTIPLE_HIGH_CONFIDENCE_CANDIDATES"
+        );
+        return null;
+      }
+
+      const observed = observeOwnerCandidate(top);
+      if (observed) return observed;
+    }
+
+    if (ownerState.accepted) {
+      return { ...ownerState.accepted };
+    }
+
+    const stored = loadStoredOwner();
+
+    if (stored) {
+      ownerState.accepted = stored;
+      ownerState.value = stored.identityValue;
+      ownerState.conflict = false;
+      return { ...stored };
+    }
+
+    return null;
+  }
+
+  function ownerDiagnostics(owner) {
+    return {
+      ownerFound: Boolean(owner),
+      ownerIdentityType:
+        clean(owner?.identityType, 64),
+      ownerIdentityValue:
+        clean(owner?.identityValue, 100),
+      ownerConfidence:
+        clean(owner?.confidence, 20),
+      ownerSource:
+        clean(owner?.source, 80),
+      ownerCandidateHits: ownerState.hits,
+      ownerCandidateScore: ownerState.score,
+      ownerConflict: ownerState.conflict
+    };
+  }
 
   function hash(value) {
     let h1 = 0x811c9dc5;
@@ -400,6 +925,18 @@
       const grid = findGrid();
       const composer = findComposer();
       const participants = participantCandidates(grid);
+      const owner = detectOwnIdentity();
+      const ownerValue = clean(
+        owner?.identityValue,
+        100
+      ).toLowerCase();
+      const counterpartParticipants =
+        participants.filter(participant =>
+          clean(
+            participant.identityValue,
+            100
+          ).toLowerCase() !== ownerValue
+        );
       const extractedMessages = messages(grid, tid);
 
       /*
@@ -407,12 +944,15 @@
        * ownIdentity 明确保持 null，避免把对方身份误认为账号身份。
        */
       const selectedParticipant =
-        participants.length === 1 ? participants[0] : null;
+        counterpartParticipants.length === 1
+          ? counterpartParticipants[0]
+          : null;
 
       const writable = Boolean(
         tid &&
         grid &&
         composer &&
+        owner &&
         selectedParticipant &&
         extractedMessages.every(
           message => message.direction !== "unknown"
@@ -426,17 +966,21 @@
         route: currentRoute,
         sequence: state.sequence,
         generation: state.generation,
-        ownIdentity: null,
+        ownIdentity: owner ? { ...owner } : null,
         conversation: tid ? {
           threadId: tid,
           externalConversationId: "threads:" + tid,
-          writable: false,
-          readonly: true,
+          writable,
+          readonly: !writable,
           confidence:
             selectedParticipant ? "medium" : "low",
-          readonlyReason:
-            "Threads 当前登录账号身份无法从稳定公开 DOM 可靠核验；"
-            + "为避免身份误绑定，本版本保持只读采集诊断",
+          readonlyReason: writable
+            ? ""
+            : (!owner
+              ? "尚未取得 Threads 本人稳定身份，请打开账号菜单或个人资料入口后重试"
+              : (!selectedParticipant
+                ? "尚未取得唯一的 Threads 会话参与者身份"
+                : "Threads 消息方向仍在稳定核验")),
           identity: selectedParticipant ? {
             ...selectedParticipant,
             role: "IS_PARTICIPANT",
@@ -451,10 +995,17 @@
           gridFound: Boolean(grid),
           composerFound: Boolean(composer),
           participantCount: participants.length,
+          counterpartParticipantCount: counterpartParticipants.length,
+          ...ownerDiagnostics(owner),
           messageCount: extractedMessages.length,
           writableCandidate: writable,
-          identityError:
-            "THREADS_OWNER_IDENTITY_UNVERIFIED",
+          identityError: !owner
+            ? "THREADS_OWNER_IDENTITY_UNVERIFIED"
+            : (!selectedParticipant
+              ? "THREADS_PARTICIPANT_UNVERIFIED"
+              : (writable
+                ? ""
+                : "THREADS_DIRECTION_UNVERIFIED")),
           lastError: state.lastError
         }
       };
