@@ -1,6 +1,6 @@
 "use strict";
 /*
- * JubaOpen Threads Adapter 210.3.1
+ * JubaOpen Threads Adapter 210.3.3
  *
  * 读取 MAIN world threads-page-probe.js 写入的 DOM 快照。
  * 无可靠 ownIdentity 时 account() 返回 null，保持安全只读状态。
@@ -202,7 +202,7 @@
 
     return {
       platform: "threads",
-      adapterVersion: "210.3.1",
+      adapterVersion: "210.3.3",
       snapshotAvailable: Boolean(value),
       ...(value?.diagnostics || {})
     };

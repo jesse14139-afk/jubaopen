@@ -1,6 +1,6 @@
 "use strict";
 /*
- * JubaOpen Threads page probe 210.3.1
+ * JubaOpen Threads page probe 210.3.3
  *
  * 运行环境：MAIN world
  * 页面范围：https://www.threads.com/messages/*
@@ -13,8 +13,8 @@
   const VERSION = 1;
   const MAX_MESSAGES = 500;
 
-  if (window.__jubaThreadsProbe210301) return;
-  window.__jubaThreadsProbe210301 = true;
+  if (window.__jubaThreadsProbe210303) return;
+  window.__jubaThreadsProbe210303 = true;
 
   const state = {
     sequence: 0,
@@ -583,6 +583,27 @@
   function detectOwnIdentity() {
     hookOwnerClicks();
 
+    /*
+     * JUBAOPEN_MANUAL_OWNER_PRIORITY_210_3_3
+     *
+     * 用户明确确认的手动身份优先于不稳定 DOM 自动候选。
+     */
+    const manualOwner = loadStoredOwner();
+
+    if (
+      manualOwner &&
+      manualOwner.source ===
+        "threads-user-confirmed-manual"
+    ) {
+      ownerState.accepted = manualOwner;
+      ownerState.value =
+        manualOwner.identityValue;
+      ownerState.conflict = false;
+
+      return { ...manualOwner };
+    }
+
+
     const pending = pendingProfileCandidate();
 
     if (pending) {
@@ -977,7 +998,7 @@
           readonlyReason: writable
             ? ""
             : (!owner
-              ? "尚未取得 Threads 本人稳定身份，请打开账号菜单或个人资料入口后重试"
+              ? "尚未取得 Threads 本人稳定身份，请点击页面右上角“手动设置本人身份”"
               : (!selectedParticipant
                 ? "尚未取得唯一的 Threads 会话参与者身份"
                 : "Threads 消息方向仍在稳定核验")),
