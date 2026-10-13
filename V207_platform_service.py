@@ -6,7 +6,7 @@ from V207_security import can, is_platform_admin
 
 PLATFORM_KINDS = {'messaging','social','owned','offline','advertising','import','marketplace','crm','other'}
 PLATFORM_STATUSES = {'active','disabled'}
-SYSTEM_CODES = {'whatsapp','instagram','facebook','messenger','telegram','line','tiktok','website','offline','google_ads','meta_ads','threads','import'}
+SYSTEM_CODES = {'whatsapp','instagram','facebook','messenger','telegram','threads','line','tiktok','website','offline','google_ads','meta_ads','import'}
 CODE_RE = re.compile(r'^[a-z][a-z0-9_]{0,63}$')
 
 

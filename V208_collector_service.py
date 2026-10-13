@@ -31,9 +31,137 @@ def _ok(**kw):return ({'ok':True,**kw},200)
 def _err(code,message,status=400,**kw):return ({'ok':False,'code':code,'message':message,**kw},status)
 def _hash(v):return hashlib.sha256(v.encode()).hexdigest()
 def _platform(c,p):
- value=str(p.get('platformId') or p.get('platformCode') or '').strip().lower()
- if not value:return None
- return c.execute("SELECT * FROM platforms WHERE status='active' AND (lower(platform_id)=? OR lower(platform_code)=?)",(value,value)).fetchone()
+ """
+ 查找采集平台。
+
+ JUBAOPEN_THREADS_PLATFORM_AUTO_ENABLE_210_3_4
+
+ Threads 是 210.3.x 新增的内置采集平台。旧数据库可能没有
+ platforms 记录，或者记录仍为 disabled。第一次收到 Threads
+ 采集请求时，在当前事务中幂等创建或启用它。
+
+ 其他平台继续保持原来的 fail-closed 行为。
+ """
+ value=str(
+  p.get('platformId')
+  or p.get('platformCode')
+  or ''
+ ).strip().lower()
+
+ if not value:
+  return None
+
+ row=c.execute(
+  """SELECT * FROM platforms
+     WHERE status='active'
+     AND (
+      lower(platform_id)=?
+      OR lower(platform_code)=?
+     )""",
+  (value,value)
+ ).fetchone()
+
+ if row:
+  return row
+
+ if value not in ('threads','plt_threads'):
+  return None
+
+ timestamp=now_ms()
+
+ existing=c.execute(
+  """SELECT * FROM platforms
+     WHERE lower(platform_id)='plt_threads'
+        OR lower(platform_code)='threads'
+     ORDER BY
+      CASE
+       WHEN lower(platform_code)='threads' THEN 0
+       ELSE 1
+      END
+     LIMIT 1"""
+ ).fetchone()
+
+ if existing:
+  c.execute(
+   """UPDATE platforms
+      SET status='active',
+          platform_name=CASE
+           WHEN trim(coalesce(platform_name,''))=''
+           THEN 'Threads'
+           ELSE platform_name
+          END,
+          platform_abbr=CASE
+           WHEN trim(coalesce(platform_abbr,''))=''
+           THEN 'THREADS'
+           ELSE platform_abbr
+          END,
+          platform_kind=CASE
+           WHEN trim(coalesce(platform_kind,''))=''
+           THEN 'social'
+           ELSE platform_kind
+          END,
+          updated_at=?
+      WHERE platform_id=?""",
+   (timestamp,existing['platform_id'])
+  )
+ else:
+  c.execute(
+   """INSERT OR IGNORE INTO platforms(
+       platform_id,
+       platform_code,
+       platform_name,
+       platform_abbr,
+       platform_kind,
+       status,
+       capabilities_json,
+       metadata_json,
+       created_at,
+       updated_at
+      )
+      VALUES(?,?,?,?,?,?,?,?,?,?)""",
+   (
+    'plt_threads',
+    'threads',
+    'Threads',
+    'THREADS',
+    'social',
+    'active',
+    dumps({
+     'collector':True,
+     'messages':True,
+     'manualOwnerIdentity':True,
+     'identityTypes':[
+      'threads_user_id',
+      'threads_username'
+     ]
+    }),
+    dumps({
+     'system':True,
+     'introducedIn':'210.3.4',
+     'provisioning':
+      'collector-runtime-idempotent'
+    }),
+    timestamp,
+    timestamp
+   )
+  )
+
+ return c.execute(
+  """SELECT * FROM platforms
+     WHERE status='active'
+     AND (
+      lower(platform_id)='plt_threads'
+      OR lower(platform_code)='threads'
+     )
+     ORDER BY
+      CASE
+       WHEN lower(platform_code)='threads' THEN 0
+       ELSE 1
+      END
+     LIMIT 1"""
+ ).fetchone()
+
+
 def _canonical(code,typ,value):
  return collector_canonical(code,typ,value)
 
