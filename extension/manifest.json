@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "210.3.10",
-  "version_name": "210.3.10",
-  "description": "JubaOpen 210.3.10 Threads 手动联系人无刷新同步修复",
+  "version": "210.3.15",
+  "version_name": "210.3.15",
+  "description": "JubaOpen 210.3.15 Threads 自动稳定身份与建档链路统一修复",
   "permissions": [
     "storage",
     "tabs",
@@ -109,6 +109,7 @@
       "js": [
         "content/threads-manual-owner.js",
         "content/threads-manual-contact.js",
+        "content/threads-auto-identity-verifier.js",
         "content/threads-page-probe.js"
       ],
       "run_at": "document_start",
@@ -123,6 +124,7 @@
         "content/message-normalizer.js",
         "content/adapters/threads.js",
         "content/threads-manual-contact-adapter.js",
+        "content/threads-identity-authority-v210315.js",
         "content/chat-panel.js",
         "content/bootstrap.js"
       ],

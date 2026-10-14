@@ -143,4 +143,66 @@ if(listFollowBusy){listFollowQueued=true;listFollowForce=listFollowForce||force;
   }catch(e){if(e.status===401)reset();if(e?.code==="PROBE_CONTEXT_CHANGED"){clearConversation();window.JubaPanel.status("页面会话已切换，正在重新核验");}else{if(["CONVERSATION_IDENTITY_MISMATCH","CONVERSATION_CONTACT_CONFLICT","CONVERSATION_IDENTITY_REQUIRED"].includes(e?.code)&&attemptedConversationSignature)conversationFailure={signature:attemptedConversationSignature,code:e.code,payload:e.payload||null,until:Date.now()+10*60*1000};window.JubaPanel.status(errorText(e),true)}}finally{busy=false}
  }
  const schedule=(delay=450)=>{clearTimeout(window.__jubaTimer);window.__jubaTimer=setTimeout(tick,delay)};const isMeta=["instagram","facebook","messenger"].includes(adapter.code);const wakeMeta=()=>{if(!isMeta||document.visibilityState!=="visible")return;probeMissingSince=0;lastProbeWake=Date.now();window.dispatchEvent(new CustomEvent("jubaopen-meta-force-refresh",{detail:{source:"bootstrap-lifecycle",at:lastProbeWake}}));schedule(120);setTimeout(()=>schedule(20),700)};if(adapter.code==="whatsapp")window.addEventListener("jubaopen-wa-snapshot",()=>schedule(80));if(isMeta){window.addEventListener("jubaopen-meta-snapshot",()=>schedule(40));window.addEventListener("jubaopen-meta-shadow-relay",()=>schedule(60));document.addEventListener("scroll",e=>{const t=e.target;if(t===document||t===document.documentElement||t?.closest?.("main,[role='main']"))schedule(180)},true);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")wakeMeta()});window.addEventListener("focus",wakeMeta);window.addEventListener("pageshow",wakeMeta);tick()}else{const observer=new MutationObserver(rs=>{if(rs.some(r=>!jubaOwned(r.target)&&[...r.addedNodes,...r.removedNodes].some(n=>n.nodeType!==1||!jubaOwned(n))))schedule(650)});observer.observe(document.documentElement,{subtree:true,childList:true});document.addEventListener("scroll",e=>{if(adapter.code!=="whatsapp")return;const t=e.target;if(t===document||t===document.documentElement||t?.closest?.("#main,[data-testid='conversation-panel-wrapper']"))schedule(350)},true);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")tick()});setInterval(tick,5000);tick()}
+
+ /*
+  * JUBAOPEN_THREADS_IDENTITY_RESOLVE_210_3_15
+  *
+  * 身份权威签名发生变化后，调用 Bootstrap 已有的 resolve(true)。
+  * 使用防抖、串行化和追加执行，避免重复解析及并发请求。
+  */
+ let threadsIdentityResolveTimer210315=0;
+ let threadsIdentityResolveBusy210315=false;
+ let threadsIdentityResolveQueued210315=false;
+
+ function scheduleThreadsIdentityResolve210315(event){
+  if(
+   adapter.code!=="threads"||
+   (
+    event?.detail?.platform&&
+    event.detail.platform!=="threads"
+   )
+  ){
+   return;
+  }
+
+  clearTimeout(
+   threadsIdentityResolveTimer210315
+  );
+
+  threadsIdentityResolveTimer210315=setTimeout(
+   ()=>runThreadsIdentityResolve210315(),
+   120
+  );
+ }
+
+ async function runThreadsIdentityResolve210315(){
+  if(threadsIdentityResolveBusy210315){
+   threadsIdentityResolveQueued210315=true;
+   return;
+  }
+
+  threadsIdentityResolveBusy210315=true;
+
+  try{
+   await resolve(true);
+  }catch(error){
+   console.error(
+    "JubaOpen Threads identity resolve failed",
+    error
+   );
+  }finally{
+   threadsIdentityResolveBusy210315=false;
+
+   if(threadsIdentityResolveQueued210315){
+    threadsIdentityResolveQueued210315=false;
+    scheduleThreadsIdentityResolve210315();
+   }
+  }
+ }
+
+ window.addEventListener(
+  "jubaopen:threads-authoritative-identity-changed",
+  scheduleThreadsIdentityResolve210315
+ );
+
 })();
