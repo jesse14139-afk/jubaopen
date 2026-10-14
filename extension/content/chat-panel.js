@@ -9,6 +9,7 @@ window.JubaPanel=(()=>{
  const state={context:null,contactId:null,version:0,saving:Promise.resolve(),lastStatus:"",bad:false,editing:0,composing:0,pendingLoad:false,activeSaves:0,syncTimer:null,syncBusy:false,loadGeneration:0,timers:new Map(),expandedHeight:680,entry:null,registrationPromise:null,registrationTimer:null,registrationGeneration:0,candidateItems:[],candidateSearching:false,linkCandidate:null,diagnostics:null,transferCandidates:[],transferContext:null,followUpAt:0,followUpReason:"",followCountdownTimer:null,followReminderOpen:false};
  const esc=s=>String(s??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
  /* JUBAOPEN_DETAILED_ERRORS_210_3_22 */
+ /* JUBAOPEN_DETAILED_ERRORS_210_3_23 */
  const errorText=e=>{
   const code=String(
    e?.code||
@@ -25,7 +26,7 @@ window.JubaPanel=(()=>{
 
   const known={
    NETWORK_ERROR:
-    "无法连接 JubaOpen 服务，请检查服务是否启动、服务器地址和 HTTPS 设置。",
+    "无法连接 JubaOpen 服务，请检查服务是否启动、服务器地址及 HTTPS 设置。",
 
    PLUGIN_UNAUTHORIZED:
     "插件尚未接入、凭证已经失效或后台会话已过期。",
@@ -34,7 +35,25 @@ window.JubaPanel=(()=>{
     "插件后台不可用，请在扩展管理页面重新加载 JubaOpen。",
 
    VERSION_CONFLICT:
-    "资料已经被其他页面修改，请重新加载后重试。",
+    "资料已被其他页面修改，请重新加载后重试。",
+
+   STABLE_CONTACT_IDENTITY_REQUIRED:
+    "当前没有获得稳定且可写的联系人平台身份。",
+
+   CONTACT_IDENTITY_MISSING:
+    "最终建档请求没有携带联系人平台身份。",
+
+   CONTACT_IDENTITY_NOT_WRITABLE:
+    "联系人身份存在，但当前不是可写状态。",
+
+   INVALID_IDENTITY_TYPE:
+    "后端不接受当前联系人身份类型。",
+
+   INVALID_IDENTITY:
+    "联系人身份值为空、无效或超过长度限制。",
+
+   IDENTITY_CONFLICT:
+    "该平台身份已经绑定到其他客户。",
 
    CONTACT_REGISTER_PERMISSION_DENIED:
     "当前账号缺少采集写入或新建客户权限。",
@@ -51,33 +70,6 @@ window.JubaPanel=(()=>{
    FORBIDDEN:
     "当前账号没有执行该操作的权限。",
 
-   INVALID_IDENTITY_TYPE:
-    "联系人身份类型无效。Threads 用户名必须使用 username。",
-
-   INVALID_IDENTITY:
-    "联系人身份值为空、格式无效或超过长度限制。",
-
-   INVALID_METADATA:
-    "联系人身份 metadata 不是有效对象。",
-
-   INVALID_VERIFICATION_STATUS:
-    "联系人身份验证状态无效。",
-
-   CONTACT_IDENTITY_MISSING:
-    "建档请求没有携带稳定平台身份。",
-
-   CONTACT_IDENTITY_NOT_WRITABLE:
-    "当前 Threads 身份尚未达到稳定且可写状态。",
-
-   IDENTITY_CONFLICT:
-    "该平台身份已经绑定到其他客户。",
-
-   CROSS_WORKSPACE_LINK_FORBIDDEN:
-    "跨工作区客户不能直接关联。",
-
-   CONTACT_NOT_FOUND:
-    "联系人不存在，或者当前账号无权访问。",
-
    PLATFORM_NOT_FOUND:
     "Threads 平台记录不存在或未启用。",
 
@@ -88,14 +80,14 @@ window.JubaPanel=(()=>{
   const explanation=
    known[code]||
    serverMessage||
-   "请求失败，但服务器没有返回具体原因。";
+   "请求失败，但没有收到具体错误说明。";
 
   if(code){
    if(
     serverMessage&&
     serverMessage!==explanation
    ){
-    return `[${code}] ${explanation} 后端信息：${serverMessage}`;
+    return `[${code}] ${explanation} 详细信息：${serverMessage}`;
    }
 
    return `[${code}] ${explanation}`;
@@ -103,7 +95,6 @@ window.JubaPanel=(()=>{
 
   return explanation;
  };
-
  function setTop(message,bad=false){state.lastStatus=message;state.bad=bad;if(!root)return;const el=root.getElementById("connectionText"),dot=root.getElementById("connectionDot");if(el){el.textContent=message;el.title=message;}if(dot)dot.className="dot "+(bad?"bad":message.includes("保存")||message.includes("加载")||message.includes("识别")||message.includes("验证")?"busy":"ok")}
  const send=(path,method="GET",body,quiet=false)=>new Promise((resolve,reject)=>chrome.runtime.sendMessage({type:"api",path,options:{method,body}},r=>{if(chrome.runtime.lastError)return reject(Object.assign(new Error("插件后台不可用，请重新加载扩展"),{code:"RUNTIME_ERROR"}));if(r?.ok){if(!quiet)setTop("系统已连接");resolve(r.data)}else reject(Object.assign(new Error(r?.error||"请求失败"),{code:r?.code,status:r?.status,payload:r?.payload}))}));
  const css=`:host{all:initial}.card,*{box-sizing:border-box}.card{width:100%;height:100%;min-width:286px;min-height:42px;overflow:hidden;resize:both;background:linear-gradient(180deg,#fffafd,#fff7fb);color:#3b2432;border:1px solid #ed9fc2;border-radius:16px;box-shadow:0 16px 46px #6b183638;font:12px/1.35 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}.top{height:34px;padding:4px 6px 4px 9px;cursor:move;user-select:none;background:linear-gradient(105deg,#fff0f7,#ffd8e9);border-bottom:1px solid #f2b8d2;display:flex;align-items:center;gap:6px}.connection{min-width:0;flex:1;display:flex;align-items:center;gap:6px;color:#7c3556;font-weight:650}.connection span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dot{width:8px;height:8px;flex:none;border-radius:50%;background:#25a86b;box-shadow:0 0 0 3px #25a86b1f}.dot.busy{background:#e99b24;box-shadow:0 0 0 3px #e99b2422}.dot.bad{background:#dc3d68;box-shadow:0 0 0 3px #dc3d6822}.top button{height:24px;border:1px solid #e596b9;background:#fff;color:#a12e62;border-radius:6px;padding:0 7px;font-size:11px;font-weight:700;cursor:pointer}.top button:hover{background:#fff0f7}.collapse{width:25px;padding:0!important;font-size:15px!important}.body{height:calc(100% - 34px);overflow:auto;padding:7px 8px 10px;scrollbar-width:thin;scrollbar-color:#eaa9c7 transparent}.identity{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px}.field-row{display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;gap:5px;margin:3px 0}.field-label{padding:5px 2px 0;color:#6e5260;font-size:11px;font-weight:650;overflow-wrap:anywhere}.control{width:100%;min-width:0;border:1px solid #e4c7d4;border-radius:5px;background:#fff;color:#39232e;padding:4px 6px;min-height:27px;font:12px/1.4 inherit;outline:none;transition:border-color .15s,box-shadow .15s,background .15s}.control:hover{border-color:#dc91b3}.control:focus{border-color:#d94f8b;box-shadow:0 0 0 2px #f8c8dc66;background:#fff}.auto{display:block;resize:none;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}.section{margin-top:6px;padding-top:6px;border-top:1px solid #f3dce7}.section-line{display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;gap:5px}.section-name{padding-top:4px;color:#96365f;font-size:11px;font-weight:800}.pills{display:flex;flex-wrap:wrap;gap:4px}.pill{min-height:24px;border:1px solid #e4b3c9;border-radius:999px;background:#fff;color:#734158;padding:2px 8px;font:11px/1.25 inherit;cursor:pointer;white-space:normal;overflow-wrap:anywhere}.pill:hover{border-color:#d6578e;background:#fff2f8}.pill.on{border-color:#d43878;background:#e8528f;color:#fff;box-shadow:0 2px 6px #c42d6c2b;font-weight:750}.portrait.on{background:#9d4edd;border-color:#8738c7}.empty{color:#987b89;padding:4px 0;font-size:11px}.message{padding:10px 8px;color:#765465;white-space:pre-wrap;overflow-wrap:anywhere}.message.error{color:#c72558}.retry{margin-top:8px;border:1px solid #dc7da8;background:#fff;color:#a52e64;border-radius:6px;padding:5px 9px;cursor:pointer}.entry-box{padding:10px 8px}.entry-title{color:#8e2d59;font-size:13px;font-weight:800;margin-bottom:4px}.entry-help{color:#806372;margin-bottom:8px;white-space:pre-wrap}.entry-actions{display:flex;justify-content:flex-end;margin-top:8px}.primary{border:1px solid #c73574;background:#dc4c8a;color:#fff;border-radius:6px;padding:6px 12px;font-weight:750;cursor:pointer}.primary:disabled{opacity:.55;cursor:wait}.modal-mask{position:absolute;inset:34px 0 0;background:#4b173052;display:flex;align-items:flex-start;justify-content:center;padding:12px 8px;z-index:5}.modal{width:100%;max-width:300px;background:#fffafd;border:1px solid #efb0cc;border-radius:9px;box-shadow:0 12px 30px #42112640;padding:9px}.modal-head{display:flex;justify-content:space-between;align-items:center;color:#8e2d59;font-weight:800;margin-bottom:7px}.modal-head button{border:0;background:transparent;color:#9a5473;font-size:18px;cursor:pointer}.modal .field-row{grid-template-columns:66px minmax(0,1fr)}.modal-actions{display:flex;justify-content:flex-end;gap:5px;margin-top:8px}.primary,.secondary{border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer}.primary{border:1px solid #c92f70;background:#df4b88;color:#fff}.secondary{border:1px solid #dfafc4;background:#fff;color:#8d3d61}.primary:disabled{opacity:.5;cursor:not-allowed}.hint{font-size:10px;color:#907180;margin-top:5px}.flash{animation:flash .8s ease}@keyframes flash{50%{background:#fff0f7}}.card{position:relative;resize:none;min-width:340px;min-height:34px}.card.collapsed .body{display:none}.business{display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}.business .stage-list{flex:0 1 auto;min-width:0}.business #statusSelect{width:auto;flex:0 0 auto;min-width:60px;max-width:100%}.business .tag-select{flex:0 0 auto;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:4px}.stage-list{display:flex;align-items:center;flex-wrap:wrap;gap:4px}.stage-check{display:inline-flex;align-items:center;gap:4px;min-height:24px;padding:2px 7px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;cursor:pointer;color:#334155;font-size:11px;font-weight:500}.stage-check:hover{border-color:#94a3b8;background:#f8fafc}.stage-check:has(input:checked){background:#f8fafc;border-color:#94a3b8;color:#0f172a;font-weight:600}.stage-check input,.portrait-option input{width:13px;height:13px;margin:0;accent-color:#64748b}.tag-select{position:relative}.portrait-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.portrait-badge{display:inline-flex;align-items:center;max-width:120px;border-radius:999px;padding:2px 7px;color:#fff;font-size:10px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.portrait-toggle{border:1px solid #e4b3c9;background:#fff;color:#8b3d61;border-radius:6px;min-height:25px;padding:3px 8px;font-size:11px;cursor:pointer}.portrait-menu{z-index:20;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px;padding:8px;background:#fffafd;border:1px solid #e5b3ca;border-radius:8px;box-shadow:0 10px 22px #53142b2e}.portrait-menu[hidden]{display:none}.portrait-option{display:flex;align-items:center;gap:6px;padding:5px;border-radius:5px;cursor:pointer;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.portrait-option:hover{background:#fff0f7}.resize-handle{position:absolute;bottom:0;width:18px;height:18px;z-index:10;touch-action:none}.resize-handle.left{left:0;cursor:nesw-resize}.resize-handle.right{right:0;cursor:nwse-resize}.resize-handle:after{content:"";position:absolute;bottom:3px;width:9px;height:9px;border-bottom:2px solid #d86a9b}.resize-handle.left:after{left:3px;border-left:2px solid #d86a9b}.resize-handle.right:after{right:3px;border-right:2px solid #d86a9b}.collapsed .resize-handle{display:none}.source-compact{display:flex;align-items:center;gap:7px;margin:5px 0 8px}.source-compact label{font-size:11px;font-weight:600}.source-compact select{flex:1;min-width:0;padding:5px 7px}.stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.stage-grid .field-row{min-width:0}.stage-grid .field-label{font-size:10px;line-height:1.2;margin-bottom:3px}.stage-grid select{width:100%;min-width:0;padding:5px 2px;font-size:11px}.follow-up-wrap{flex:0 1 190px;min-width:132px;max-width:190px;height:25px;display:flex;align-items:center;border:1px solid #e5b4c9;border-radius:6px;background:#fff;overflow:hidden}.follow-up-wrap[hidden]{display:none}.follow-up-top{box-sizing:border-box;flex:1 1 auto;width:0;min-width:0;height:23px;padding:2px 3px;border:0;background:#fff;color:#5f3247;font:11px/1.2 system-ui;cursor:pointer}.follow-up-top:focus{outline:none}.follow-up-wrap:focus-within{outline:2px solid #f3a7c7;outline-offset:1px}.top .follow-picker{flex:0 0 27px;width:27px;height:23px;border:0;border-left:1px solid #efd0de;border-radius:0;padding:0;display:grid;place-items:center;background:#fff8fb;color:#a12e62}.follow-picker svg{width:14px;height:14px;display:block;pointer-events:none}.follow-up-wrap.disabled{opacity:.55}.follow-up-top:disabled,.follow-picker:disabled{cursor:default}.candidate-box{margin:7px 0;padding:8px;border:1px solid #efd0de;border-radius:8px;background:#fff8fb}.candidate-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}.candidate-head b{color:#8e2d59}.candidate-head .secondary{margin-left:auto;padding:4px 8px;font-size:11px}.candidate-list{display:grid;gap:6px}.candidate-card{padding:7px;border:1px solid #e8c5d5;border-radius:7px;background:#fff}.candidate-card.exact{border-color:#73c69d;background:#f3fff8}.candidate-card.review{border-color:#edb65b;background:#fffaf0}.candidate-row{display:flex;align-items:flex-start;gap:6px}.candidate-copy{min-width:0;flex:1}.candidate-copy b,.candidate-copy small{display:block;overflow-wrap:anywhere}.candidate-copy small{color:#806372;margin-top:2px}.candidate-card button{flex:none;padding:4px 7px}.candidate-card button:disabled{opacity:.55;cursor:not-allowed}.candidate-note{font-size:10px;color:#806372}.entry-actions{gap:6px;align-items:center}.entry-actions .secondary{padding:6px 10px}`;

@@ -35,6 +35,7 @@ def canonical_identity(identity_type,value):
   prefix='+' if v.startswith('+') else '';return typ,prefix+''.join(x for x in v if x.isdigit())
  return typ,' '.join(v.lower().split())
 
+# JUBAOPEN_THREADS_IDENTITY_ALIAS_210_3_23
 def validate_identity(identity_type,value,status,metadata):
  typ,canonical=canonical_identity(identity_type,value)
  if typ not in IDENTITY_TYPES or not re.fullmatch(r'[a-z][a-z0-9_]{1,63}',typ):return None,'INVALID_IDENTITY_TYPE','身份类型无效'

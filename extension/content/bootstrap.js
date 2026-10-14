@@ -3,7 +3,311 @@
  const adapter=Object.values(window.JubaAdapters||{}).find(x=>{try{return typeof x?.matches==='function'&&x.matches()===true}catch(_){return false}});if(!adapter)return;
  const platformLabels={whatsapp:"WhatsApp",telegram:"Telegram",instagram:"Instagram",messenger:"Messenger",facebook:"Facebook",threads:"Threads"};
  window.__jubaAdapterDiagnostics=()=>adapter.diagnostics?.()||{platform:adapter.code};
- window.JubaPanel.mount();
+ /* JUBAOPEN_THREADS_PANEL_READINESS_210_3_23 */
+ async function mountPanelAfterAdapterReady(){
+const DIAGNOSTIC_ID=
+ "jubaopen-threads-panel-readiness-v210323";
+
+const startedAt=Date.now();
+const timeoutAt=startedAt+20000;
+
+let stableSignature="";
+let stableReads=0;
+let attempts=0;
+let lastResult=null;
+
+const clean=(value,max=1024)=>
+ String(value??"")
+  .replace(/\u0000/g,"")
+  .trim()
+  .slice(0,max);
+
+const publish=value=>{
+ try{
+  let node=document.getElementById(
+   DIAGNOSTIC_ID
+  );
+
+  if(!node){
+   node=document.createElement("meta");
+   node.id=DIAGNOSTIC_ID;
+   node.hidden=true;
+
+   (
+    document.head||
+    document.documentElement
+   ).appendChild(node);
+  }
+
+  node.setAttribute(
+   "content",
+   JSON.stringify({
+    v:1,
+    version:"210.3.23",
+    startedAt,
+    at:Date.now(),
+    ...value
+   })
+  );
+ }catch(_){}
+};
+
+const inspect=()=>{
+ let context=null;
+ let conversation=null;
+ let diagnostics=null;
+ let contextError="";
+ let conversationError="";
+ let diagnosticsError="";
+
+ try{
+  context=adapter.context?.()||null;
+ }catch(error){
+  contextError=String(
+   error?.stack||error
+  );
+ }
+
+ try{
+  conversation=
+   adapter.conversation?.()||null;
+ }catch(error){
+  conversationError=String(
+   error?.stack||error
+  );
+ }
+
+ try{
+  diagnostics=
+   adapter.diagnostics?.()||null;
+ }catch(error){
+  diagnosticsError=String(
+   error?.stack||error
+  );
+ }
+
+ const route=clean(
+  context?.route,
+  2048
+ );
+
+ const threadId=clean(
+  context?.threadId||
+  conversation?.threadId||
+  conversation?.metadata?.threadId,
+  256
+ );
+
+ const externalConversationId=clean(
+  conversation?.externalConversationId||
+  conversation?.metadata
+   ?.externalConversationId,
+  512
+ );
+
+ const identityType=clean(
+  conversation?.identityType||
+  conversation?.metadata?.identityType,
+  64
+ );
+
+ const identityValue=clean(
+  conversation?.identityValue||
+  conversation?.metadata?.identityValue,
+  512
+ );
+
+ const accepted=
+  diagnostics?.accepted===true||
+  diagnostics?.ok===true||
+  diagnostics?.code==="ACCEPTED"||
+  diagnostics?.diagnosticCode==="ACCEPTED";
+
+ const stable=
+  conversation?.stable===true||
+  conversation?.metadata?.stable===true||
+  diagnostics?.stable===true||
+  diagnostics?.finalStable===true;
+
+ const writable=
+  conversation?.writable===true||
+  conversation?.metadata?.writable===true||
+  diagnostics?.writable===true||
+  diagnostics?.finalWritable===true;
+
+ const readonly=
+  conversation?.readonly===true||
+  diagnostics?.readonly===true||
+  diagnostics?.finalReadonly===true;
+
+ const ready=Boolean(
+  route&&
+  threadId&&
+  externalConversationId&&
+  identityType&&
+  identityValue&&
+  accepted&&
+  stable&&
+  writable&&
+  !readonly
+ );
+
+ const missing=[];
+
+ if(!route)missing.push("CONTEXT_ROUTE_MISSING");
+ if(!threadId)missing.push("THREAD_ID_MISSING");
+
+ if(!externalConversationId){
+  missing.push(
+   "EXTERNAL_CONVERSATION_ID_MISSING"
+  );
+ }
+
+ if(!identityType){
+  missing.push("IDENTITY_TYPE_MISSING");
+ }
+
+ if(!identityValue){
+  missing.push("IDENTITY_VALUE_MISSING");
+ }
+
+ if(!accepted){
+  missing.push("DIAGNOSTICS_NOT_ACCEPTED");
+ }
+
+ if(!stable){
+  missing.push("CONVERSATION_NOT_STABLE");
+ }
+
+ if(!writable){
+  missing.push("CONVERSATION_NOT_WRITABLE");
+ }
+
+ if(readonly){
+  missing.push("CONVERSATION_READONLY");
+ }
+
+ const signature=[
+  route,
+  threadId,
+  externalConversationId,
+  identityType,
+  identityValue
+ ].join("|");
+
+ return {
+  ready,
+  signature,
+  missing,
+  route,
+  threadId,
+  externalConversationId,
+  identityType,
+  identityValue,
+  accepted,
+  stable,
+  writable,
+  readonly,
+  context,
+  conversation,
+  diagnostics,
+  errors:{
+   contextError,
+   conversationError,
+   diagnosticsError
+  }
+ };
+};
+
+while(Date.now()<timeoutAt){
+ attempts+=1;
+ lastResult=inspect();
+
+ if(
+  lastResult.ready&&
+  lastResult.signature&&
+  lastResult.signature===stableSignature
+ ){
+  stableReads+=1;
+ }else if(lastResult.ready){
+  stableSignature=lastResult.signature;
+  stableReads=1;
+ }else{
+  stableSignature="";
+  stableReads=0;
+ }
+
+ publish({
+  status:
+   lastResult.ready
+    ?"WAITING_FOR_STABLE_READ"
+    :"WAITING_FOR_IDENTITY",
+
+  attempts,
+  stableReads,
+  ...lastResult
+ });
+
+ /*
+  * 连续两次读取完全相同的权威身份，
+  * 才允许 Chat Panel 创建注册状态。
+  */
+ if(
+  lastResult.ready&&
+  stableReads>=2
+ ){
+  publish({
+   status:"READY_BEFORE_PANEL_MOUNT",
+   attempts,
+   stableReads,
+   ...lastResult
+  });
+
+  window.JubaPanel.mount();
+
+  publish({
+   status:"PANEL_MOUNTED_AFTER_READY",
+   attempts,
+   stableReads,
+   ...lastResult
+  });
+
+  return {
+   ready:true,
+   attempts,
+   result:lastResult
+  };
+ }
+
+ await new Promise(
+  resolve=>setTimeout(resolve,150)
+ );
+}
+
+lastResult=inspect();
+
+/*
+ * 超时后仍挂载 Panel，以便用户看到明确诊断，
+ * 但诊断节点会完整保存缺少的字段和实际错误。
+ */
+publish({
+ status:"READINESS_TIMEOUT_PANEL_MOUNTED",
+ attempts,
+ stableReads,
+ ...lastResult
+});
+
+window.JubaPanel.mount();
+
+return {
+ ready:false,
+ timedOut:true,
+ attempts,
+ result:lastResult
+};
+ }
+
+ await mountPanelAfterAdapterReady();
  /* 210.1.11: stable WA row resolution, alias-aware plans and incremental badges. */
  let listFollowTimer=0,listFollowBusy=false,listFollowQueued=false,listFollowForce=false,listFollowSignature="",listFollowFetchedAt=0;const followPlans=new Map(),followBadges=new Map();
  const rowVisible=el=>{if(!el||!el.isConnected||el.closest?.('#jubaopen-interaction-host'))return false;try{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>24&&r.height>18&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth&&s.display!=='none'&&s.visibility!=='hidden'}catch(_){return false}};
