@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "210.3.21",
-  "version_name": "210.3.21",
-  "description": "JubaOpen 210.3.21 Threads 建档状态与脚本装配修复",
+  "version": "210.3.22",
+  "version_name": "210.3.22",
+  "description": "JubaOpen 210.3.22 Threads 建档身份规范化与详细错误修复",
   "permissions": [
     "storage",
     "tabs",
@@ -45,6 +45,7 @@
         "content/threads-identity-v210320.js",
         "content/threads-panel-identity-contract-v210320.js",
         "content/threads-registration-fix-v210321.js",
+        "content/threads-contact-identity-v210322.js",
         "content/chat-panel.js",
         "content/bootstrap.js"
       ],

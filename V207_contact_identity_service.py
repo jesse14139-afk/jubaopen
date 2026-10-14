@@ -28,6 +28,8 @@ def scoped_contact(c,a,org,contact_id):
 
 def canonical_identity(identity_type,value):
  v=str(value or '').strip();typ=str(identity_type or 'external_id').strip().lower()
+ # JUBAOPEN_THREADS_IDENTITY_ALIAS_210_3_22
+ if typ=='threads_username':typ='username'
  if typ in ('email','login','username','handle'):return typ,''.join(v.lower().split())
  if typ in ('phone','mobile','whatsapp'):
   prefix='+' if v.startswith('+') else '';return typ,prefix+''.join(x for x in v if x.isdigit())
