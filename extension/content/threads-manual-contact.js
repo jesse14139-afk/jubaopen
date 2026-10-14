@@ -16,7 +16,7 @@
 
   window.__jubaThreadsManualContact210305 = true;
 
-  const VERSION = "210.3.5";
+  const VERSION = "210.3.10";
 
   const SNAPSHOT_ID =
     "jubaopen-threads-page-snapshot-v1";
@@ -791,7 +791,7 @@
               type="button"
               class="primary"
             >
-              保存并重新识别
+              确认并立即应用
             </button>
           </div>
         </div>
@@ -864,10 +864,11 @@
         clearManualContact(threadId);
         closeDialog();
 
-        setTimeout(
-          () => location.reload(),
-          120
-        );
+        publishBridge();
+          closeDialog();
+          lastStatus = "";
+          missingSince = 0;
+          renderStatus();
       }
     );
 
@@ -930,12 +931,13 @@
 
         save.disabled = true;
         save.textContent =
-          "已保存，正在刷新……";
+          "已确认并应用";
 
-        setTimeout(
-          () => location.reload(),
-          160
-        );
+        publishBridge();
+          closeDialog();
+          lastStatus = "";
+          missingSince = 0;
+          renderStatus();
       }
     );
 
@@ -991,7 +993,7 @@
 
       const text =
         `联系人：@${manual.identityValue}` +
-        "（手动）";
+        "（手动已确认）";
 
       if (lastStatus !== text) {
         statusButton.textContent =

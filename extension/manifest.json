@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "210.3.5",
-  "version_name": "210.3.5",
-  "description": "JubaOpen 210.3.5 Threads 手动联系人稳定身份修复",
+  "version": "210.3.10",
+  "version_name": "210.3.10",
+  "description": "JubaOpen 210.3.10 Threads 手动联系人无刷新同步修复",
   "permissions": [
     "storage",
     "tabs",
