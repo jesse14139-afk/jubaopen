@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "210.3.16",
-  "version_name": "210.3.16",
-  "description": "JubaOpen 210.3.16 Threads 统一权威身份、人工应用回执与建档修复",
+  "version": "210.3.18",
+  "version_name": "210.3.18",
+  "description": "JubaOpen 210.3.18 Threads 单一身份模块与建档初始化修复",
   "permissions": [
     "storage",
     "tabs",
@@ -108,10 +108,7 @@
       ],
       "js": [
         "content/threads-manual-owner.js",
-        "content/threads-manual-contact.js",
-        "content/threads-auto-identity-verifier.js",
-        "content/threads-page-probe.js",
-        "content/threads-contact-identity-v210316.js"
+        "content/threads-page-probe.js"
       ],
       "run_at": "document_start",
       "world": "MAIN"
@@ -124,9 +121,7 @@
       "js": [
         "content/message-normalizer.js",
         "content/adapters/threads.js",
-        "content/threads-manual-contact-adapter.js",
-        "content/threads-identity-authority-v210315.js",
-        "content/threads-identity-authority-v210316.js",
+        "content/threads-identity-v210318.js",
         "content/chat-panel.js",
         "content/bootstrap.js"
       ],
