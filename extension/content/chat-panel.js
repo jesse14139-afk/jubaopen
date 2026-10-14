@@ -1,4 +1,6 @@
 "use strict";
+/* JUBAOPEN_CHAT_PANEL_IDENTITY_CONTRACT_210_3_19 */
+
 window.JubaPanel=(()=>{
  let host,root;
  const state={context:null,contactId:null,version:0,saving:Promise.resolve(),lastStatus:"",bad:false,editing:0,composing:0,pendingLoad:false,activeSaves:0,syncTimer:null,syncBusy:false,loadGeneration:0,timers:new Map(),expandedHeight:680,entry:null,registrationPromise:null,registrationTimer:null,registrationGeneration:0,candidateItems:[],candidateSearching:false,linkCandidate:null,diagnostics:null,transferCandidates:[],transferContext:null,followUpAt:0,followUpReason:"",followCountdownTimer:null,followReminderOpen:false};

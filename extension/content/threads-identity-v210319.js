@@ -1,7 +1,7 @@
 "use strict";
 
 /*
- * JUBAOPEN_THREADS_IDENTITY_210_3_18
+ * JUBAOPEN_THREADS_IDENTITY_210_3_19
  *
  * Threads ISOLATED world 单一联系人身份模块。
  *
@@ -16,31 +16,31 @@
  * 不使用旧 Bridge，不使用旧 Adapter，不使用多层 Authority。
  */
 (() => {
-  if (window.__jubaThreadsIdentity210318) {
+  if (window.__jubaThreadsIdentity210319) {
     return;
   }
 
-  window.__jubaThreadsIdentity210318 = true;
+  window.__jubaThreadsIdentity210319 = true;
 
-  const VERSION = "210.3.18";
+  const VERSION = "210.3.19";
 
   const STORAGE_PREFIX =
-    "jubaopen.threads.manualContact.v210318.";
+    "jubaopen.threads.manualContact.v210319.";
 
   const HOST_ID =
-    "jubaopen-threads-identity-host-v210318";
+    "jubaopen-threads-identity-host-v210319";
 
   const INPUT_ID =
-    "jubaopen-threads-contact-input-v210318";
+    "jubaopen-threads-contact-input-v210319";
 
   const CHECKBOX_ID =
-    "jubaopen-threads-contact-checkbox-v210318";
+    "jubaopen-threads-contact-checkbox-v210319";
 
   const SNAPSHOT_ID =
     "jubaopen-threads-page-snapshot-v1";
 
   const DIAGNOSTIC_ID =
-    "jubaopen-threads-identity-diagnostics-v210318";
+    "jubaopen-threads-identity-diagnostics-v210319";
 
   const blockedNames = new Set([
     "messages",
@@ -345,7 +345,7 @@
       confirmedAt:
         Number(record.confirmedAt),
       source:
-        "threads-user-confirmed-v210318"
+        "threads-user-confirmed-v210319"
     };
   }
 
@@ -443,7 +443,7 @@
       confirmationId: "",
       confirmedAt: 0,
       source:
-        "threads-page-probe-v210318"
+        "threads-page-probe-v210319"
     };
   }
 
@@ -1251,7 +1251,7 @@
       ownerIdentityValue:
         owner,
       source:
-        "threads-user-confirmed-v210318"
+        "threads-user-confirmed-v210319"
     };
 
     const saved =
@@ -1344,7 +1344,7 @@
     /*
      * 刷新后加载顺序为：
      * threads.js
-     * -> threads-identity-v210318.js
+     * -> threads-identity-v210319.js
      * -> chat-panel.js
      * -> bootstrap.js
      *
