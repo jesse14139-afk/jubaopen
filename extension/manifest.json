@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "210.3.23",
-  "version_name": "210.3.23",
-  "description": "JubaOpen 210.3.23 Threads 建档挂载竞态与注册状态修复",
+  "version": "210.3.4",
+  "version_name": "210.3.4",
+  "description": "JubaOpen 210.3.4 Threads 手动身份与平台自动启用修复",
   "permissions": [
     "storage",
     "tabs",
@@ -22,34 +22,6 @@
     "default_title": "JubaOpen"
   },
   "content_scripts": [
-    {
-      "matches": [
-        "https://www.threads.com/*",
-        "https://threads.com/*"
-      ],
-      "js": [
-        "content/threads-manual-owner.js",
-        "content/threads-page-probe.js"
-      ],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
-      "matches": [
-        "https://www.threads.com/*",
-        "https://threads.com/*"
-      ],
-      "js": [
-        "content/message-normalizer.js",
-        "content/adapters/threads.js",
-        "content/threads-identity-v210320.js",
-        "content/threads-panel-identity-contract-v210320.js",
-        "content/threads-registration-fix-v210321.js",
-        "content/chat-panel.js",
-        "content/bootstrap.js"
-      ],
-      "run_at": "document_idle"
-    },
     {
       "matches": [
         "https://web.whatsapp.com/*"
@@ -109,6 +81,46 @@
         "content/adapters/instagram.js",
         "content/adapters/messenger.js",
         "content/adapters/facebook.js",
+        "content/chat-panel.js",
+        "content/bootstrap.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://web.whatsapp.com/*",
+        "https://www.instagram.com/*",
+        "https://www.messenger.com/*",
+        "https://www.facebook.com/messages/*",
+        "https://web.telegram.org/*",
+        "https://www.threads.com/messages/*",
+        "https://threads.com/messages/*"
+      ],
+      "js": [
+        "content/followup-notifications.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.threads.com/*",
+        "https://threads.com/*"
+      ],
+      "js": [
+        "content/threads-manual-owner.js",
+        "content/threads-page-probe.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.threads.com/messages/*",
+        "https://threads.com/messages/*"
+      ],
+      "js": [
+        "content/message-normalizer.js",
+        "content/adapters/threads.js",
         "content/chat-panel.js",
         "content/bootstrap.js"
       ],
