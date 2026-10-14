@@ -1,7 +1,7 @@
 "use strict";
 
 /*
- * JUBAOPEN_THREADS_PANEL_IDENTITY_CONTRACT_210_3_19
+ * JUBAOPEN_THREADS_PANEL_IDENTITY_CONTRACT_210_3_20
  *
  * 该文件位于 Threads Authority 与 Chat Panel 之间。
  *
@@ -15,19 +15,19 @@
 (() => {
   if (
     window
-      .__jubaThreadsPanelIdentityContract210319
+      .__jubaThreadsPanelIdentityContract210320
   ) {
     return;
   }
 
   window
-    .__jubaThreadsPanelIdentityContract210319 =
+    .__jubaThreadsPanelIdentityContract210320 =
     true;
 
-  const VERSION = "210.3.19";
+  const VERSION = "210.3.20";
 
   const DIAGNOSTIC_ID =
-    "jubaopen-threads-panel-contract-diagnostics-v210319";
+    "jubaopen-threads-panel-contract-diagnostics-v210320";
 
   const state = {
     adapter: null,
@@ -623,40 +623,283 @@
   }
 
   function contractDiagnostics() {
-    let authority = {};
+    /*
+     * 210.3.20
+     *
+     * 不再将旧 Authority diagnostics 的全部字段合并到
+     * Chat Panel 最终诊断中。
+     *
+     * diagnostics() 与 conversation() 必须读取同一个
+     * authoritative conversation，避免旧的身份缺失结果
+     * 覆盖当前已经确认的联系人身份。
+     */
+    let raw = null;
+    let readError = "";
 
     try {
-      authority =
-        state
-          .authorityDiagnostics?.() ||
-        {};
-    } catch (_) {}
+      raw =
+        state.authorityConversation?.() ||
+        null;
+    } catch (error) {
+      readError =
+        String(
+          error?.stack ||
+          error
+        );
+    }
 
     const result =
-      normalizeConversation(
-        (() => {
-          try {
-            return state
-              .authorityConversation?.() ||
-              null;
-          } catch (_) {
-            return null;
+      readError
+        ? {
+            ok: false,
+            code:
+              "AUTHORITY_CONVERSATION_THROW",
+            raw: null,
+            conversation: null
           }
-        })()
+        : normalizeConversation(raw);
+
+    const conversation =
+      result.conversation || null;
+
+    const accepted =
+      result.ok === true;
+
+    const diagnosticCode =
+      result.code ||
+      (
+        accepted
+          ? "ACCEPTED"
+          : "CONVERSATION_MISSING"
       );
 
+    const metadata =
+      conversation?.metadata &&
+      typeof conversation.metadata === "object"
+        ? conversation.metadata
+        : {};
+
+    const identityType =
+      clean(
+        conversation?.identityType ||
+        metadata.identityType,
+        64
+      );
+
+    const identityValue =
+      clean(
+        conversation?.identityValue ||
+        metadata.identityValue,
+        200
+      );
+
+    const externalConversationId =
+      clean(
+        conversation?.externalConversationId ||
+        metadata.externalConversationId,
+        512
+      );
+
+    const stable =
+      accepted &&
+      (
+        conversation?.stable === true ||
+        metadata.stable === true
+      );
+
+    const writable =
+      accepted &&
+      (
+        conversation?.writable === true ||
+        metadata.writable === true
+      );
+
+    const readonly =
+      !accepted ||
+      conversation?.readonly === true;
+
+    const role =
+      clean(
+        conversation?.role ||
+        metadata.role,
+        64
+      );
+
+    const resolution =
+      clean(
+        conversation?.resolution ||
+        metadata.identityResolution ||
+        metadata.resolution,
+        100
+      );
+
+    const confirmedByUser =
+      conversation?.confirmedByUser === true ||
+      metadata.confirmedByUser === true;
+
+    const confirmationId =
+      clean(
+        conversation?.confirmationId ||
+        metadata.confirmationId,
+        200
+      );
+
+    const reasonList =
+      accepted
+        ? []
+        : [diagnosticCode];
+
     return {
-      ...authority,
+      platform:
+        "threads",
+
+      code:
+        "threads",
+
+      diagnosticCode,
+
+      version:
+        VERSION,
+
+      installed:
+        state.installed,
+
+      at:
+        Date.now(),
+
+      threadId:
+        currentThreadId(),
+
+      accepted,
+
+      ok:
+        accepted,
+
+      reason:
+        accepted
+          ? "ACCEPTED"
+          : diagnosticCode,
+
+      error:
+        readError,
+
+      conversation,
+
+      finalConversation:
+        conversation,
+
+      panelConversation:
+        conversation,
+
+      rawConversation:
+        raw,
+
+      hasConversation:
+        Boolean(conversation),
+
+      externalConversationId,
+
+      identityType,
+
+      identityValue,
+
+      role,
+
+      resolution,
+
+      stable,
+
+      writable,
+
+      readonly,
+
+      finalStable:
+        stable,
+
+      finalWritable:
+        writable,
+
+      finalReadonly:
+        readonly,
+
+      conversationStable:
+        stable,
+
+      conversationWritable:
+        writable,
+
+      conversationReadonly:
+        readonly,
+
+      stableContactIdentity:
+        accepted,
+
+      stableContactIdentityMissing:
+        !accepted,
+
+      contactIdentityMissing:
+        !accepted,
+
+      identityMissing:
+        !accepted,
+
+      identityAccepted:
+        accepted,
+
+      panelIdentityAccepted:
+        accepted,
+
+      panelIdentityCode:
+        diagnosticCode,
+
+      confirmedByUser,
+
+      confirmationId,
+
+      identityAuthorityVersion:
+        clean(
+          metadata.identityAuthorityVersion ||
+          VERSION,
+          64
+        ),
+
       panelIdentityContractVersion:
         VERSION,
-      panelIdentityAccepted:
-        result.ok,
-      panelIdentityCode:
-        result.code,
-      panelConversation:
-        result.conversation,
+
+      errors:
+        accepted
+          ? []
+          : reasonList,
+
+      warnings:
+        [],
+
+      reasons:
+        reasonList,
+
+      conversationReasons:
+        reasonList,
+
+      diagnosticsReasons:
+        reasonList,
+
+      blocked:
+        !accepted,
+
+      canRegister:
+        accepted,
+
+      canCreateContact:
+        accepted,
+
       panelContractCalls:
-        state.calls
+        state.calls,
+
+      acceptedCalls:
+        state.acceptedCalls,
+
+      rejectedCalls:
+        state.rejectedCalls
     };
   }
 
@@ -715,7 +958,7 @@
 
     if (
       adapter
-        .__panelIdentityContract210319 ===
+        .__panelIdentityContract210320 ===
       true
     ) {
       state.adapter = adapter;
@@ -753,7 +996,7 @@
       contractDiagnostics;
 
     adapter
-      .__panelIdentityContract210319 =
+      .__panelIdentityContract210320 =
       true;
 
     state.installed = true;
