@@ -5,7 +5,95 @@ window.JubaPanel=(()=>{
  const esc=s=>String(s??"").replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
  const errorText=e=>({NETWORK_ERROR:"无法连接 JubaOpen 服务，请确认服务已启动且插件中的服务器地址正确。",PLUGIN_UNAUTHORIZED:"插件连接已失效，请点击插件图标重新接入。",VERSION_CONFLICT:"资料已在其他页面修改；本地输入已保留，请稍后重试。",CONTACT_REGISTER_PERMISSION_DENIED:"当前业务员账号缺少“采集写入”或“新建客户”权限，请重启后端以应用 210.2.55 权限基线。",CONTACT_CANDIDATE_PERMISSION_DENIED:"当前账号没有查询候选客户的权限，请联系管理员检查联系人读取或采集写入权限。",CONTACT_SEARCH_PERMISSION_DENIED:"当前账号没有搜索客户的权限，请联系管理员检查联系人读取或采集写入权限。",CONTACT_READ_PERMISSION_DENIED:"客户已创建，但当前账号没有读取客户资料的权限，请联系管理员检查 contact.read.assigned、contact.read 或 collector.write 权限。",FORBIDDEN:"当前账号没有执行该操作的权限。",TRANSFER_PENDING_EXISTS:"该客户到此目标账号已有待处理转移。",TRANSFER_TARGET_SAME:"目标账号不能与来源账号相同。",TRANSFER_TARGET_UNAUTHORIZED:"当前账号无权使用该目标账号。",IDENTITY_CONFLICT:"该平台身份已绑定其他客户。",CROSS_WORKSPACE_LINK_FORBIDDEN:"跨工作区客户不能直接关联。"}[e?.code]||e?.message||"请求失败");
  function setTop(message,bad=false){state.lastStatus=message;state.bad=bad;if(!root)return;const el=root.getElementById("connectionText"),dot=root.getElementById("connectionDot");if(el){el.textContent=message;el.title=message;if(state.diagnostics)diagnostics(state.diagnostics)}if(dot)dot.className="dot "+(bad?"bad":message.includes("保存")||message.includes("加载")||message.includes("识别")||message.includes("验证")?"busy":"ok")}
- const send=(path,method="GET",body,quiet=false)=>new Promise((resolve,reject)=>chrome.runtime.sendMessage({type:"api",path,options:{method,body}},r=>{if(chrome.runtime.lastError)return reject(Object.assign(new Error("插件后台不可用，请重新加载扩展"),{code:"RUNTIME_ERROR"}));if(r?.ok){if(!quiet)setTop("系统已连接");resolve(r.data)}else reject(Object.assign(new Error(r?.error||"请求失败"),{code:r?.code,status:r?.status,payload:r?.payload}))}));
+ /*
+ * JUBAOPEN_CONTACT_IDENTITY_CONTRACT_210_3_5
+ *
+ * Adapter conversation 的当前公开契约使用扁平字段：
+ *   conversation.identityType
+ *   conversation.identityValue
+ *
+ * 同时兼容历史嵌套结构 conversation.identity。
+ * API 发送前不得把空对象 {} 当作有效 contactIdentity。
+ */
+ const normalizeContactIdentity=value=>{
+  if(!value||typeof value!=="object")return null;
+  const source=value.identity&&typeof value.identity==="object"
+   ?value.identity
+   :value;
+  const identityType=String(source.identityType||"").trim();
+  const identityValue=String(source.identityValue||"").trim();
+  return identityType&&identityValue
+   ?{identityType,identityValue}
+   :null
+ };
+ const hasContactIdentity=value=>
+  Boolean(normalizeContactIdentity(value));
+ const selectedAdapter=()=>Object.values(
+  window.JubaAdapters||{}
+ ).find(item=>{
+  try{return item?.matches?.()===true}
+  catch(_){return false}
+ })||null;
+ const currentContactIdentity=()=>{
+  const adapter=selectedAdapter();
+  if(!adapter||typeof adapter.conversation!=="function")
+   return null;
+  try{
+   const conversation=adapter.conversation();
+   if(!conversation||conversation.readonly===true)
+    return null;
+   return normalizeContactIdentity(conversation)
+  }catch(_){
+   return null
+  }
+ };
+ const identityAwarePath=path=>
+  /\/interaction\/contacts\/(?:candidates|register|link)(?:\/|$)/i
+   .test(String(path||""));
+ const enrichContactIdentity=(path,body)=>{
+  if(!body||typeof body!=="object"||Array.isArray(body))
+   return body;
+  const ownsIdentity=Object.prototype.hasOwnProperty.call(
+   body,
+   "contactIdentity"
+  );
+  if(!ownsIdentity&&!identityAwarePath(path))
+   return body;
+  if(hasContactIdentity(body.contactIdentity))
+   return body;
+  const contactIdentity=currentContactIdentity();
+  return contactIdentity
+   ?{...body,contactIdentity}
+   :body
+ };
+ const send=(path,method="GET",body,quiet=false)=>{
+  body=enrichContactIdentity(path,body);
+  return new Promise((resolve,reject)=>
+   chrome.runtime.sendMessage(
+    {type:"api",path,options:{method,body}},
+    r=>{
+     if(chrome.runtime.lastError)
+      return reject(Object.assign(
+       new Error("插件后台不可用，请重新加载扩展"),
+       {code:"RUNTIME_ERROR"}
+      ));
+     if(r?.ok){
+      if(!quiet)setTop("系统已连接");
+      resolve(r.data)
+     }else{
+      reject(Object.assign(
+       new Error(r?.error||"请求失败"),
+       {
+        code:r?.code,
+        status:r?.status,
+        payload:r?.payload
+       }
+      ))
+     }
+    }
+   )
+  )
+ };
  const css=`:host{all:initial}.card,*{box-sizing:border-box}.card{width:100%;height:100%;min-width:286px;min-height:42px;overflow:hidden;resize:both;background:linear-gradient(180deg,#fffafd,#fff7fb);color:#3b2432;border:1px solid #ed9fc2;border-radius:16px;box-shadow:0 16px 46px #6b183638;font:12px/1.35 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}.top{height:34px;padding:4px 6px 4px 9px;cursor:move;user-select:none;background:linear-gradient(105deg,#fff0f7,#ffd8e9);border-bottom:1px solid #f2b8d2;display:flex;align-items:center;gap:6px}.connection{min-width:0;flex:1;display:flex;align-items:center;gap:6px;color:#7c3556;font-weight:650}.connection span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dot{width:8px;height:8px;flex:none;border-radius:50%;background:#25a86b;box-shadow:0 0 0 3px #25a86b1f}.dot.busy{background:#e99b24;box-shadow:0 0 0 3px #e99b2422}.dot.bad{background:#dc3d68;box-shadow:0 0 0 3px #dc3d6822}.top button{height:24px;border:1px solid #e596b9;background:#fff;color:#a12e62;border-radius:6px;padding:0 7px;font-size:11px;font-weight:700;cursor:pointer}.top button:hover{background:#fff0f7}.collapse{width:25px;padding:0!important;font-size:15px!important}.body{height:calc(100% - 34px);overflow:auto;padding:7px 8px 10px;scrollbar-width:thin;scrollbar-color:#eaa9c7 transparent}.identity{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px}.field-row{display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;gap:5px;margin:3px 0}.field-label{padding:5px 2px 0;color:#6e5260;font-size:11px;font-weight:650;overflow-wrap:anywhere}.control{width:100%;min-width:0;border:1px solid #e4c7d4;border-radius:5px;background:#fff;color:#39232e;padding:4px 6px;min-height:27px;font:12px/1.4 inherit;outline:none;transition:border-color .15s,box-shadow .15s,background .15s}.control:hover{border-color:#dc91b3}.control:focus{border-color:#d94f8b;box-shadow:0 0 0 2px #f8c8dc66;background:#fff}.auto{display:block;resize:none;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}.section{margin-top:6px;padding-top:6px;border-top:1px solid #f3dce7}.section-line{display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;gap:5px}.section-name{padding-top:4px;color:#96365f;font-size:11px;font-weight:800}.pills{display:flex;flex-wrap:wrap;gap:4px}.pill{min-height:24px;border:1px solid #e4b3c9;border-radius:999px;background:#fff;color:#734158;padding:2px 8px;font:11px/1.25 inherit;cursor:pointer;white-space:normal;overflow-wrap:anywhere}.pill:hover{border-color:#d6578e;background:#fff2f8}.pill.on{border-color:#d43878;background:#e8528f;color:#fff;box-shadow:0 2px 6px #c42d6c2b;font-weight:750}.portrait.on{background:#9d4edd;border-color:#8738c7}.empty{color:#987b89;padding:4px 0;font-size:11px}.message{padding:10px 8px;color:#765465;white-space:pre-wrap;overflow-wrap:anywhere}.message.error{color:#c72558}.retry{margin-top:8px;border:1px solid #dc7da8;background:#fff;color:#a52e64;border-radius:6px;padding:5px 9px;cursor:pointer}.entry-box{padding:10px 8px}.entry-title{color:#8e2d59;font-size:13px;font-weight:800;margin-bottom:4px}.entry-help{color:#806372;margin-bottom:8px;white-space:pre-wrap}.entry-actions{display:flex;justify-content:flex-end;margin-top:8px}.primary{border:1px solid #c73574;background:#dc4c8a;color:#fff;border-radius:6px;padding:6px 12px;font-weight:750;cursor:pointer}.primary:disabled{opacity:.55;cursor:wait}.modal-mask{position:absolute;inset:34px 0 0;background:#4b173052;display:flex;align-items:flex-start;justify-content:center;padding:12px 8px;z-index:5}.modal{width:100%;max-width:300px;background:#fffafd;border:1px solid #efb0cc;border-radius:9px;box-shadow:0 12px 30px #42112640;padding:9px}.modal-head{display:flex;justify-content:space-between;align-items:center;color:#8e2d59;font-weight:800;margin-bottom:7px}.modal-head button{border:0;background:transparent;color:#9a5473;font-size:18px;cursor:pointer}.modal .field-row{grid-template-columns:66px minmax(0,1fr)}.modal-actions{display:flex;justify-content:flex-end;gap:5px;margin-top:8px}.primary,.secondary{border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer}.primary{border:1px solid #c92f70;background:#df4b88;color:#fff}.secondary{border:1px solid #dfafc4;background:#fff;color:#8d3d61}.primary:disabled{opacity:.5;cursor:not-allowed}.hint{font-size:10px;color:#907180;margin-top:5px}.flash{animation:flash .8s ease}@keyframes flash{50%{background:#fff0f7}}.card{position:relative;resize:none;min-width:340px;min-height:34px}.card.collapsed .body{display:none}.business{display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}.business .stage-list{flex:0 1 auto;min-width:0}.business #statusSelect{width:auto;flex:0 0 auto;min-width:60px;max-width:100%}.business .tag-select{flex:0 0 auto;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:4px}.stage-list{display:flex;align-items:center;flex-wrap:wrap;gap:4px}.stage-check{display:inline-flex;align-items:center;gap:4px;min-height:24px;padding:2px 7px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;cursor:pointer;color:#334155;font-size:11px;font-weight:500}.stage-check:hover{border-color:#94a3b8;background:#f8fafc}.stage-check:has(input:checked){background:#f8fafc;border-color:#94a3b8;color:#0f172a;font-weight:600}.stage-check input,.portrait-option input{width:13px;height:13px;margin:0;accent-color:#64748b}.tag-select{position:relative}.portrait-head{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.portrait-badge{display:inline-flex;align-items:center;max-width:120px;border-radius:999px;padding:2px 7px;color:#fff;font-size:10px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.portrait-toggle{border:1px solid #e4b3c9;background:#fff;color:#8b3d61;border-radius:6px;min-height:25px;padding:3px 8px;font-size:11px;cursor:pointer}.portrait-menu{z-index:20;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px;padding:8px;background:#fffafd;border:1px solid #e5b3ca;border-radius:8px;box-shadow:0 10px 22px #53142b2e}.portrait-menu[hidden]{display:none}.portrait-option{display:flex;align-items:center;gap:6px;padding:5px;border-radius:5px;cursor:pointer;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.portrait-option:hover{background:#fff0f7}.resize-handle{position:absolute;bottom:0;width:18px;height:18px;z-index:10;touch-action:none}.resize-handle.left{left:0;cursor:nesw-resize}.resize-handle.right{right:0;cursor:nwse-resize}.resize-handle:after{content:"";position:absolute;bottom:3px;width:9px;height:9px;border-bottom:2px solid #d86a9b}.resize-handle.left:after{left:3px;border-left:2px solid #d86a9b}.resize-handle.right:after{right:3px;border-right:2px solid #d86a9b}.collapsed .resize-handle{display:none}.source-compact{display:flex;align-items:center;gap:7px;margin:5px 0 8px}.source-compact label{font-size:11px;font-weight:600}.source-compact select{flex:1;min-width:0;padding:5px 7px}.stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.stage-grid .field-row{min-width:0}.stage-grid .field-label{font-size:10px;line-height:1.2;margin-bottom:3px}.stage-grid select{width:100%;min-width:0;padding:5px 2px;font-size:11px}.follow-up-wrap{flex:0 1 190px;min-width:132px;max-width:190px;height:25px;display:flex;align-items:center;border:1px solid #e5b4c9;border-radius:6px;background:#fff;overflow:hidden}.follow-up-wrap[hidden]{display:none}.follow-up-top{box-sizing:border-box;flex:1 1 auto;width:0;min-width:0;height:23px;padding:2px 3px;border:0;background:#fff;color:#5f3247;font:11px/1.2 system-ui;cursor:pointer}.follow-up-top:focus{outline:none}.follow-up-wrap:focus-within{outline:2px solid #f3a7c7;outline-offset:1px}.top .follow-picker{flex:0 0 27px;width:27px;height:23px;border:0;border-left:1px solid #efd0de;border-radius:0;padding:0;display:grid;place-items:center;background:#fff8fb;color:#a12e62}.follow-picker svg{width:14px;height:14px;display:block;pointer-events:none}.follow-up-wrap.disabled{opacity:.55}.follow-up-top:disabled,.follow-picker:disabled{cursor:default}.candidate-box{margin:7px 0;padding:8px;border:1px solid #efd0de;border-radius:8px;background:#fff8fb}.candidate-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}.candidate-head b{color:#8e2d59}.candidate-head .secondary{margin-left:auto;padding:4px 8px;font-size:11px}.candidate-list{display:grid;gap:6px}.candidate-card{padding:7px;border:1px solid #e8c5d5;border-radius:7px;background:#fff}.candidate-card.exact{border-color:#73c69d;background:#f3fff8}.candidate-card.review{border-color:#edb65b;background:#fffaf0}.candidate-row{display:flex;align-items:flex-start;gap:6px}.candidate-copy{min-width:0;flex:1}.candidate-copy b,.candidate-copy small{display:block;overflow-wrap:anywhere}.candidate-copy small{color:#806372;margin-top:2px}.candidate-card button{flex:none;padding:4px 7px}.candidate-card button:disabled{opacity:.55;cursor:not-allowed}.candidate-note{font-size:10px;color:#806372}.entry-actions{gap:6px;align-items:center}.entry-actions .secondary{padding:6px 10px}`;
  function mount(){
   if(host)return;host=document.createElement("div");host.id="jubaopen-interaction-host";host.style.cssText="position:fixed;left:calc(100vw - 438px);top:48px;width:420px;height:min(680px,calc(100vh - 60px));z-index:2147483647";document.documentElement.appendChild(host);root=host.attachShadow({mode:"open"});root.innerHTML=`<style>${css}.business{display:grid!important;grid-template-columns:1fr;gap:6px!important}.business .stages-line{display:flex;flex-wrap:nowrap;gap:4px;min-width:0}.stage-list{display:contents}.stage-stamp{flex:1 1 0;min-width:0;cursor:pointer}.stage-stamp input{position:absolute;opacity:0;pointer-events:none}.stage-stamp span{display:flex;align-items:center;justify-content:center;min-height:23px;padding:2px 4px;border-radius:5px;background:#e5e7eb;border:1px solid #cbd5e1;color:#64748b;font-size:10px;font-weight:700;white-space:nowrap}.stage-communication .stage-stamp input:checked+span{background:#2563eb;border-color:#1d4ed8;color:#fff}.stage-intention .stage-stamp input:checked+span{background:#ea580c;border-color:#c2410c;color:#fff}.stage-conversion .stage-stamp input:checked+span{background:#059669;border-color:#047857;color:#fff}.business .business-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap}#statusSelect{font-weight:700}.follow-quick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;margin-top:8px}.follow-quick button{padding:6px 2px;font-size:10px;border:1px solid #e53d8b66;background:#e53d8b12;color:#c0266d;border-radius:7px}.follow-quick button:hover{background:#e53d8b;color:#fff}.follow-form{display:grid;gap:10px}.follow-form label{display:grid;gap:5px;font-size:11px;font-weight:700}.follow-form input{width:100%;box-sizing:border-box}.follow-reminder .modal{border-color:#e53d8b88;box-shadow:0 20px 70px #83184355}.follow-reminder-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}.follow-countdown{color:#be185d;font-weight:750}

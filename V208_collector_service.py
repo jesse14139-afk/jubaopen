@@ -524,6 +524,11 @@ def _transfer_candidates_in_tx(c,a,channel_account_id,conversation=None,limit=20
  return [{'transferId':r['transfer_id'],'contactId':r['contact_id'],'contactName':r['contact_name'],'status':r['status'],'version':r['version'],'transferMethod':r['transfer_method'],'requestedBy':r['requested_by'],'requestedAt':r['requested_at'],'expiresAt':r['expires_at'],'matchedIdentityId':r['matched_identity_id'],'alreadyMatched':bool(current_contact and current_contact==r['contact_id']),'suggestedAction':'confirm' if r['status']=='matched' else 'match'} for r in rows]
 
 def resolve_follow_ups(db,a,p):
+ # JUBAOPEN_THREADS_FOLLOWUP_PLATFORM_PREFLIGHT_210_3_5
+ # Threads 210.3.4 的 _platform() 已具备幂等创建能力；
+ # 在旧 resolver 读取平台前，先用写事务完成平台预检。
+ with db.tx(True) as _juba_platform_tx:
+  _platform(_juba_platform_tx,p)
  """Resolve visible conversations without assuming that WA @c.us and @lid are the same key."""
  if not isinstance(p,dict):return _err('INVALID_REQUEST','请求正文必须是对象')
  code=str(p.get('platformCode') or '').strip().lower()
