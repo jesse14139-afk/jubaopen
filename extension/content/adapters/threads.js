@@ -208,6 +208,172 @@
     };
   }
 
+
+  /*
+   * JUBAOPEN_3_5_3_IDENTITY_PROTOCOL_COMPAT
+   *
+   * Threads Adapter 原始接口使用扁平身份字段：
+   *
+   *   identityType
+   *   identityValue
+   *
+   * 部分 Bootstrap/同步消费者同时读取嵌套身份结构。
+   * 在 Adapter 输出边界补充兼容字段，保留原始扁平协议。
+   *
+   * 此处只对已经具有合法 identityType 和 identityValue 的
+   * 可写会话或已就绪账号补充结构，不会把 readonly/null
+   * 会话强制转换为可写状态。
+   */
+
+  function normalizeConversationIdentity(value) {
+    if (!value || typeof value !== "object") {
+      return value;
+    }
+
+    const identityType = clean(
+      value.identityType ||
+      value.identity?.identityType ||
+      value.contact?.identityType ||
+      value.contactIdentity?.identityType ||
+      "",
+      64
+    );
+
+    const identityValue = clean(
+      value.identityValue ||
+      value.identity?.identityValue ||
+      value.contact?.identityValue ||
+      value.contactIdentity?.identityValue ||
+      "",
+      100
+    );
+
+    if (!identityType || !identityValue) {
+      return value;
+    }
+
+    const identity = {
+      identityType,
+      identityValue,
+      displayName: clean(value.displayName, 200),
+      avatarUrl: clean(value.avatarUrl, 4096),
+      metadata: {
+        ...(value.metadata || {})
+      }
+    };
+
+    return {
+      ...value,
+
+      // 当前扁平身份协议
+      identityType,
+      identityValue,
+
+      // Bootstrap/旧消费者兼容协议
+      identity,
+
+      contact: {
+        ...(value.contact || {}),
+        ...identity,
+        identity
+      },
+
+      contactIdentity: {
+        ...(value.contactIdentity || {}),
+        ...identity
+      },
+
+      participant: {
+        ...(value.participant || {}),
+        ...identity,
+        identity
+      },
+
+      identityState: "writable",
+      writable: true,
+      hasStableIdentity: true,
+
+      metadata: {
+        ...(value.metadata || {}),
+        identityType,
+        identityValue,
+        stableIdentity: true,
+        writable: true
+      }
+    };
+  }
+
+  function normalizeAccountIdentity(value) {
+    if (!value || typeof value !== "object") {
+      return value;
+    }
+
+    const identityType = clean(
+      value.identityType ||
+      value.identity?.identityType ||
+      value.accountIdentity?.identityType ||
+      "",
+      64
+    );
+
+    const identityValue = clean(
+      value.identityValue ||
+      value.identity?.identityValue ||
+      value.accountIdentity?.identityValue ||
+      "",
+      100
+    );
+
+    if (!identityType || !identityValue) {
+      return value;
+    }
+
+    const identity = {
+      identityType,
+      identityValue,
+      displayName: clean(value.displayName, 200),
+      avatarUrl: clean(value.avatarUrl, 4096),
+      metadata: {
+        ...(value.metadata || {})
+      }
+    };
+
+    return {
+      ...value,
+
+      // 当前扁平身份协议
+      identityType,
+      identityValue,
+
+      // Bootstrap/旧消费者兼容协议
+      identity,
+      accountIdentity: identity,
+
+      identityState: "ready",
+      ready: true,
+
+      metadata: {
+        ...(value.metadata || {}),
+        identityType,
+        identityValue,
+        stableIdentity: true,
+        ready: true
+      }
+    };
+  }
+
+  function compatibleConversation() {
+    return normalizeConversationIdentity(
+      conversation()
+    );
+  }
+
+  function compatibleAccount() {
+    return normalizeAccountIdentity(
+      account()
+    );
+  }
+
   window.JubaAdapters.threads = {
     code: "threads",
     capabilities:
@@ -217,9 +383,9 @@
         location.hostname
       ) &&
       location.pathname.startsWith("/messages"),
-    account,
+    account: compatibleAccount,
     context,
-    conversation,
+    conversation: compatibleConversation,
     messages,
     diagnostics
   };
