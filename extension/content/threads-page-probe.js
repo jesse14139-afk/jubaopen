@@ -1223,3 +1223,857 @@
   }
 })();
 
+/*
+ * JUBAOPEN_THREADS_GRID_FALLBACK_SCANNER_210_3_5_5
+ *
+ * Threads 2026 DOM compatibility:
+ *
+ *   role=grid is visible
+ *   role=gridcell nodes do not contain message text
+ *   visible dir=auto message nodes are direct/indirect Grid descendants
+ *
+ * This scanner does not replace the primary scanner. It augments the
+ * snapshot only when the primary scanner has produced zero messages.
+ */
+(() => {
+  "use strict";
+
+  const PATCH_VERSION = "210.3.5.5";
+  const NODE_ID = "jubaopen-threads-page-snapshot-v1";
+  const PATCH_FLAG = "threadsGridFallbackV21030505";
+  const MAX_MESSAGES = 500;
+
+  if (window.__jubaThreadsGridFallback21030505) {
+    return;
+  }
+
+  window.__jubaThreadsGridFallback21030505 = true;
+
+  let applying = false;
+  let scheduled = 0;
+  let lastAppliedKey = "";
+
+  const clean = (value, max = 65536) =>
+    String(value ?? "")
+      .replace(/\u0000/g, "")
+      .replace(
+        /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\uFFFC]/g,
+        ""
+      )
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, max);
+
+  const visual = element => {
+    try {
+      if (!element || !element.isConnected) {
+        return false;
+      }
+
+      if (
+        element.getAttribute?.("aria-hidden") === "true"
+      ) {
+        return false;
+      }
+
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+
+      return (
+        rect.width > 1 &&
+        rect.height > 1 &&
+        rect.bottom > 0 &&
+        rect.right > 0 &&
+        rect.top < innerHeight &&
+        rect.left < innerWidth &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || 1) > 0
+      );
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const intersects = (left, right) =>
+    left.left < right.right &&
+    left.right > right.left &&
+    left.top < right.bottom &&
+    left.bottom > right.top;
+
+  const area = rect =>
+    Math.max(0, rect.width) *
+    Math.max(0, rect.height);
+
+  const hash = value => {
+    const input = String(value ?? "");
+    let result = 2166136261;
+
+    for (let index = 0; index < input.length; index += 1) {
+      result ^= input.charCodeAt(index);
+      result = Math.imul(result, 16777619);
+    }
+
+    return (result >>> 0)
+      .toString(16)
+      .padStart(8, "0");
+  };
+
+  const currentThreadId = snapshot => {
+    const fromSnapshot = clean(
+      snapshot?.threadId ||
+      snapshot?.conversationId ||
+      snapshot?.conversation?.threadId ||
+      snapshot?.conversation?.id ||
+      "",
+      256
+    );
+
+    if (fromSnapshot) {
+      return fromSnapshot;
+    }
+
+    const match = location.pathname.match(
+      /^\/messages\/t\/([^/?#]+)/
+    );
+
+    if (!match) {
+      return "";
+    }
+
+    try {
+      return clean(decodeURIComponent(match[1]), 256);
+    } catch (_) {
+      return clean(match[1], 256);
+    }
+  };
+
+  const excluded = (node, grid) => {
+    try {
+      if (!node || !grid || !grid.contains(node)) {
+        return true;
+      }
+
+      if (
+        node.matches?.(
+          [
+            "[contenteditable='true']",
+            "[role='textbox']",
+            "textarea",
+            "input",
+            "button",
+            "[role='button']",
+            "time",
+            "abbr"
+          ].join(",")
+        )
+      ) {
+        return true;
+      }
+
+      const blockedAncestor = node.closest?.(
+        [
+          "[contenteditable='true']",
+          "[role='textbox']",
+          "[role='menu']",
+          "[role='menuitem']",
+          "[role='dialog']",
+          "[role='listbox']",
+          "textarea",
+          "form",
+          "nav",
+          "header"
+        ].join(",")
+      );
+
+      if (
+        blockedAncestor &&
+        blockedAncestor !== grid &&
+        grid.contains(blockedAncestor)
+      ) {
+        return true;
+      }
+
+      return false;
+    } catch (_) {
+      return true;
+    }
+  };
+
+  const likelyStatusText = text => {
+    const value = clean(text, 500).toLowerCase();
+
+    if (!value) {
+      return true;
+    }
+
+    const exact = new Set([
+      "seen",
+      "sent",
+      "delivered",
+      "sending",
+      "已读",
+      "已发送",
+      "已送达",
+      "发送中",
+      "message",
+      "消息"
+    ]);
+
+    if (exact.has(value)) {
+      return true;
+    }
+
+    if (
+      /^(?:today|yesterday|今天|昨天)$/i.test(value)
+    ) {
+      return true;
+    }
+
+    if (
+      /^(?:\d{1,2}:\d{2})(?:\s?[ap]m)?$/i.test(value)
+    ) {
+      return true;
+    }
+
+    if (
+      /^(?:mon|tue|wed|thu|fri|sat|sun)(?:day)?$/i
+        .test(value)
+    ) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const chooseGrid = () => {
+    const grids = Array.from(
+      document.querySelectorAll('[role="grid"]')
+    ).filter(visual);
+
+    if (!grids.length) {
+      return null;
+    }
+
+    const composer = Array.from(
+      document.querySelectorAll(
+        [
+          "[contenteditable='true']",
+          "[role='textbox']",
+          "textarea"
+        ].join(",")
+      )
+    ).find(visual);
+
+    grids.sort((left, right) => {
+      const leftRect = left.getBoundingClientRect();
+      const rightRect = right.getBoundingClientRect();
+
+      let leftScore = area(leftRect);
+      let rightScore = area(rightRect);
+
+      if (composer) {
+        const composerRect =
+          composer.getBoundingClientRect();
+
+        const leftDistance = Math.abs(
+          composerRect.left +
+          composerRect.width / 2 -
+          (
+            leftRect.left +
+            leftRect.width / 2
+          )
+        );
+
+        const rightDistance = Math.abs(
+          composerRect.left +
+          composerRect.width / 2 -
+          (
+            rightRect.left +
+            rightRect.width / 2
+          )
+        );
+
+        leftScore -= leftDistance * 100;
+        rightScore -= rightDistance * 100;
+      }
+
+      return rightScore - leftScore;
+    });
+
+    return grids[0] || null;
+  };
+
+  const leafSeeds = grid => {
+    const all = Array.from(
+      grid.querySelectorAll(
+        "span[dir='auto'],div[dir='auto']"
+      )
+    ).filter(node => {
+      if (!visual(node) || excluded(node, grid)) {
+        return false;
+      }
+
+      const text = clean(node.textContent, 65536);
+
+      if (!text || likelyStatusText(text)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return all.filter(node => {
+      const visibleTextChild = Array.from(
+        node.querySelectorAll(
+          "span[dir='auto'],div[dir='auto']"
+        )
+      ).some(child => {
+        if (child === node) {
+          return false;
+        }
+
+        if (!visual(child) || excluded(child, grid)) {
+          return false;
+        }
+
+        return Boolean(clean(child.textContent, 65536));
+      });
+
+      return !visibleTextChild;
+    });
+  };
+
+  const directionFor = (element, grid) => {
+    try {
+      const gridRect = grid.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
+
+      if (
+        gridRect.width <= 1 ||
+        rect.width <= 1 ||
+        !intersects(rect, gridRect)
+      ) {
+        return {
+          direction: "",
+          relativeCenter: null
+        };
+      }
+
+      const relativeCenter =
+        (
+          rect.left +
+          rect.width / 2 -
+          gridRect.left
+        ) / gridRect.width;
+
+      if (relativeCenter <= 0.44) {
+        return {
+          direction: "inbound",
+          relativeCenter
+        };
+      }
+
+      if (relativeCenter >= 0.56) {
+        return {
+          direction: "outbound",
+          relativeCenter
+        };
+      }
+
+      return {
+        direction: "",
+        relativeCenter
+      };
+    } catch (_) {
+      return {
+        direction: "",
+        relativeCenter: null
+      };
+    }
+  };
+
+  const bubbleForSeed = (seed, grid, direction) => {
+    const gridRect = grid.getBoundingClientRect();
+
+    let current = seed;
+    let selected = seed;
+
+    for (let depth = 0; depth < 7; depth += 1) {
+      const parent = current?.parentElement;
+
+      if (!parent || parent === grid) {
+        break;
+      }
+
+      if (!grid.contains(parent)) {
+        break;
+      }
+
+      if (
+        parent.matches?.(
+          [
+            "[role='grid']",
+            "[role='dialog']",
+            "[role='menu']",
+            "form",
+            "nav",
+            "header"
+          ].join(",")
+        )
+      ) {
+        break;
+      }
+
+      const rect = parent.getBoundingClientRect();
+
+      if (
+        rect.width <= 1 ||
+        rect.height <= 1 ||
+        rect.width > gridRect.width * 0.78 ||
+        rect.height > Math.max(500, gridRect.height * 0.65)
+      ) {
+        break;
+      }
+
+      const parentDirection =
+        directionFor(parent, grid).direction;
+
+      if (
+        parentDirection &&
+        parentDirection !== direction
+      ) {
+        break;
+      }
+
+      selected = parent;
+      current = parent;
+    }
+
+    return selected;
+  };
+
+  const extractBubbleText = (bubble, seed, grid) => {
+    const nodes = Array.from(
+      bubble.querySelectorAll(
+        "span[dir='auto'],div[dir='auto']"
+      )
+    ).filter(node => {
+      if (!visual(node) || excluded(node, grid)) {
+        return false;
+      }
+
+      return !Array.from(
+        node.querySelectorAll(
+          "span[dir='auto'],div[dir='auto']"
+        )
+      ).some(child => {
+        if (child === node) {
+          return false;
+        }
+
+        return (
+          visual(child) &&
+          !excluded(child, grid) &&
+          Boolean(clean(child.textContent, 65536))
+        );
+      });
+    });
+
+    const sourceNodes = nodes.length ? nodes : [seed];
+    const parts = [];
+    const seen = new Set();
+
+    for (const node of sourceNodes) {
+      const text = clean(node.textContent, 65536);
+
+      if (
+        !text ||
+        likelyStatusText(text) ||
+        seen.has(text)
+      ) {
+        continue;
+      }
+
+      seen.add(text);
+      parts.push(text);
+    }
+
+    return clean(parts.join("\n"), 65536);
+  };
+
+  const scanFallbackMessages = snapshot => {
+    const grid = chooseGrid();
+
+    const diagnostics = {
+      gridFound: Boolean(grid),
+      gridCellCount: 0,
+      visibleGridCellCount: 0,
+      gridTextSeedCount: 0,
+      seedsInsideGridCell: 0,
+      seedsOutsideGridCell: 0,
+      fallbackBubbleCount: 0,
+      fallbackDirectionResolvedCount: 0,
+      fallbackDirectionRejectedCount: 0,
+      fallbackMessageCount: 0,
+      messageScannerMode: "grid-fallback"
+    };
+
+    if (!grid) {
+      return {
+        messages: [],
+        diagnostics
+      };
+    }
+
+    const cells = Array.from(
+      grid.querySelectorAll('[role="gridcell"]')
+    );
+
+    diagnostics.gridCellCount = cells.length;
+    diagnostics.visibleGridCellCount =
+      cells.filter(visual).length;
+
+    const seeds = leafSeeds(grid);
+
+    diagnostics.gridTextSeedCount = seeds.length;
+    diagnostics.seedsInsideGridCell =
+      seeds.filter(
+        seed => Boolean(seed.closest('[role="gridcell"]'))
+      ).length;
+
+    diagnostics.seedsOutsideGridCell =
+      seeds.length -
+      diagnostics.seedsInsideGridCell;
+
+    const bubbleMap = new Map();
+
+    for (const seed of seeds) {
+      const resolution = directionFor(seed, grid);
+
+      if (!resolution.direction) {
+        diagnostics.fallbackDirectionRejectedCount += 1;
+        continue;
+      }
+
+      diagnostics.fallbackDirectionResolvedCount += 1;
+
+      const bubble = bubbleForSeed(
+        seed,
+        grid,
+        resolution.direction
+      );
+
+      const existing = bubbleMap.get(bubble);
+
+      if (existing) {
+        existing.seeds.push(seed);
+        continue;
+      }
+
+      bubbleMap.set(bubble, {
+        bubble,
+        seeds: [seed],
+        direction: resolution.direction,
+        relativeCenter: resolution.relativeCenter
+      });
+    }
+
+    const groups = Array.from(
+      bubbleMap.values()
+    ).sort((left, right) => {
+      const leftRect =
+        left.bubble.getBoundingClientRect();
+
+      const rightRect =
+        right.bubble.getBoundingClientRect();
+
+      if (Math.abs(leftRect.top - rightRect.top) > 2) {
+        return leftRect.top - rightRect.top;
+      }
+
+      return leftRect.left - rightRect.left;
+    });
+
+    diagnostics.fallbackBubbleCount = groups.length;
+
+    const thread = currentThreadId(snapshot);
+    const capturedAt = clean(
+      snapshot?.capturedAt ||
+      snapshot?.generatedAt ||
+      snapshot?.timestamp ||
+      new Date().toISOString(),
+      100
+    );
+
+    const messages = [];
+    const duplicateGuard = new Set();
+
+    groups.forEach((group, order) => {
+      const seed = group.seeds[0];
+
+      const text = extractBubbleText(
+        group.bubble,
+        seed,
+        grid
+      );
+
+      if (!text || likelyStatusText(text)) {
+        return;
+      }
+
+      const rect =
+        group.bubble.getBoundingClientRect();
+
+      const geometryKey = [
+        Math.round(rect.top),
+        Math.round(rect.left),
+        Math.round(rect.width),
+        Math.round(rect.height)
+      ].join(":");
+
+      const identityKey = [
+        thread,
+        group.direction,
+        order,
+        geometryKey,
+        text
+      ].join("|");
+
+      const stableHash = hash(identityKey);
+
+      const messageId =
+        "threads-grid-fallback:" +
+        clean(thread || "unknown", 256) +
+        ":" +
+        group.direction +
+        ":" +
+        stableHash;
+
+      if (duplicateGuard.has(messageId)) {
+        return;
+      }
+
+      duplicateGuard.add(messageId);
+
+      const message = {
+        id: messageId,
+        messageId,
+        externalId: messageId,
+        externalMessageId: messageId,
+        platformMessageId: messageId,
+
+        threadId: thread,
+        conversationId: thread,
+
+        direction: group.direction,
+
+        text,
+        body: text,
+        content: text,
+        textContent: text,
+
+        type: "text",
+        messageType: "text",
+
+        timestamp: capturedAt,
+        occurredAt: capturedAt,
+        sentAt: capturedAt,
+        createdAt: capturedAt,
+
+        order,
+        source: "threads-grid-fallback-210.3.5.5",
+
+        fallback: true,
+        fallbackVersion: PATCH_VERSION,
+        relativeCenter: group.relativeCenter
+      };
+
+      messages.push(message);
+    });
+
+    diagnostics.fallbackMessageCount =
+      messages.length;
+
+    return {
+      messages: messages.slice(-MAX_MESSAGES),
+      diagnostics
+    };
+  };
+
+  const parseSnapshot = node => {
+    try {
+      const raw =
+        node.getAttribute("content") ||
+        node.textContent ||
+        "";
+
+      if (!raw) {
+        return null;
+      }
+
+      const parsed = JSON.parse(raw);
+
+      return (
+        parsed &&
+        typeof parsed === "object"
+      ) ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const writeSnapshot = (node, snapshot) => {
+    const encoded = JSON.stringify(snapshot);
+
+    node.setAttribute("content", encoded);
+
+    if (
+      node.tagName !== "META" &&
+      node.textContent !== encoded
+    ) {
+      node.textContent = encoded;
+    }
+  };
+
+  const applyFallback = () => {
+    if (applying) {
+      return;
+    }
+
+    const node = document.getElementById(NODE_ID);
+
+    if (!node) {
+      return;
+    }
+
+    const snapshot = parseSnapshot(node);
+
+    if (!snapshot) {
+      return;
+    }
+
+    const existingMessages = Array.isArray(
+      snapshot.messages
+    ) ? snapshot.messages : [];
+
+    if (existingMessages.length > 0) {
+      return;
+    }
+
+    const sequence =
+      snapshot.sequence ??
+      snapshot.seq ??
+      "";
+
+    if (
+      snapshot?.diagnostics?.[PATCH_FLAG] === true &&
+      snapshot?.diagnostics?.fallbackMessageCount > 0
+    ) {
+      return;
+    }
+
+    const result = scanFallbackMessages(snapshot);
+
+    const resultKey = [
+      sequence,
+      result.messages.length,
+      result.messages
+        .map(message => message.messageId)
+        .join(",")
+    ].join("|");
+
+    if (
+      resultKey === lastAppliedKey &&
+      snapshot?.diagnostics?.[PATCH_FLAG] === true
+    ) {
+      return;
+    }
+
+    lastAppliedKey = resultKey;
+
+    const diagnostics = {
+      ...(snapshot.diagnostics || {}),
+      ...result.diagnostics,
+      [PATCH_FLAG]: true,
+      fallbackPatchVersion: PATCH_VERSION,
+      primaryMessageCount: existingMessages.length
+    };
+
+    snapshot.messages = result.messages;
+    snapshot.messageCount = result.messages.length;
+    snapshot.diagnostics = diagnostics;
+
+    diagnostics.messageCount = result.messages.length;
+
+    applying = true;
+
+    try {
+      writeSnapshot(node, snapshot);
+    } finally {
+      applying = false;
+    }
+  };
+
+  const schedule = () => {
+    if (scheduled) {
+      return;
+    }
+
+    scheduled = window.setTimeout(() => {
+      scheduled = 0;
+
+      try {
+        applyFallback();
+      } catch (_) {}
+    }, 60);
+  };
+
+  const observer = new MutationObserver(mutations => {
+    if (applying) {
+      return;
+    }
+
+    for (const mutation of mutations) {
+      if (
+        mutation.type === "attributes" &&
+        mutation.target?.id === NODE_ID
+      ) {
+        schedule();
+        return;
+      }
+
+      if (mutation.type === "childList") {
+        schedule();
+        return;
+      }
+    }
+  });
+
+  const start = () => {
+    observer.observe(
+      document.documentElement,
+      {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["content"]
+      }
+    );
+
+    schedule();
+
+    window.setInterval(schedule, 1000);
+  };
+
+  if (document.documentElement) {
+    start();
+  } else {
+    document.addEventListener(
+      "DOMContentLoaded",
+      start,
+      { once: true }
+    );
+  }
+})();
+
