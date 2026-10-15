@@ -39,25 +39,140 @@
       .trim()
       .slice(0, max);
 
-  const visible = element => {
+  /*
+   * JUBAOPEN_THREADS_MESSAGE_GRIDCELL_VISIBILITY_FIX_210_3_5_4
+   *
+   * Threads 当前消息 DOM 中，role=gridcell 可能是一个没有自身
+   * 布局矩形的语义包装层，例如 display:contents 或零尺寸包装节点。
+   *
+   * 原实现只检查 gridcell 自身的 getBoundingClientRect()，导致：
+   *
+   *   gridFound = true
+   *   gridCellCount > 0
+   *   visibleGridCellCount = 0
+   *   messageCount = 0
+   *
+   * 实际消息文本后代仍然可见。因此：
+   *
+   *   1. 普通节点继续使用原有严格判定。
+   *   2. 只有 role=gridcell 可以通过可见后代获得可见状态。
+   *   3. 不对整个页面宽泛扫描，避免将导航、联系人名称、
+   *      输入框草稿和菜单内容误采集为聊天消息。
+   */
+
+  const ownVisualState = element => {
     try {
-      if (!element || !element.isConnected) return false;
-      if (element.getAttribute?.("aria-hidden") === "true") {
+      if (!element || !element.isConnected) {
         return false;
       }
-      const rect = element.getBoundingClientRect();
+
+      if (
+        element.getAttribute?.("aria-hidden") === "true"
+      ) {
+        return false;
+      }
+
       const style = getComputedStyle(element);
+
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        Number(style.opacity || 1) <= 0
+      ) {
+        return false;
+      }
+
+      const rect = element.getBoundingClientRect();
+
       return (
         rect.width > 1 &&
         rect.height > 1 &&
         rect.bottom > 0 &&
         rect.right > 0 &&
         rect.top < innerHeight &&
-        rect.left < innerWidth &&
-        style.display !== "none" &&
-        style.visibility !== "hidden" &&
-        Number(style.opacity || 1) > 0
+        rect.left < innerWidth
       );
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const visibleGridCellDescendant = gridCell => {
+    try {
+      if (
+        !gridCell ||
+        !gridCell.isConnected ||
+        gridCell.getAttribute?.("aria-hidden") === "true"
+      ) {
+        return null;
+      }
+
+      /*
+       * 优先使用 Threads 消息正文常见的 dir=auto 节点。
+       * 媒体节点作为非文本消息的补充候选。
+       *
+       * textbox/contenteditable 明确排除，防止采集输入框草稿。
+       */
+      const candidates = gridCell.querySelectorAll(
+        [
+          "span[dir='auto']",
+          "div[dir='auto']",
+          "img",
+          "video",
+          "audio"
+        ].join(",")
+      );
+
+      for (const candidate of candidates) {
+        if (
+          candidate.matches?.(
+            "[contenteditable='true'],[role='textbox']"
+          ) ||
+          candidate.closest?.(
+            "[contenteditable='true'],[role='textbox']"
+          )
+        ) {
+          continue;
+        }
+
+        if (
+          candidate.closest?.(
+            "[role='menu'],[role='dialog'],nav,header"
+          )
+        ) {
+          continue;
+        }
+
+        if (ownVisualState(candidate)) {
+          return candidate;
+        }
+      }
+
+      return null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const visible = element => {
+    try {
+      if (ownVisualState(element)) {
+        return true;
+      }
+
+      /*
+       * 仅为零尺寸 gridcell 启用后代可见性兼容。
+       * 普通元素仍然必须具有自己的有效矩形。
+       */
+      if (
+        element?.getAttribute?.("role") === "gridcell"
+      ) {
+        return Boolean(
+          visibleGridCellDescendant(element)
+        );
+      }
+
+      return false;
     } catch (_) {
       return false;
     }
