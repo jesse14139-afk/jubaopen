@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JubaOpen Collector",
-  "version": "210.3.4",
-  "version_name": "210.3.4",
-  "description": "JubaOpen 210.3.4 Threads 手动身份与平台自动启用修复",
+  "version": "210.3.4.1",
+  "version_name": "210.3.5.1 platformCode fix",
+  "description": "JubaOpen 210.3.5.1 Threads visible follow-ups platformCode 修复",
   "permissions": [
     "storage",
     "tabs",

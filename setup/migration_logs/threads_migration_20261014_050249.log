@@ -1,3 +1,0 @@
-[OK] Migration program: I:\0、飞翔\27、飞翔资料\1、客户信息管理系统\2、新架构\210.2 业务员\3.0\dist\JubaOpen-210.3.0-Threads-Full-Source\jubaopen-210.3.0\setup\run_threads_migration.py
-[FAILED] Missing migration SQL: I:\0、飞翔\27、飞翔资料\1、客户信息管理系统\2、新架构\210.2 业务员\3.0\dist\JubaOpen-210.3.0-Threads-Full-Source\jubaopen-210.3.0\setup\setup\V223_threads_platform.sql
-[FAILED] Threads migration failed.
