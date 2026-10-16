@@ -2077,3 +2077,1242 @@
   }
 })();
 
+/*
+ * JUBAOPEN_THREADS_TIMESTAMP_RESOLVER_210_3_5_6
+ *
+ * 独立的 Threads 时间快照后处理器。
+ *
+ * 不修改 3.5.5 fallback scanner 内部结构，避免依赖缩进和
+ * 混淆 class。它观察快照节点，在 fallback 消息生成后：
+ *
+ * 1. 查找消息 Grid 中居中的时间锚点；
+ * 2. 解析日期和时间；
+ * 3. 根据消息正文、方向及 DOM 顺序匹配可见消息；
+ * 4. 将 occurredAt 写成 Unix 毫秒整数；
+ * 5. 将扫描时间保存在 metadata.observedAt；
+ * 6. 保留 3.5.5 消息 ID。
+ */
+(() => {
+  "use strict";
+
+  const NODE_ID =
+    "jubaopen-threads-page-snapshot-v1";
+
+  const PATCH_VERSION = "210.3.5.6";
+
+  const DIAGNOSTIC_FLAG =
+    "threadsTimestampResolver21030506";
+
+  if (
+    window.__jubaThreadsTimestampResolver21030506
+  ) {
+    return;
+  }
+
+  window.__jubaThreadsTimestampResolver21030506 =
+    true;
+
+  let applying = false;
+  let timer = 0;
+
+  const clean = (value, max = 65536) =>
+    String(value ?? "")
+      .replace(/\u0000/g, "")
+      .replace(
+        /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\uFFFC]/g,
+        ""
+      )
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, max);
+
+  const visible = element => {
+    try {
+      if (!element || !element.isConnected) {
+        return false;
+      }
+
+      if (
+        element.getAttribute?.("aria-hidden") ===
+        "true"
+      ) {
+        return false;
+      }
+
+      const rect =
+        element.getBoundingClientRect();
+
+      const style = getComputedStyle(element);
+
+      return (
+        rect.width > 1 &&
+        rect.height > 1 &&
+        rect.bottom > 0 &&
+        rect.right > 0 &&
+        rect.top < innerHeight &&
+        rect.left < innerWidth &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || 1) > 0
+      );
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const excluded = (node, grid) => {
+    try {
+      if (
+        !node ||
+        !grid ||
+        !grid.contains(node)
+      ) {
+        return true;
+      }
+
+      if (
+        node.matches?.(
+          [
+            "[contenteditable='true']",
+            "[role='textbox']",
+            "textarea",
+            "input",
+            "button",
+            "[role='button']"
+          ].join(",")
+        )
+      ) {
+        return true;
+      }
+
+      const blocked = node.closest?.(
+        [
+          "[contenteditable='true']",
+          "[role='textbox']",
+          "[role='menu']",
+          "[role='menuitem']",
+          "[role='dialog']",
+          "[role='listbox']",
+          "textarea",
+          "form",
+          "nav",
+          "header"
+        ].join(",")
+      );
+
+      return Boolean(
+        blocked &&
+        blocked !== grid &&
+        grid.contains(blocked)
+      );
+    } catch (_) {
+      return true;
+    }
+  };
+
+  const chooseGrid = () => {
+    const grids = Array.from(
+      document.querySelectorAll(
+        '[role="grid"]'
+      )
+    ).filter(visible);
+
+    if (!grids.length) {
+      return null;
+    }
+
+    grids.sort((left, right) => {
+      const a =
+        left.getBoundingClientRect();
+
+      const b =
+        right.getBoundingClientRect();
+
+      return (
+        b.width * b.height -
+        a.width * a.height
+      );
+    });
+
+    return grids[0] || null;
+  };
+
+  const localEpoch = (
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second = 0
+  ) => {
+    const values = [
+      year,
+      month,
+      day,
+      hour,
+      minute,
+      second
+    ].map(Number);
+
+    if (
+      values.some(
+        value => !Number.isInteger(value)
+      )
+    ) {
+      return null;
+    }
+
+    const [y, m, d, h, min, sec] =
+      values;
+
+    if (
+      y < 2000 ||
+      y > 2100 ||
+      m < 1 ||
+      m > 12 ||
+      d < 1 ||
+      d > 31 ||
+      h < 0 ||
+      h > 23 ||
+      min < 0 ||
+      min > 59 ||
+      sec < 0 ||
+      sec > 59
+    ) {
+      return null;
+    }
+
+    const date = new Date(
+      y,
+      m - 1,
+      d,
+      h,
+      min,
+      sec,
+      0
+    );
+
+    if (
+      date.getFullYear() !== y ||
+      date.getMonth() !== m - 1 ||
+      date.getDate() !== d ||
+      date.getHours() !== h ||
+      date.getMinutes() !== min ||
+      date.getSeconds() !== sec
+    ) {
+      return null;
+    }
+
+    const result = date.getTime();
+
+    return (
+      Number.isFinite(result) &&
+      result > 0
+    ) ? Math.trunc(result) : null;
+  };
+
+  const dateParts = date => ({
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate()
+  });
+
+  const offsetDateParts = (
+    date,
+    offset
+  ) => {
+    const shifted = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate() + offset,
+      12,
+      0,
+      0,
+      0
+    );
+
+    return dateParts(shifted);
+  };
+
+  const parseClock = (
+    hourText,
+    minuteText,
+    secondText,
+    meridiemText
+  ) => {
+    let hour = Number(hourText);
+    const minute = Number(minuteText);
+    const second = Number(
+      secondText || 0
+    );
+
+    const meridiem = clean(
+      meridiemText,
+      20
+    ).toLowerCase();
+
+    if (
+      !Number.isInteger(hour) ||
+      !Number.isInteger(minute) ||
+      !Number.isInteger(second) ||
+      minute < 0 ||
+      minute > 59 ||
+      second < 0 ||
+      second > 59
+    ) {
+      return null;
+    }
+
+    if (meridiem) {
+      if (hour < 1 || hour > 12) {
+        return null;
+      }
+
+      const pm =
+        meridiem === "pm" ||
+        meridiem.includes("下午") ||
+        meridiem.includes("晚上");
+
+      const am =
+        meridiem === "am" ||
+        meridiem.includes("上午") ||
+        meridiem.includes("凌晨");
+
+      if (!pm && !am) {
+        return null;
+      }
+
+      if (pm && hour !== 12) {
+        hour += 12;
+      }
+
+      if (am && hour === 12) {
+        hour = 0;
+      }
+    } else if (hour < 0 || hour > 23) {
+      return null;
+    }
+
+    return {
+      hour,
+      minute,
+      second
+    };
+  };
+
+  const parseTimeAnchor = (
+    input,
+    nowMs
+  ) => {
+    const raw = clean(input, 200);
+
+    if (!raw) {
+      return null;
+    }
+
+    const text = raw
+      .replace(/：/g, ":")
+      .replace(/[，,]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    let match = null;
+    let clock = null;
+    let occurredAt = null;
+    let source = "";
+    let precision = "minute";
+
+    match = text.match(
+      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(上午|下午|晚上|凌晨)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?$/
+    );
+
+    if (match) {
+      clock = parseClock(
+        match[5],
+        match[6],
+        match[7],
+        match[4]
+      );
+
+      if (!clock) {
+        return null;
+      }
+
+      occurredAt = localEpoch(
+        match[1],
+        match[2],
+        match[3],
+        clock.hour,
+        clock.minute,
+        clock.second
+      );
+
+      source =
+        "threads-center-full-date-zh";
+
+      precision =
+        match[7] ? "second" : "minute";
+    }
+
+    if (!occurredAt) {
+      match = text.match(
+        /^(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})\s+(?:(AM|PM)\s*)?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?$/i
+      );
+
+      if (match) {
+        clock = parseClock(
+          match[5],
+          match[6],
+          match[7],
+          match[4] || match[8]
+        );
+
+        if (!clock) {
+          return null;
+        }
+
+        occurredAt = localEpoch(
+          match[1],
+          match[2],
+          match[3],
+          clock.hour,
+          clock.minute,
+          clock.second
+        );
+
+        source =
+          "threads-center-full-date-numeric";
+
+        precision =
+          match[7] ? "second" : "minute";
+      }
+    }
+
+    const now = new Date(nowMs);
+
+    if (!occurredAt) {
+      match = text.match(
+        /^(今天|昨天|today|yesterday)\s+(?:(上午|下午|晚上|凌晨|AM|PM)\s*)?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?$/i
+      );
+
+      if (match) {
+        clock = parseClock(
+          match[3],
+          match[4],
+          match[5],
+          match[2] || match[6]
+        );
+
+        if (!clock) {
+          return null;
+        }
+
+        const label =
+          match[1].toLowerCase();
+
+        const offset = (
+          label === "昨天" ||
+          label === "yesterday"
+        ) ? -1 : 0;
+
+        const parts =
+          offsetDateParts(now, offset);
+
+        occurredAt = localEpoch(
+          parts.year,
+          parts.month,
+          parts.day,
+          clock.hour,
+          clock.minute,
+          clock.second
+        );
+
+        source = offset === -1
+          ? "threads-center-yesterday"
+          : "threads-center-today";
+
+        precision =
+          match[5] ? "second" : "minute";
+      }
+    }
+
+    if (!occurredAt) {
+      match = text.match(
+        /^(?:(上午|下午|晚上|凌晨|AM|PM)\s*)?(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?$/i
+      );
+
+      if (match) {
+        clock = parseClock(
+          match[2],
+          match[3],
+          match[4],
+          match[1] || match[5]
+        );
+
+        if (!clock) {
+          return null;
+        }
+
+        let parts = dateParts(now);
+
+        occurredAt = localEpoch(
+          parts.year,
+          parts.month,
+          parts.day,
+          clock.hour,
+          clock.minute,
+          clock.second
+        );
+
+        if (
+          occurredAt &&
+          occurredAt >
+            nowMs + 5 * 60 * 1000
+        ) {
+          parts =
+            offsetDateParts(now, -1);
+
+          occurredAt = localEpoch(
+            parts.year,
+            parts.month,
+            parts.day,
+            clock.hour,
+            clock.minute,
+            clock.second
+          );
+        }
+
+        source =
+          "threads-center-time-only";
+
+        precision =
+          match[4] ? "second" : "minute";
+      }
+    }
+
+    if (
+      !Number.isFinite(occurredAt) ||
+      occurredAt <= 0 ||
+      occurredAt >
+        nowMs + 5 * 60 * 1000
+    ) {
+      return null;
+    }
+
+    return {
+      occurredAt:
+        Math.trunc(occurredAt),
+      raw,
+      source,
+      precision
+    };
+  };
+
+  const leafTextNodes = grid =>
+    Array.from(
+      grid.querySelectorAll(
+        "span[dir='auto'],div[dir='auto']"
+      )
+    ).filter(node => {
+      if (
+        !visible(node) ||
+        excluded(node, grid)
+      ) {
+        return false;
+      }
+
+      const text = clean(
+        node.textContent,
+        65536
+      );
+
+      if (!text) {
+        return false;
+      }
+
+      return !Array.from(
+        node.querySelectorAll(
+          "span[dir='auto'],div[dir='auto']"
+        )
+      ).some(child => (
+        child !== node &&
+        visible(child) &&
+        !excluded(child, grid) &&
+        Boolean(
+          clean(child.textContent, 65536)
+        )
+      ));
+    });
+
+  const collectAnchors = (
+    grid,
+    nodes,
+    nowMs
+  ) => {
+    const gridRect =
+      grid.getBoundingClientRect();
+
+    const anchors = [];
+    const seen = new Set();
+
+    for (const node of nodes) {
+      const rect =
+        node.getBoundingClientRect();
+
+      if (
+        gridRect.width <= 1 ||
+        rect.width <= 1
+      ) {
+        continue;
+      }
+
+      const center =
+        (
+          rect.left +
+          rect.width / 2 -
+          gridRect.left
+        ) / gridRect.width;
+
+      if (
+        center <= 0.44 ||
+        center >= 0.56
+      ) {
+        continue;
+      }
+
+      const parsed = parseTimeAnchor(
+        node.textContent,
+        nowMs
+      );
+
+      if (!parsed) {
+        continue;
+      }
+
+      const key = [
+        parsed.occurredAt,
+        Math.round(rect.top),
+        parsed.raw
+      ].join("|");
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+
+      anchors.push({
+        ...parsed,
+        top: rect.top,
+        left: rect.left
+      });
+    }
+
+    anchors.sort((left, right) => (
+      Math.abs(left.top - right.top) > 2
+        ? left.top - right.top
+        : left.left - right.left
+    ));
+
+    return anchors;
+  };
+
+  const directionForNode = (
+    node,
+    grid
+  ) => {
+    const gridRect =
+      grid.getBoundingClientRect();
+
+    const rect =
+      node.getBoundingClientRect();
+
+    if (
+      gridRect.width <= 1 ||
+      rect.width <= 1
+    ) {
+      return "";
+    }
+
+    const center =
+      (
+        rect.left +
+        rect.width / 2 -
+        gridRect.left
+      ) / gridRect.width;
+
+    if (center <= 0.44) {
+      return "inbound";
+    }
+
+    if (center >= 0.56) {
+      return "outbound";
+    }
+
+    return "";
+  };
+
+  const collectMessageNodes = (
+    grid,
+    nodes,
+    nowMs
+  ) => {
+    const output = [];
+
+    for (const node of nodes) {
+      if (
+        parseTimeAnchor(
+          node.textContent,
+          nowMs
+        )
+      ) {
+        continue;
+      }
+
+      const direction =
+        directionForNode(node, grid);
+
+      if (!direction) {
+        continue;
+      }
+
+      const text = clean(
+        node.textContent,
+        65536
+      );
+
+      if (!text) {
+        continue;
+      }
+
+      const rect =
+        node.getBoundingClientRect();
+
+      output.push({
+        node,
+        text,
+        direction,
+        top: rect.top,
+        left: rect.left
+      });
+    }
+
+    output.sort((left, right) => (
+      Math.abs(left.top - right.top) > 2
+        ? left.top - right.top
+        : left.left - right.left
+    ));
+
+    return output;
+  };
+
+  const findDomMessage = (
+    message,
+    candidates,
+    used
+  ) => {
+    const text = clean(
+      message?.text ||
+      message?.body ||
+      message?.content ||
+      message?.textContent ||
+      "",
+      65536
+    );
+
+    const direction =
+      message?.direction === "outbound"
+        ? "outbound"
+        : "inbound";
+
+    for (
+      let index = 0;
+      index < candidates.length;
+      index += 1
+    ) {
+      if (used.has(index)) {
+        continue;
+      }
+
+      const candidate =
+        candidates[index];
+
+      if (
+        candidate.direction === direction &&
+        candidate.text === text
+      ) {
+        used.add(index);
+        return candidate;
+      }
+    }
+
+    for (
+      let index = 0;
+      index < candidates.length;
+      index += 1
+    ) {
+      if (used.has(index)) {
+        continue;
+      }
+
+      const candidate =
+        candidates[index];
+
+      if (
+        candidate.direction !== direction
+      ) {
+        continue;
+      }
+
+      if (
+        text &&
+        (
+          candidate.text.includes(text) ||
+          text.includes(candidate.text)
+        )
+      ) {
+        used.add(index);
+        return candidate;
+      }
+    }
+
+    return null;
+  };
+
+  const precedingAnchor = (
+    top,
+    anchors
+  ) => {
+    let selected = null;
+    let selectedIndex = -1;
+
+    for (
+      let index = 0;
+      index < anchors.length;
+      index += 1
+    ) {
+      if (
+        anchors[index].top <= top + 2
+      ) {
+        selected = anchors[index];
+        selectedIndex = index;
+        continue;
+      }
+
+      break;
+    }
+
+    return selected
+      ? {
+          anchor: selected,
+          index: selectedIndex
+        }
+      : null;
+  };
+
+  const readSnapshot = node => {
+    try {
+      const raw =
+        node.getAttribute("content") ||
+        node.textContent ||
+        "";
+
+      if (!raw) {
+        return null;
+      }
+
+      const value = JSON.parse(raw);
+
+      return (
+        value &&
+        typeof value === "object"
+      ) ? value : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const writeSnapshot = (
+    node,
+    snapshot
+  ) => {
+    const encoded =
+      JSON.stringify(snapshot);
+
+    node.setAttribute(
+      "content",
+      encoded
+    );
+
+    if (
+      node.tagName !== "META" &&
+      node.textContent !== encoded
+    ) {
+      node.textContent = encoded;
+    }
+  };
+
+  const invalidLegacyTimestamp = value => (
+    typeof value === "string" &&
+    !Number.isFinite(Number(value))
+  );
+
+  const apply = () => {
+    if (applying) {
+      return;
+    }
+
+    const node =
+      document.getElementById(NODE_ID);
+
+    if (!node) {
+      return;
+    }
+
+    const snapshot =
+      readSnapshot(node);
+
+    if (!snapshot) {
+      return;
+    }
+
+    const messages =
+      Array.isArray(snapshot.messages)
+        ? snapshot.messages
+        : [];
+
+    if (!messages.length) {
+      return;
+    }
+
+    const diagnostics =
+      snapshot.diagnostics || {};
+
+    if (
+      diagnostics[DIAGNOSTIC_FLAG] === true &&
+      diagnostics.timestampResolverSequence ===
+        snapshot.sequence &&
+      messages.every(message => (
+        Number.isFinite(
+          Number(message?.occurredAt)
+        ) ||
+        message?.metadata
+          ?.timestampResolved === false
+      ))
+    ) {
+      return;
+    }
+
+    const grid = chooseGrid();
+
+    if (!grid) {
+      return;
+    }
+
+    const observedAt = Date.now();
+    const leaves = leafTextNodes(grid);
+
+    const anchors = collectAnchors(
+      grid,
+      leaves,
+      observedAt
+    );
+
+    const domMessages =
+      collectMessageNodes(
+        grid,
+        leaves,
+        observedAt
+      );
+
+    const usedDomNodes = new Set();
+    const ordinalByAnchor = new Map();
+
+    let resolvedCount = 0;
+    let unresolvedCount = 0;
+    let approximateCount = 0;
+    let matchedDomCount = 0;
+
+    const orderedMessages =
+      messages
+        .map((message, index) => ({
+          message,
+          originalIndex: index,
+          order: Number.isFinite(
+            Number(message?.order)
+          )
+            ? Number(message.order)
+            : index
+        }))
+        .sort((left, right) => (
+          left.order - right.order
+        ));
+
+    for (const item of orderedMessages) {
+      const message = item.message;
+
+      const domMessage = findDomMessage(
+        message,
+        domMessages,
+        usedDomNodes
+      );
+
+      const metadata = {
+        ...(
+          message.metadata &&
+          typeof message.metadata === "object"
+            ? message.metadata
+            : {}
+        ),
+        observedAt,
+        captureMode:
+          "threads-grid-fallback",
+        timestampResolverVersion:
+          PATCH_VERSION
+      };
+
+      if (domMessage) {
+        matchedDomCount += 1;
+      }
+
+      const resolution = domMessage
+        ? precedingAnchor(
+            domMessage.top,
+            anchors
+          )
+        : null;
+
+      if (resolution) {
+        const previous =
+          ordinalByAnchor.get(
+            resolution.index
+          ) || 0;
+
+        ordinalByAnchor.set(
+          resolution.index,
+          previous + 1
+        );
+
+        const occurredAt =
+          resolution.anchor.occurredAt +
+          previous;
+
+        message.timestamp = occurredAt;
+        message.occurredAt = occurredAt;
+        message.sentAt = occurredAt;
+        message.createdAt = occurredAt;
+
+        metadata.timestampResolved = true;
+        metadata.timestampConfidence =
+          previous === 0
+            ? "high"
+            : "medium";
+
+        metadata.timestampSource =
+          previous === 0
+            ? resolution.anchor.source
+            : "threads-center-time-group";
+
+        metadata.timestampRaw =
+          resolution.anchor.raw;
+
+        metadata.timestampPrecision =
+          resolution.anchor.precision;
+
+        metadata.timestampAnchorAt =
+          resolution.anchor.occurredAt;
+
+        metadata.timestampAnchorIndex =
+          resolution.index;
+
+        metadata.timestampOrderOffsetMs =
+          previous;
+
+        metadata.timestampApproximate =
+          previous > 0;
+
+        metadata.timezone =
+          Intl.DateTimeFormat()
+            .resolvedOptions()
+            .timeZone || "";
+
+        resolvedCount += 1;
+
+        if (previous > 0) {
+          approximateCount += 1;
+        }
+      } else {
+        /*
+         * 删除 3.5.5 写入的 ISO 扫描时间，避免继续把
+         * 观察时间伪装成发送时间。
+         */
+        if (
+          invalidLegacyTimestamp(
+            message.timestamp
+          )
+        ) {
+          delete message.timestamp;
+        }
+
+        if (
+          invalidLegacyTimestamp(
+            message.occurredAt
+          )
+        ) {
+          delete message.occurredAt;
+        }
+
+        if (
+          invalidLegacyTimestamp(
+            message.sentAt
+          )
+        ) {
+          delete message.sentAt;
+        }
+
+        if (
+          invalidLegacyTimestamp(
+            message.createdAt
+          )
+        ) {
+          delete message.createdAt;
+        }
+
+        metadata.timestampResolved = false;
+        metadata.timestampConfidence = "low";
+
+        metadata.timestampSource =
+          domMessage
+            ? "threads-center-anchor-not-preceding"
+            : "threads-message-dom-not-matched";
+
+        metadata.timestampApproximate = false;
+
+        unresolvedCount += 1;
+      }
+
+      message.metadata = metadata;
+    }
+
+    snapshot.messages = messages;
+
+    snapshot.diagnostics = {
+      ...diagnostics,
+      [DIAGNOSTIC_FLAG]: true,
+
+      timestampResolverVersion:
+        PATCH_VERSION,
+
+      timestampResolverSequence:
+        snapshot.sequence,
+
+      timestampScannerMode:
+        "threads-center-time-anchor",
+
+      timestampAnchorCount:
+        anchors.length,
+
+      timestampDomMessageCount:
+        domMessages.length,
+
+      timestampMatchedDomMessageCount:
+        matchedDomCount,
+
+      timestampResolvedMessageCount:
+        resolvedCount,
+
+      timestampUnresolvedMessageCount:
+        unresolvedCount,
+
+      timestampApproximateMessageCount:
+        approximateCount,
+
+      timestampAnchorSamples:
+        anchors
+          .slice(0, 20)
+          .map(anchor => ({
+            raw: anchor.raw,
+            occurredAt:
+              anchor.occurredAt,
+            source: anchor.source,
+            precision:
+              anchor.precision,
+            top: Math.round(anchor.top)
+          }))
+    };
+
+    applying = true;
+
+    try {
+      writeSnapshot(node, snapshot);
+    } finally {
+      applying = false;
+    }
+  };
+
+  const schedule = () => {
+    if (timer) {
+      return;
+    }
+
+    timer = window.setTimeout(() => {
+      timer = 0;
+
+      try {
+        apply();
+      } catch (_) {}
+    }, 100);
+  };
+
+  const observer =
+    new MutationObserver(mutations => {
+      if (applying) {
+        return;
+      }
+
+      for (const mutation of mutations) {
+        if (
+          mutation.type === "attributes" &&
+          mutation.target?.id === NODE_ID
+        ) {
+          schedule();
+          return;
+        }
+
+        if (mutation.type === "childList") {
+          schedule();
+          return;
+        }
+      }
+    });
+
+  const start = () => {
+    observer.observe(
+      document.documentElement,
+      {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["content"]
+      }
+    );
+
+    schedule();
+
+    window.setInterval(
+      schedule,
+      1000
+    );
+  };
+
+  if (document.documentElement) {
+    start();
+  } else {
+    document.addEventListener(
+      "DOMContentLoaded",
+      start,
+      { once: true }
+    );
+  }
+})();
+
