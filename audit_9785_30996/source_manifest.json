@@ -1,0 +1,74 @@
+[
+  {
+    "path": "V207_shared_db.py",
+    "sha256": "f35555c62054ad39d2768faf2e11e3752e7a54ee6fe264887075b39566baf937",
+    "bytes": 255304,
+    "status": "downloaded"
+  },
+  {
+    "path": "V207_center_service.py",
+    "sha256": "2d3576b22271cbae0649b51f3ca4c5eae2c3e9b76f418b82709b59fb5f8471c2",
+    "bytes": 20383,
+    "status": "downloaded"
+  },
+  {
+    "path": "V207_security.py",
+    "sha256": "78915efafb5783f4b499c6657eb3cd51d542942458d38d66941166c57f7b5681",
+    "bytes": 22423,
+    "status": "downloaded"
+  },
+  {
+    "path": "V207_core.py",
+    "sha256": "23be33d4c2eb9133d9b0397f2b8ad65ecf878179acce288c945509dbe621b7ac",
+    "bytes": 8039,
+    "status": "downloaded"
+  },
+  {
+    "path": "V207_admin_api.py",
+    "sha256": "2d9e4660030e3bfab854e08f741d25f26438823815c1fae1b0dd6f55d4597bdd",
+    "bytes": 181920,
+    "status": "downloaded"
+  },
+  {
+    "path": "V208_api.py",
+    "sha256": "128a0758cb30e3394b14c3a1ffbdd7f31a3b025bfba02ed79619e76e8c874417",
+    "bytes": 11795,
+    "status": "downloaded"
+  },
+  {
+    "path": "V208_collector_service.py",
+    "sha256": "04c2bd9c23cb8d88aeba01a787181ee35cf68ab7ac4d644c1b0e93c5d11adc04",
+    "bytes": 106815,
+    "status": "downloaded"
+  },
+  {
+    "path": "V208_contact_center_service.py",
+    "sha256": "94a5867730b070662d65fc1de814709a56bde0ba9ab59c991eb53326262c9c81",
+    "bytes": 88998,
+    "status": "downloaded"
+  },
+  {
+    "path": "V208_follow_up_notification_service.py",
+    "sha256": "e4b84443520a2ce78498150080697243bc9d3193acfe29c33297add947a90e9d",
+    "bytes": 35995,
+    "status": "downloaded"
+  },
+  {
+    "path": "setup/test_db_concurrency_hotfix.py",
+    "sha256": "a83ac1dda0cc68d9f064809fe4324b934979242d6750b36690a66abb0393140a",
+    "bytes": 915,
+    "status": "downloaded"
+  },
+  {
+    "path": "V207_version.py",
+    "sha256": "00e0ac8255592b99390f7c7469599a9737f0c527addf1c754fd12b9ce2d567d8",
+    "bytes": 139,
+    "status": "downloaded"
+  },
+  {
+    "path": "extension/background/service-worker.js",
+    "sha256": "72e0dc7e99dbf4f7a17ef0bf1a3438af4d5b1eb68324d5e14d600a7879baa3bf",
+    "bytes": 16464,
+    "status": "downloaded"
+  }
+]

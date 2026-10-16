@@ -1,0 +1,1107 @@
+{
+  "python": "3.14.7 free-threading build (tags/v3.14.7:823f032, Aug  5 2026, 10:52:03) [MSC v.1944 64 bit (AMD64)]",
+  "collector_sqlite_version": "3.50.4",
+  "note": "Read-only observation. busy_timeout belongs to this collector connection, not the application's connections. No integrity check, load test, migration or checkpoint is run.",
+  "journal_mode": "wal",
+  "page_size": 4096,
+  "page_count": 800,
+  "freelist_count": 4,
+  "user_version": 222,
+  "indexes": [
+    {
+      "name": "idx_binding_slots_subject",
+      "table": "account_binding_slots",
+      "sql": "CREATE INDEX idx_binding_slots_subject ON account_binding_slots(organization_id,user_id,platform_id,status)"
+    },
+    {
+      "name": "idx_binding_slots_team",
+      "table": "account_binding_slots",
+      "sql": "CREATE INDEX idx_binding_slots_team ON account_binding_slots(organization_id,team_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_account_binding_slots_1",
+      "table": "account_binding_slots",
+      "sql": null
+    },
+    {
+      "name": "uq_binding_slot_active_user_platform",
+      "table": "account_binding_slots",
+      "sql": "CREATE UNIQUE INDEX uq_binding_slot_active_user_platform ON account_binding_slots(organization_id,user_id,platform_id) WHERE status='pending'"
+    },
+    {
+      "name": "idx_identity_discoveries_status",
+      "table": "account_identity_discoveries",
+      "sql": "CREATE INDEX idx_identity_discoveries_status ON account_identity_discoveries(organization_id,status,last_seen_at DESC)"
+    },
+    {
+      "name": "idx_identity_discoveries_subject",
+      "table": "account_identity_discoveries",
+      "sql": "CREATE INDEX idx_identity_discoveries_subject ON account_identity_discoveries(organization_id,user_id,platform_id)"
+    },
+    {
+      "name": "sqlite_autoindex_account_identity_discoveries_1",
+      "table": "account_identity_discoveries",
+      "sql": null
+    },
+    {
+      "name": "uq_identity_discovery_subject",
+      "table": "account_identity_discoveries",
+      "sql": "CREATE UNIQUE INDEX uq_identity_discovery_subject ON account_identity_discoveries(organization_id,user_id,platform_id,identity_type,canonical_value)"
+    },
+    {
+      "name": "idx_business_line_org_parent",
+      "table": "business_lines",
+      "sql": "CREATE INDEX idx_business_line_org_parent ON business_lines(organization_id,parent_business_line_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_business_lines_1",
+      "table": "business_lines",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_business_lines_2",
+      "table": "business_lines",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_business_lines_3",
+      "table": "business_lines",
+      "sql": null
+    },
+    {
+      "name": "idx_campaign_org",
+      "table": "campaigns",
+      "sql": "CREATE INDEX idx_campaign_org ON campaigns(organization_id,workspace_id,status)"
+    },
+    {
+      "name": "idx_campaigns_business_line",
+      "table": "campaigns",
+      "sql": "CREATE INDEX idx_campaigns_business_line ON campaigns(business_line_id)"
+    },
+    {
+      "name": "idx_campaigns_market",
+      "table": "campaigns",
+      "sql": "CREATE INDEX idx_campaigns_market ON campaigns(market_id)"
+    },
+    {
+      "name": "sqlite_autoindex_campaigns_1",
+      "table": "campaigns",
+      "sql": null
+    },
+    {
+      "name": "idx_changes_cursor",
+      "table": "changes",
+      "sql": "CREATE INDEX idx_changes_cursor ON changes(workspace_id,change_id)"
+    },
+    {
+      "name": "idx_identity_lookup",
+      "table": "channel_account_identities",
+      "sql": "CREATE INDEX idx_identity_lookup ON channel_account_identities(identity_type,canonical_value)"
+    },
+    {
+      "name": "sqlite_autoindex_channel_account_identities_1",
+      "table": "channel_account_identities",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_channel_account_identities_2",
+      "table": "channel_account_identities",
+      "sql": null
+    },
+    {
+      "name": "idx_channel_accounts_default_market",
+      "table": "channel_accounts",
+      "sql": "CREATE INDEX idx_channel_accounts_default_market ON channel_accounts(default_market_id)"
+    },
+    {
+      "name": "idx_channel_accounts_suggested_source",
+      "table": "channel_accounts",
+      "sql": "CREATE INDEX idx_channel_accounts_suggested_source ON channel_accounts(suggested_source_type_id)"
+    },
+    {
+      "name": "sqlite_autoindex_channel_accounts_1",
+      "table": "channel_accounts",
+      "sql": null
+    },
+    {
+      "name": "idx_channel_type_active",
+      "table": "channel_types",
+      "sql": "CREATE INDEX idx_channel_type_active ON channel_types(is_active)"
+    },
+    {
+      "name": "idx_channel_type_platform",
+      "table": "channel_types",
+      "sql": "CREATE INDEX idx_channel_type_platform ON channel_types(platform_id)"
+    },
+    {
+      "name": "sqlite_autoindex_channel_types_1",
+      "table": "channel_types",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_channel_types_2",
+      "table": "channel_types",
+      "sql": null
+    },
+    {
+      "name": "idx_attribution_contact",
+      "table": "contact_attributions",
+      "sql": "CREATE INDEX idx_attribution_contact ON contact_attributions(organization_id,contact_id,attribution_type)"
+    },
+    {
+      "name": "idx_attribution_contact_rule",
+      "table": "contact_attributions",
+      "sql": "CREATE INDEX idx_attribution_contact_rule ON contact_attributions(organization_id,workspace_id,contact_id,attribution_type)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_attributions_1",
+      "table": "contact_attributions",
+      "sql": null
+    },
+    {
+      "name": "uq_attribution_primary",
+      "table": "contact_attributions",
+      "sql": "CREATE UNIQUE INDEX uq_attribution_primary ON contact_attributions(organization_id,workspace_id,contact_id) WHERE is_primary=1"
+    },
+    {
+      "name": "idx_conversion_contact_time",
+      "table": "contact_conversions",
+      "sql": "CREATE INDEX idx_conversion_contact_time ON contact_conversions(organization_id,contact_id,converted_at)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_conversions_1",
+      "table": "contact_conversions",
+      "sql": null
+    },
+    {
+      "name": "uq_conversion_external_key",
+      "table": "contact_conversions",
+      "sql": "CREATE UNIQUE INDEX uq_conversion_external_key ON contact_conversions(organization_id,external_conversion_key) WHERE external_conversion_key IS NOT NULL AND external_conversion_key<>''"
+    },
+    {
+      "name": "sqlite_autoindex_contact_custom_values_1",
+      "table": "contact_custom_values",
+      "sql": null
+    },
+    {
+      "name": "idx_contact_identity_lookup",
+      "table": "contact_identities",
+      "sql": "CREATE INDEX idx_contact_identity_lookup ON contact_identities(organization_id,workspace_id,platform_id,canonical_value)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_identities_1",
+      "table": "contact_identities",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_contact_identities_2",
+      "table": "contact_identities",
+      "sql": null
+    },
+    {
+      "name": "uq_contact_primary_identity",
+      "table": "contact_identities",
+      "sql": "CREATE UNIQUE INDEX uq_contact_primary_identity ON contact_identities(organization_id,workspace_id,contact_id) WHERE is_primary=1"
+    },
+    {
+      "name": "idx_contact_match_pending",
+      "table": "contact_match_reviews",
+      "sql": "CREATE INDEX idx_contact_match_pending ON contact_match_reviews(organization_id,workspace_id,status,confidence,updated_at)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_match_reviews_1",
+      "table": "contact_match_reviews",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_contact_match_reviews_2",
+      "table": "contact_match_reviews",
+      "sql": null
+    },
+    {
+      "name": "idx_contact_merge_target",
+      "table": "contact_merge_history",
+      "sql": "CREATE INDEX idx_contact_merge_target ON contact_merge_history(organization_id,workspace_id,target_contact_id,created_at)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_merge_history_1",
+      "table": "contact_merge_history",
+      "sql": null
+    },
+    {
+      "name": "idx_merge_request_events",
+      "table": "contact_merge_request_events",
+      "sql": "CREATE INDEX idx_merge_request_events ON contact_merge_request_events(request_id,created_at)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_merge_request_events_1",
+      "table": "contact_merge_request_events",
+      "sql": null
+    },
+    {
+      "name": "idx_merge_requests_queue",
+      "table": "contact_merge_requests",
+      "sql": "CREATE INDEX idx_merge_requests_queue ON contact_merge_requests(organization_id,status,workspace_id,updated_at)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_merge_requests_1",
+      "table": "contact_merge_requests",
+      "sql": null
+    },
+    {
+      "name": "uq_merge_request_pending_pair",
+      "table": "contact_merge_requests",
+      "sql": "CREATE UNIQUE INDEX uq_merge_request_pending_pair ON contact_merge_requests(organization_id,workspace_id,target_contact_id,source_contact_id) WHERE status='pending'"
+    },
+    {
+      "name": "sqlite_autoindex_contact_tags_1",
+      "table": "contact_tags",
+      "sql": null
+    },
+    {
+      "name": "idx_contact_team_access_contact",
+      "table": "contact_team_access",
+      "sql": "CREATE INDEX idx_contact_team_access_contact ON contact_team_access(contact_id,revoked_at,access_level)"
+    },
+    {
+      "name": "idx_contact_team_access_team",
+      "table": "contact_team_access",
+      "sql": "CREATE INDEX idx_contact_team_access_team ON contact_team_access(organization_id,workspace_id,team_id,revoked_at,contact_id)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_team_access_1",
+      "table": "contact_team_access",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_contact_team_access_2",
+      "table": "contact_team_access",
+      "sql": null
+    },
+    {
+      "name": "idx_transfer_events_transfer_time",
+      "table": "contact_transfer_events",
+      "sql": "CREATE INDEX idx_transfer_events_transfer_time ON contact_transfer_events(transfer_id,created_at,event_id)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_transfer_events_1",
+      "table": "contact_transfer_events",
+      "sql": null
+    },
+    {
+      "name": "idx_transfers_contact_time",
+      "table": "contact_transfers",
+      "sql": "CREATE INDEX idx_transfers_contact_time ON contact_transfers(organization_id,workspace_id,contact_id,requested_at DESC,transfer_id DESC)"
+    },
+    {
+      "name": "idx_transfers_scope_status_time",
+      "table": "contact_transfers",
+      "sql": "CREATE INDEX idx_transfers_scope_status_time ON contact_transfers(organization_id,workspace_id,team_id,status,requested_at DESC,transfer_id DESC)"
+    },
+    {
+      "name": "sqlite_autoindex_contact_transfers_1",
+      "table": "contact_transfers",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_contact_transfers_2",
+      "table": "contact_transfers",
+      "sql": null
+    },
+    {
+      "name": "uq_transfers_pending_target",
+      "table": "contact_transfers",
+      "sql": "CREATE UNIQUE INDEX uq_transfers_pending_target ON contact_transfers(organization_id,workspace_id,contact_id,to_channel_account_id) WHERE status IN ('pending','matched')"
+    },
+    {
+      "name": "idx_contacts_last_touch",
+      "table": "contacts",
+      "sql": "CREATE INDEX idx_contacts_last_touch ON contacts(organization_id, last_touch_at DESC)"
+    },
+    {
+      "name": "idx_contacts_next_due",
+      "table": "contacts",
+      "sql": "CREATE INDEX idx_contacts_next_due ON contacts(organization_id, next_follow_up_at)"
+    },
+    {
+      "name": "idx_contacts_owner_scope",
+      "table": "contacts",
+      "sql": "CREATE INDEX idx_contacts_owner_scope ON contacts(organization_id, owner_user_id, deleted_at)"
+    },
+    {
+      "name": "idx_contacts_source",
+      "table": "contacts",
+      "sql": "CREATE INDEX idx_contacts_source ON contacts(workspace_id,source_id,deleted_at)"
+    },
+    {
+      "name": "idx_contacts_stage_due",
+      "table": "contacts",
+      "sql": "CREATE INDEX idx_contacts_stage_due ON contacts(organization_id, stage, next_follow_up_at)"
+    },
+    {
+      "name": "sqlite_autoindex_contacts_1",
+      "table": "contacts",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_contacts_2",
+      "table": "contacts",
+      "sql": null
+    },
+    {
+      "name": "idx_conversation_alias_contact",
+      "table": "conversation_external_aliases",
+      "sql": "CREATE INDEX idx_conversation_alias_contact ON conversation_external_aliases(organization_id,workspace_id,platform_id,contact_id)"
+    },
+    {
+      "name": "sqlite_autoindex_conversation_external_aliases_1",
+      "table": "conversation_external_aliases",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_conversation_external_aliases_2",
+      "table": "conversation_external_aliases",
+      "sql": null
+    },
+    {
+      "name": "idx_messages_contact_time",
+      "table": "conversation_messages",
+      "sql": "CREATE INDEX idx_messages_contact_time ON conversation_messages(contact_id,occurred_at)"
+    },
+    {
+      "name": "idx_messages_conversation_time",
+      "table": "conversation_messages",
+      "sql": "CREATE INDEX idx_messages_conversation_time ON conversation_messages(conversation_id,occurred_at)"
+    },
+    {
+      "name": "idx_messages_followup_completion",
+      "table": "conversation_messages",
+      "sql": "CREATE INDEX idx_messages_followup_completion ON conversation_messages(contact_id,direction,sender_type,status,occurred_at)"
+    },
+    {
+      "name": "idx_messages_scope_contact_time",
+      "table": "conversation_messages",
+      "sql": "CREATE INDEX idx_messages_scope_contact_time ON conversation_messages(organization_id,workspace_id,team_id,contact_id,occurred_at DESC,message_id DESC)"
+    },
+    {
+      "name": "idx_messages_scope_conversation_time",
+      "table": "conversation_messages",
+      "sql": "CREATE INDEX idx_messages_scope_conversation_time ON conversation_messages(organization_id,workspace_id,team_id,conversation_id,occurred_at DESC,message_id DESC)"
+    },
+    {
+      "name": "idx_messages_team_time",
+      "table": "conversation_messages",
+      "sql": "CREATE INDEX idx_messages_team_time ON conversation_messages(team_id,occurred_at)"
+    },
+    {
+      "name": "sqlite_autoindex_conversation_messages_1",
+      "table": "conversation_messages",
+      "sql": null
+    },
+    {
+      "name": "uq_message_client_event",
+      "table": "conversation_messages",
+      "sql": "CREATE UNIQUE INDEX uq_message_client_event ON conversation_messages(organization_id,channel_account_id,client_event_id) WHERE client_event_id IS NOT NULL AND client_event_id<>''"
+    },
+    {
+      "name": "uq_message_external",
+      "table": "conversation_messages",
+      "sql": "CREATE UNIQUE INDEX uq_message_external ON conversation_messages(organization_id,channel_account_id,external_message_id) WHERE external_message_id IS NOT NULL AND external_message_id<>''"
+    },
+    {
+      "name": "idx_conversations_assignee",
+      "table": "conversations",
+      "sql": "CREATE INDEX idx_conversations_assignee ON conversations(assigned_user_id,status,last_message_at)"
+    },
+    {
+      "name": "idx_conversations_contact_time",
+      "table": "conversations",
+      "sql": "CREATE INDEX idx_conversations_contact_time ON conversations(contact_id,last_message_at)"
+    },
+    {
+      "name": "idx_conversations_scope_activity",
+      "table": "conversations",
+      "sql": "CREATE INDEX idx_conversations_scope_activity ON conversations(organization_id,workspace_id,team_id,last_message_at DESC,conversation_id DESC)"
+    },
+    {
+      "name": "idx_conversations_scope_contact_activity",
+      "table": "conversations",
+      "sql": "CREATE INDEX idx_conversations_scope_contact_activity ON conversations(organization_id,workspace_id,team_id,contact_id,last_message_at DESC,conversation_id DESC)"
+    },
+    {
+      "name": "idx_conversations_team_time",
+      "table": "conversations",
+      "sql": "CREATE INDEX idx_conversations_team_time ON conversations(team_id,last_message_at)"
+    },
+    {
+      "name": "sqlite_autoindex_conversations_1",
+      "table": "conversations",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_conversations_2",
+      "table": "conversations",
+      "sql": null
+    },
+    {
+      "name": "uq_direct_conversation_account_contact",
+      "table": "conversations",
+      "sql": "CREATE UNIQUE INDEX uq_direct_conversation_account_contact\n  ON conversations(organization_id,channel_account_id,contact_id) WHERE conversation_type='direct'"
+    },
+    {
+      "name": "sqlite_autoindex_custom_field_definitions_1",
+      "table": "custom_field_definitions",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_delete_confirmations_1",
+      "table": "delete_confirmations",
+      "sql": null
+    },
+    {
+      "name": "idx_department_org_parent",
+      "table": "departments",
+      "sql": "CREATE INDEX idx_department_org_parent ON departments(organization_id,parent_department_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_departments_1",
+      "table": "departments",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_departments_2",
+      "table": "departments",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_departments_3",
+      "table": "departments",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_device_assignments_1",
+      "table": "device_assignments",
+      "sql": null
+    },
+    {
+      "name": "idx_device_account_binding",
+      "table": "device_channel_account_bindings",
+      "sql": "CREATE INDEX idx_device_account_binding ON device_channel_account_bindings(device_id,status,last_verified_at)"
+    },
+    {
+      "name": "sqlite_autoindex_device_channel_account_bindings_1",
+      "table": "device_channel_account_bindings",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_device_channel_account_bindings_2",
+      "table": "device_channel_account_bindings",
+      "sql": null
+    },
+    {
+      "name": "idx_device_enrollment_org_status",
+      "table": "device_enrollments",
+      "sql": "CREATE INDEX idx_device_enrollment_org_status ON device_enrollments(organization_id,status,expires_at)"
+    },
+    {
+      "name": "idx_device_enrollment_team",
+      "table": "device_enrollments",
+      "sql": "CREATE INDEX idx_device_enrollment_team ON device_enrollments(team_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_device_enrollments_1",
+      "table": "device_enrollments",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_device_enrollments_2",
+      "table": "device_enrollments",
+      "sql": null
+    },
+    {
+      "name": "idx_device_rebind_code",
+      "table": "device_rebind_requests",
+      "sql": "CREATE INDEX idx_device_rebind_code ON device_rebind_requests(code_hash,status,expires_at)"
+    },
+    {
+      "name": "sqlite_autoindex_device_rebind_requests_1",
+      "table": "device_rebind_requests",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_device_rebind_requests_2",
+      "table": "device_rebind_requests",
+      "sql": null
+    },
+    {
+      "name": "uq_device_pending_rebind",
+      "table": "device_rebind_requests",
+      "sql": "CREATE UNIQUE INDEX uq_device_pending_rebind ON device_rebind_requests(device_id) WHERE status='pending'"
+    },
+    {
+      "name": "sqlite_autoindex_devices_1",
+      "table": "devices",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_devices_2",
+      "table": "devices",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_events_1",
+      "table": "events",
+      "sql": null
+    },
+    {
+      "name": "idx_follow_receipts_notification",
+      "table": "follow_up_notification_receipts",
+      "sql": "CREATE INDEX idx_follow_receipts_notification ON follow_up_notification_receipts(notification_id)"
+    },
+    {
+      "name": "idx_follow_receipts_recipient",
+      "table": "follow_up_notification_receipts",
+      "sql": "CREATE INDEX idx_follow_receipts_recipient ON follow_up_notification_receipts(organization_id,recipient_user_id,status,next_alert_at)"
+    },
+    {
+      "name": "sqlite_autoindex_follow_up_notification_receipts_1",
+      "table": "follow_up_notification_receipts",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_follow_up_notification_receipts_2",
+      "table": "follow_up_notification_receipts",
+      "sql": null
+    },
+    {
+      "name": "idx_follow_notifications_contact",
+      "table": "follow_up_notifications",
+      "sql": "CREATE INDEX idx_follow_notifications_contact ON follow_up_notifications(contact_id,status)"
+    },
+    {
+      "name": "idx_follow_notifications_due",
+      "table": "follow_up_notifications",
+      "sql": "CREATE INDEX idx_follow_notifications_due ON follow_up_notifications(organization_id,status,follow_up_at)"
+    },
+    {
+      "name": "sqlite_autoindex_follow_up_notifications_1",
+      "table": "follow_up_notifications",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_follow_up_notifications_2",
+      "table": "follow_up_notifications",
+      "sql": null
+    },
+    {
+      "name": "idx_interaction_idempotency_expiry",
+      "table": "interaction_idempotency",
+      "sql": "CREATE INDEX idx_interaction_idempotency_expiry ON interaction_idempotency(expires_at)"
+    },
+    {
+      "name": "sqlite_autoindex_interaction_idempotency_1",
+      "table": "interaction_idempotency",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_interaction_idempotency_2",
+      "table": "interaction_idempotency",
+      "sql": null
+    },
+    {
+      "name": "idx_market_org_parent",
+      "table": "markets",
+      "sql": "CREATE INDEX idx_market_org_parent ON markets(organization_id,parent_market_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_markets_1",
+      "table": "markets",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_markets_2",
+      "table": "markets",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_markets_3",
+      "table": "markets",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_meta_1",
+      "table": "meta",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_organization_memberships_1",
+      "table": "organization_memberships",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_organizations_1",
+      "table": "organizations",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_permissions_1",
+      "table": "permissions",
+      "sql": null
+    },
+    {
+      "name": "idx_admin_notification_subscriptions_owner",
+      "table": "platform_admin_notification_subscriptions",
+      "sql": "CREATE INDEX idx_admin_notification_subscriptions_owner ON platform_admin_notification_subscriptions(organization_id,owner_user_id,enabled,admin_user_id)"
+    },
+    {
+      "name": "sqlite_autoindex_platform_admin_notification_subscriptions_1",
+      "table": "platform_admin_notification_subscriptions",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_platform_administrators_1",
+      "table": "platform_administrators",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_platforms_1",
+      "table": "platforms",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_platforms_2",
+      "table": "platforms",
+      "sql": null
+    },
+    {
+      "name": "idx_plugin_sessions_subject",
+      "table": "plugin_sessions",
+      "sql": "CREATE INDEX idx_plugin_sessions_subject ON plugin_sessions(user_id,device_id,status,expires_at)"
+    },
+    {
+      "name": "sqlite_autoindex_plugin_sessions_1",
+      "table": "plugin_sessions",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_plugin_sessions_2",
+      "table": "plugin_sessions",
+      "sql": null
+    },
+    {
+      "name": "idx_positions_org_department",
+      "table": "positions",
+      "sql": "CREATE INDEX idx_positions_org_department ON positions(organization_id,department_id,status,sort_order)"
+    },
+    {
+      "name": "sqlite_autoindex_positions_1",
+      "table": "positions",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_positions_2",
+      "table": "positions",
+      "sql": null
+    },
+    {
+      "name": "idx_rbac_confirmations_user",
+      "table": "rbac_confirmations",
+      "sql": "CREATE INDEX idx_rbac_confirmations_user ON rbac_confirmations(user_id,action_key,expires_at,consumed_at)"
+    },
+    {
+      "name": "sqlite_autoindex_rbac_confirmations_1",
+      "table": "rbac_confirmations",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_rbac_confirmations_2",
+      "table": "rbac_confirmations",
+      "sql": null
+    },
+    {
+      "name": "idx_role_bindings_effective",
+      "table": "role_bindings",
+      "sql": "CREATE INDEX idx_role_bindings_effective ON role_bindings(user_id,status,valid_from,expires_at)"
+    },
+    {
+      "name": "idx_role_bindings_scope",
+      "table": "role_bindings",
+      "sql": "CREATE INDEX idx_role_bindings_scope ON role_bindings(organization_id,scope_type,scope_id,status)"
+    },
+    {
+      "name": "idx_role_bindings_subject",
+      "table": "role_bindings",
+      "sql": "CREATE INDEX idx_role_bindings_subject ON role_bindings(user_id,status,scope_type)"
+    },
+    {
+      "name": "sqlite_autoindex_role_bindings_1",
+      "table": "role_bindings",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_role_bindings_2",
+      "table": "role_bindings",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_role_permissions_1",
+      "table": "role_permissions",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_roles_1",
+      "table": "roles",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_roles_2",
+      "table": "roles",
+      "sql": null
+    },
+    {
+      "name": "uq_roles_role_code",
+      "table": "roles",
+      "sql": "CREATE UNIQUE INDEX uq_roles_role_code ON roles(role_code)"
+    },
+    {
+      "name": "sqlite_autoindex_schema_migrations_1",
+      "table": "schema_migrations",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_sessions_1",
+      "table": "sessions",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_sessions_2",
+      "table": "sessions",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_source_devices_1",
+      "table": "source_devices",
+      "sql": null
+    },
+    {
+      "name": "idx_source_links_from",
+      "table": "source_links",
+      "sql": "CREATE INDEX idx_source_links_from ON source_links(organization_id,from_source_id)"
+    },
+    {
+      "name": "idx_source_links_to",
+      "table": "source_links",
+      "sql": "CREATE INDEX idx_source_links_to ON source_links(organization_id,workspace_id,to_source_id)"
+    },
+    {
+      "name": "sqlite_autoindex_source_links_1",
+      "table": "source_links",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_source_links_2",
+      "table": "source_links",
+      "sql": null
+    },
+    {
+      "name": "idx_source_resolution_scope",
+      "table": "source_resolution_logs",
+      "sql": "CREATE INDEX idx_source_resolution_scope ON source_resolution_logs(organization_id,workspace_id,created_at)"
+    },
+    {
+      "name": "sqlite_autoindex_source_resolution_logs_1",
+      "table": "source_resolution_logs",
+      "sql": null
+    },
+    {
+      "name": "idx_touchpoint_contact_occurred",
+      "table": "source_touchpoints",
+      "sql": "CREATE INDEX idx_touchpoint_contact_occurred ON source_touchpoints(organization_id,workspace_id,contact_id,occurred_at,touchpoint_id)"
+    },
+    {
+      "name": "idx_touchpoint_contact_time",
+      "table": "source_touchpoints",
+      "sql": "CREATE INDEX idx_touchpoint_contact_time ON source_touchpoints(organization_id,contact_id,occurred_at)"
+    },
+    {
+      "name": "idx_touchpoint_session",
+      "table": "source_touchpoints",
+      "sql": "CREATE INDEX idx_touchpoint_session ON source_touchpoints(organization_id,workspace_id,session_id,occurred_at)"
+    },
+    {
+      "name": "idx_touchpoint_source_time",
+      "table": "source_touchpoints",
+      "sql": "CREATE INDEX idx_touchpoint_source_time ON source_touchpoints(source_id,occurred_at)"
+    },
+    {
+      "name": "idx_touchpoints_channel_type",
+      "table": "source_touchpoints",
+      "sql": "CREATE INDEX idx_touchpoints_channel_type ON source_touchpoints(channel_type_id)"
+    },
+    {
+      "name": "sqlite_autoindex_source_touchpoints_1",
+      "table": "source_touchpoints",
+      "sql": null
+    },
+    {
+      "name": "uq_touchpoint_event_key",
+      "table": "source_touchpoints",
+      "sql": "CREATE UNIQUE INDEX uq_touchpoint_event_key ON source_touchpoints(organization_id,workspace_id,event_key) WHERE event_key IS NOT NULL AND event_key<>''"
+    },
+    {
+      "name": "uq_touchpoint_external_event",
+      "table": "source_touchpoints",
+      "sql": "CREATE UNIQUE INDEX uq_touchpoint_external_event ON source_touchpoints(organization_id,workspace_id,external_event_id) WHERE external_event_id IS NOT NULL AND external_event_id<>''"
+    },
+    {
+      "name": "idx_source_type_active",
+      "table": "source_type_definitions",
+      "sql": "CREATE INDEX idx_source_type_active ON source_type_definitions(is_active)"
+    },
+    {
+      "name": "sqlite_autoindex_source_type_definitions_1",
+      "table": "source_type_definitions",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_source_type_definitions_2",
+      "table": "source_type_definitions",
+      "sql": null
+    },
+    {
+      "name": "idx_sources_market",
+      "table": "sources",
+      "sql": "CREATE INDEX idx_sources_market ON sources(organization_id,market_id,status)"
+    },
+    {
+      "name": "idx_sources_type",
+      "table": "sources",
+      "sql": "CREATE INDEX idx_sources_type ON sources(source_type_id)"
+    },
+    {
+      "name": "sqlite_autoindex_sources_1",
+      "table": "sources",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_sources_2",
+      "table": "sources",
+      "sql": null
+    },
+    {
+      "name": "uq_sources_fingerprint",
+      "table": "sources",
+      "sql": "CREATE UNIQUE INDEX uq_sources_fingerprint ON sources(organization_id,workspace_id,source_fingerprint) WHERE source_fingerprint IS NOT NULL AND source_fingerprint<>''"
+    },
+    {
+      "name": "idx_tags_workspace_kind",
+      "table": "tags",
+      "sql": "CREATE INDEX idx_tags_workspace_kind ON tags(workspace_id,tag_kind,enabled,sort_order)"
+    },
+    {
+      "name": "sqlite_autoindex_tags_1",
+      "table": "tags",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_tags_2",
+      "table": "tags",
+      "sql": null
+    },
+    {
+      "name": "idx_team_bl_org_line",
+      "table": "team_business_lines",
+      "sql": "CREATE INDEX idx_team_bl_org_line ON team_business_lines(organization_id,business_line_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_team_business_lines_1",
+      "table": "team_business_lines",
+      "sql": null
+    },
+    {
+      "name": "uq_team_primary_business_line",
+      "table": "team_business_lines",
+      "sql": "CREATE UNIQUE INDEX uq_team_primary_business_line ON team_business_lines(team_id) WHERE is_primary=1 AND status='active'"
+    },
+    {
+      "name": "sqlite_autoindex_team_channel_accounts_1",
+      "table": "team_channel_accounts",
+      "sql": null
+    },
+    {
+      "name": "idx_team_markets_org_market",
+      "table": "team_markets",
+      "sql": "CREATE INDEX idx_team_markets_org_market ON team_markets(organization_id,market_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_team_markets_1",
+      "table": "team_markets",
+      "sql": null
+    },
+    {
+      "name": "uq_team_primary_market",
+      "table": "team_markets",
+      "sql": "CREATE UNIQUE INDEX uq_team_primary_market ON team_markets(team_id) WHERE is_primary=1 AND status='active'"
+    },
+    {
+      "name": "idx_team_memberships_team",
+      "table": "team_memberships",
+      "sql": "CREATE INDEX idx_team_memberships_team ON team_memberships(team_id,status,is_primary)"
+    },
+    {
+      "name": "idx_team_memberships_user",
+      "table": "team_memberships",
+      "sql": "CREATE INDEX idx_team_memberships_user ON team_memberships(user_id,status,is_primary)"
+    },
+    {
+      "name": "sqlite_autoindex_team_memberships_1",
+      "table": "team_memberships",
+      "sql": null
+    },
+    {
+      "name": "uq_user_primary_team",
+      "table": "team_memberships",
+      "sql": "CREATE UNIQUE INDEX uq_user_primary_team ON team_memberships(user_id) WHERE is_primary=1 AND status='active'"
+    },
+    {
+      "name": "sqlite_autoindex_teams_1",
+      "table": "teams",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_teams_2",
+      "table": "teams",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_user_channel_account_grants_1",
+      "table": "user_channel_account_grants",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_user_contact_center_preferences_1",
+      "table": "user_contact_center_preferences",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_user_credentials_1",
+      "table": "user_credentials",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_user_dashboard_pins_1",
+      "table": "user_dashboard_pins",
+      "sql": null
+    },
+    {
+      "name": "idx_user_positions_org",
+      "table": "user_positions",
+      "sql": "CREATE INDEX idx_user_positions_org ON user_positions(organization_id,user_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_user_positions_1",
+      "table": "user_positions",
+      "sql": null
+    },
+    {
+      "name": "uq_user_primary_position",
+      "table": "user_positions",
+      "sql": "CREATE UNIQUE INDEX uq_user_primary_position ON user_positions(user_id) WHERE is_primary=1 AND status='active'"
+    },
+    {
+      "name": "sqlite_autoindex_users_1",
+      "table": "users",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_users_2",
+      "table": "users",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_whatsapp_identity_links_1",
+      "table": "whatsapp_identity_links",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_whatsapp_identity_links_2",
+      "table": "whatsapp_identity_links",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_whatsapp_identity_links_3",
+      "table": "whatsapp_identity_links",
+      "sql": null
+    },
+    {
+      "name": "sqlite_autoindex_whatsapp_identity_links_4",
+      "table": "whatsapp_identity_links",
+      "sql": null
+    },
+    {
+      "name": "idx_workspace_bl_org",
+      "table": "workspace_business_lines",
+      "sql": "CREATE INDEX idx_workspace_bl_org ON workspace_business_lines(organization_id,business_line_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_workspace_business_lines_1",
+      "table": "workspace_business_lines",
+      "sql": null
+    },
+    {
+      "name": "uq_workspace_primary_bl",
+      "table": "workspace_business_lines",
+      "sql": "CREATE UNIQUE INDEX uq_workspace_primary_bl ON workspace_business_lines(workspace_id) WHERE is_primary=1 AND status='active'"
+    },
+    {
+      "name": "sqlite_autoindex_workspace_configs_1",
+      "table": "workspace_configs",
+      "sql": null
+    },
+    {
+      "name": "idx_workspace_market_org",
+      "table": "workspace_markets",
+      "sql": "CREATE INDEX idx_workspace_market_org ON workspace_markets(organization_id,market_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_workspace_markets_1",
+      "table": "workspace_markets",
+      "sql": null
+    },
+    {
+      "name": "uq_workspace_primary_market",
+      "table": "workspace_markets",
+      "sql": "CREATE UNIQUE INDEX uq_workspace_primary_market ON workspace_markets(workspace_id) WHERE is_primary=1 AND status='active'"
+    },
+    {
+      "name": "idx_workspace_team_org",
+      "table": "workspace_teams",
+      "sql": "CREATE INDEX idx_workspace_team_org ON workspace_teams(organization_id,team_id,status)"
+    },
+    {
+      "name": "sqlite_autoindex_workspace_teams_1",
+      "table": "workspace_teams",
+      "sql": null
+    },
+    {
+      "name": "uq_team_primary_workspace",
+      "table": "workspace_teams",
+      "sql": "CREATE UNIQUE INDEX uq_team_primary_workspace ON workspace_teams(team_id) WHERE is_primary=1 AND status='active'"
+    },
+    {
+      "name": "uq_workspace_primary_team",
+      "table": "workspace_teams",
+      "sql": "CREATE UNIQUE INDEX uq_workspace_primary_team ON workspace_teams(workspace_id) WHERE is_primary=1 AND status='active'"
+    },
+    {
+      "name": "sqlite_autoindex_workspaces_1",
+      "table": "workspaces",
+      "sql": null
+    }
+  ],
+  "files": {
+    "database": 3276800,
+    "-wal": 0,
+    "-shm": 32768
+  }
+}

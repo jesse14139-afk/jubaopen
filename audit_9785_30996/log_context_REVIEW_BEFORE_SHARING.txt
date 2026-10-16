@@ -1,0 +1,943 @@
+
+=== jubaopen-210.2.75.log: error near line 10660 ===
+10652: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 200 -
+10653: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 403 -
+10654: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 403 -
+10655: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 403 -
+10656: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 200 -
+10657: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 200 -
+10658: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 200 -
+10659: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 200 -
+10660: 127.0.0.1 database busy: database is locked
+10661: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+10662: 127.0.0.1 database busy: database is locked
+10663: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10664: 127.0.0.1 database busy: database is locked
+10665: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10666: 127.0.0.1 database busy: database is locked
+10667: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10668: 127.0.0.1 database busy: database is locked
+10669: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10670: 127.0.0.1 database busy: database is locked
+10671: 127.0.0.1 database busy: database is locked
+10672: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10662 ===
+10673: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10674: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_117a60759df14fc3a7194033e6e2a988/version HTTP/1.1" 200 -
+
+=== jubaopen-210.2.75.log: error near line 10664 ===
+10675: 127.0.0.1 database busy: database is locked
+10676: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10666 ===
+10677: 127.0.0.1 database busy: database is locked
+10678: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10668 ===
+10679: 127.0.0.1 database busy: database is locked
+10680: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10670 ===
+10681: 127.0.0.1 database busy: database is locked
+10682: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10671 ===
+10683: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10675 ===
+10684: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10685: 127.0.0.1 database busy: database is locked
+10686: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+10687: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10677 ===
+10688: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10689: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10679 ===
+10690: 127.0.0.1 database busy: database is locked
+10691: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10681 ===
+10692: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+10693: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10683 ===
+10694: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10695: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10685 ===
+10696: 127.0.0.1 "GET /api/v207/admin/contact-center/merge-requests?organization_id=jubaopen&status=actionable HTTP/1.1" 200 -
+10697: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10687 ===
+10698: 127.0.0.1 database busy: database is locked
+10699: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10689 ===
+10700: 127.0.0.1 database busy: database is locked
+10701: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10690 ===
+10702: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 403 -
+
+=== jubaopen-210.2.75.log: error near line 10693 ===
+10703: 127.0.0.1 database busy: database is locked
+10704: 127.0.0.1 database busy: database is locked
+10705: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10695 ===
+10706: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_c8bc10ef48004bf186dd70dce88e2270/collection-state HTTP/1.1" 503 -
+10707: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10698 ===
+10708: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10709: 127.0.0.1 database busy: database is locked
+10710: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10700 ===
+10711: follow-up notification scan failed
+10712: Traceback (most recent call last):
+
+=== jubaopen-210.2.75.log: error near line 10703 ===
+10713:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 355, in run
+10714:     try:scan_due_notifications(db)
+10715:         ~~~~~~~~~~~~~~~~~~~~~~^^^^
+
+=== jubaopen-210.2.75.log: error near line 10704 ===
+10716:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 234, in scan_due_notifications
+
+=== jubaopen-210.2.75.log: error near line 10705 ===
+10717:     with db.write() as c:
+
+=== jubaopen-210.2.75.log: error near line 10709 ===
+10718:          ~~~~~~~~^^
+10719:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+10720:     return next(self.gen)
+10721:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2386, in write
+
+=== jubaopen-210.2.75.log: error near line 10729 ===
+10722:     with self.tx(True) as c:yield c
+10723:          ~~~~~~~^^^^^^
+10724:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+10725:     return next(self.gen)
+10726:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2372, in tx
+10727:     c.execute('BEGIN IMMEDIATE' if immediate else 'BEGIN');yield c
+10728:     ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10729: sqlite3.OperationalError: database is locked
+10730: 127.0.0.1 "POST /api/v207/collector/conversations/resolve HTTP/1.1" 200 -
+10731: 127.0.0.1 database busy: database is locked
+10732: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10733: 127.0.0.1 database busy: database is locked
+10734: 127.0.0.1 "POST /api/v207/interaction/contacts/candidates HTTP/1.1" 503 -
+10735: 127.0.0.1 database busy: database is locked
+10736: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10737: 127.0.0.1 database busy: database is locked
+10738: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10739: 127.0.0.1 database busy: database is locked
+10740: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10741: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10731 ===
+10742: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 503 -
+10743: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10733 ===
+10744: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10745: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10735 ===
+10746: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10747: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10737 ===
+10748: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10749: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10739 ===
+10750: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10751: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10741 ===
+10752: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10753: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10743 ===
+10754: 127.0.0.1 database busy: database is locked
+10755: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10745 ===
+10756: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10757: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10747 ===
+10758: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+10759: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10749 ===
+10760: 127.0.0.1 database busy: database is locked
+10761: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_117a60759df14fc3a7194033e6e2a988/version HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10751 ===
+10762: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10763: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10753 ===
+10764: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10765: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10754 ===
+10766: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10755 ===
+10767: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10759 ===
+10768: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10769: 127.0.0.1 database busy: database is locked
+10770: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10771: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10760 ===
+10772: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10763 ===
+10773: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10774: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10775: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10765 ===
+10776: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10777: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10767 ===
+10778: 127.0.0.1 database busy: database is locked
+10779: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10769 ===
+10780: 127.0.0.1 database busy: database is locked
+10781: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10771 ===
+10782: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10783: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10772 ===
+10784: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10775 ===
+10785: 127.0.0.1 database busy: database is locked
+10786: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10787: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10777 ===
+10788: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10789: follow-up notification scan failed
+
+=== jubaopen-210.2.75.log: error near line 10778 ===
+10790: Traceback (most recent call last):
+
+=== jubaopen-210.2.75.log: error near line 10780 ===
+10791:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 355, in run
+10792:     try:scan_due_notifications(db)
+
+=== jubaopen-210.2.75.log: error near line 10783 ===
+10793:         ~~~~~~~~~~~~~~~~~~~~~~^^^^
+10794:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 234, in scan_due_notifications
+10795:     with db.write() as c:
+
+=== jubaopen-210.2.75.log: error near line 10785 ===
+10796:          ~~~~~~~~^^
+10797:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+
+=== jubaopen-210.2.75.log: error near line 10787 ===
+10798:     return next(self.gen)
+10799:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2386, in write
+
+=== jubaopen-210.2.75.log: error near line 10807 ===
+10800:     with self.tx(True) as c:yield c
+10801:          ~~~~~~~^^^^^^
+10802:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+10803:     return next(self.gen)
+10804:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2372, in tx
+10805:     c.execute('BEGIN IMMEDIATE' if immediate else 'BEGIN');yield c
+10806:     ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10807: sqlite3.OperationalError: database is locked
+10808: 127.0.0.1 database busy: database is locked
+10809: 127.0.0.1 database busy: database is locked
+10810: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10811: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10812: 127.0.0.1 database busy: database is locked
+10813: 127.0.0.1 database busy: database is locked
+10814: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10815: 127.0.0.1 database busy: database is locked
+10816: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+10817: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 503 -
+10818: 127.0.0.1 database busy: database is locked
+10819: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10808 ===
+10820: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10809 ===
+10821: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10812 ===
+10822: 127.0.0.1 database busy: database is locked
+10823: 127.0.0.1 database busy: database is locked
+10824: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10813 ===
+10825: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10815 ===
+10826: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10827: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10818 ===
+10828: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10829: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+10830: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10819 ===
+10831: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10820 ===
+10832: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10821 ===
+10833: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10822 ===
+10834: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10823 ===
+10835: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10824 ===
+10836: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10832 ===
+10837: 127.0.0.1 database busy: database is locked
+10838: 127.0.0.1 database busy: database is locked
+10839: 127.0.0.1 database busy: database is locked
+10840: 127.0.0.1 database busy: database is locked
+10841: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10842: 127.0.0.1 database busy: database is locked
+10843: 127.0.0.1 database busy: database is locked
+10844: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10833 ===
+10845: 127.0.0.1 "GET /api/v207/admin/contact-center/merge-requests?organization_id=jubaopen&status=actionable HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10834 ===
+10846: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10835 ===
+10847: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10836 ===
+10848: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10837 ===
+10849: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10838 ===
+10850: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_c8bc10ef48004bf186dd70dce88e2270/collection-state HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10839 ===
+10851: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10840 ===
+10852: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10842 ===
+10853: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10854: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10843 ===
+10855: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10849 ===
+10856: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10857: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10858: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+10859: 127.0.0.1 database busy: database is locked
+10860: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 503 -
+10861: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10851 ===
+10862: 127.0.0.1 database busy: database is locked
+10863: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10855 ===
+10864: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10865: 127.0.0.1 database busy: database is locked
+10866: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_645899d8bee949468480a3e426491c22/version HTTP/1.1" 503 -
+10867: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10859 ===
+10868: 127.0.0.1 database busy: database is locked
+10869: 127.0.0.1 database busy: database is locked
+10870: 127.0.0.1 database busy: database is locked
+10871: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10862 ===
+10872: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10873: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10874: follow-up notification scan failed
+
+=== jubaopen-210.2.75.log: error near line 10863 ===
+10875: Traceback (most recent call last):
+
+=== jubaopen-210.2.75.log: error near line 10865 ===
+10876:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 355, in run
+10877:     try:scan_due_notifications(db)
+
+=== jubaopen-210.2.75.log: error near line 10868 ===
+10878:         ~~~~~~~~~~~~~~~~~~~~~~^^^^
+10879:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 224, in scan_due_notifications
+10880:     with db.read() as c:contact_ids=[x['contact_id'] for x in c.execute("SELECT contact_id FROM contacts WHERE deleted_at IS NULL AND next_follow_up_at IS NOT NULL ORDER BY next_follow_up_at LIMIT ?",(limit,)).fetchall()]
+
+=== jubaopen-210.2.75.log: error near line 10869 ===
+10881:          ~~~~~~~^^
+
+=== jubaopen-210.2.75.log: error near line 10870 ===
+10882:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+
+=== jubaopen-210.2.75.log: error near line 10894 ===
+10886:          ~~~~~~~^^^^^^^
+10887:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+10888:     return next(self.gen)
+10889:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2370, in tx
+10890:     c=self.connect()
+10891:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2367, in connect
+10892:     c=sqlite3.connect(str(self.path),timeout=5,isolation_level=None,check_same_thread=False);c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');c.execute('PRAGMA busy_timeout=5000');c.execute('PRAGMA journal_mode=WAL');return c
+10893:                                                                                                                                                                                                  ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10894: sqlite3.OperationalError: database is locked
+10895: 127.0.0.1 database busy: database is locked
+10896: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10897: 127.0.0.1 database busy: database is locked
+10898: 127.0.0.1 database busy: database is locked
+10899: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10900: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10901: 127.0.0.1 database busy: database is locked
+10902: 127.0.0.1 database busy: database is locked
+10903: 127.0.0.1 database busy: database is locked
+10904: 127.0.0.1 database busy: database is locked
+10905: 127.0.0.1 database busy: database is locked
+10906: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10895 ===
+10907: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10897 ===
+10908: 127.0.0.1 database busy: database is locked
+10909: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10898 ===
+10910: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10901 ===
+10911: 127.0.0.1 database busy: database is locked
+10912: 127.0.0.1 database busy: database is locked
+10913: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10902 ===
+10914: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10903 ===
+10915: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10904 ===
+10916: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10905 ===
+10917: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10906 ===
+10918: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10907 ===
+10919: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10908 ===
+10920: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10909 ===
+10921: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10910 ===
+10922: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10911 ===
+10923: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10912 ===
+10924: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10918 ===
+10925: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10926: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10927: 127.0.0.1 database busy: database is locked
+10928: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10929: 127.0.0.1 database busy: database is locked
+10930: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10927 ===
+10931: 127.0.0.1 database busy: database is locked
+10932: 127.0.0.1 database busy: database is locked
+10933: 127.0.0.1 database busy: database is locked
+10934: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10935: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10936: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10937: 127.0.0.1 database busy: database is locked
+10938: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10939: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10929 ===
+10940: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+10941: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 200 -
+
+=== jubaopen-210.2.75.log: error near line 10931 ===
+10942: 127.0.0.1 database busy: database is locked
+10943: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10932 ===
+10944: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10933 ===
+10945: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10937 ===
+10946: 127.0.0.1 database busy: database is locked
+10947: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10948: 127.0.0.1 database busy: database is locked
+10949: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10939 ===
+10950: 127.0.0.1 database busy: database is locked
+10951: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10942 ===
+10952: 127.0.0.1 database busy: database is locked
+10953: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10954: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10944 ===
+10955: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+10956: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10946 ===
+10957: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10958: follow-up notification scan failed
+
+=== jubaopen-210.2.75.log: error near line 10948 ===
+10959: Traceback (most recent call last):
+10960:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 355, in run
+
+=== jubaopen-210.2.75.log: error near line 10950 ===
+10961:     try:scan_due_notifications(db)
+10962:         ~~~~~~~~~~~~~~~~~~~~~~^^^^
+
+=== jubaopen-210.2.75.log: error near line 10952 ===
+10963:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 234, in scan_due_notifications
+10964:     with db.write() as c:
+
+=== jubaopen-210.2.75.log: error near line 10954 ===
+10965:          ~~~~~~~~^^
+10966:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+
+=== jubaopen-210.2.75.log: error near line 10956 ===
+10967:     return next(self.gen)
+10968:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2386, in write
+
+=== jubaopen-210.2.75.log: error near line 10976 ===
+10969:     with self.tx(True) as c:yield c
+10970:          ~~~~~~~^^^^^^
+10971:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+10972:     return next(self.gen)
+10973:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2372, in tx
+10974:     c.execute('BEGIN IMMEDIATE' if immediate else 'BEGIN');yield c
+10975:     ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10976: sqlite3.OperationalError: database is locked
+10977: 127.0.0.1 database busy: database is locked
+10978: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10979: 127.0.0.1 database busy: database is locked
+10980: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10981: 127.0.0.1 database busy: database is locked
+10982: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10983: 127.0.0.1 database busy: database is locked
+10984: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+10985: 127.0.0.1 database busy: database is locked
+10986: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10987: 127.0.0.1 database busy: database is locked
+10988: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10977 ===
+10989: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10979 ===
+10990: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10991: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10981 ===
+10992: 127.0.0.1 database busy: database is locked
+10993: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10983 ===
+10994: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+10995: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10985 ===
+10996: 127.0.0.1 database busy: database is locked
+10997: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10987 ===
+10998: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+10999: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10988 ===
+11000: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10991 ===
+11001: 127.0.0.1 database busy: database is locked
+11002: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+11003: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10992 ===
+11004: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10995 ===
+11005: 127.0.0.1 database busy: database is locked
+11006: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11007: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 10996 ===
+11008: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 10997 ===
+11009: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 200 -
+
+=== jubaopen-210.2.75.log: error near line 11000 ===
+11010: 127.0.0.1 database busy: database is locked
+11011: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11012: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11001 ===
+11013: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11005 ===
+11014: 127.0.0.1 database busy: database is locked
+11015: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11016: 127.0.0.1 database busy: database is locked
+11017: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11007 ===
+11018: 127.0.0.1 database busy: database is locked
+11019: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11010 ===
+11020: 127.0.0.1 database busy: database is locked
+11021: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11022: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11012 ===
+11023: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11024: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11014 ===
+11025: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11026: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11016 ===
+11027: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11028: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11018 ===
+11029: 127.0.0.1 database busy: database is locked
+11030: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11020 ===
+11031: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 503 -
+11032: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11022 ===
+11033: 127.0.0.1 database busy: database is locked
+11034: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11024 ===
+11035: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+11036: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11026 ===
+11037: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11038: ERROR:root:contact governance schema/database operation failed
+
+=== jubaopen-210.2.75.log: error near line 11028 ===
+11039: Traceback (most recent call last):
+11040:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V221_identity_service.py", line 595, in handle_admin
+
+=== jubaopen-210.2.75.log: error near line 11029 ===
+11041:     return _handle_admin_impl(h,m,seg,q,request_actor,db,org)
+
+=== jubaopen-210.2.75.log: error near line 11032 ===
+11042:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V221_identity_service.py", line 556, in _handle_admin_impl
+11043:     r,status=list_merge_requests(db,a,q);return _send(h,r,status)
+11044:              ~~~~~~~~~~~~~~~~~~~^^^^^^^^
+
+=== jubaopen-210.2.75.log: error near line 11033 ===
+11045:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V221_identity_service.py", line 259, in list_merge_requests
+
+=== jubaopen-210.2.75.log: error near line 11036 ===
+11046:     with db.tx() as c:
+11047:          ~~~~~^^
+11048:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+
+=== jubaopen-210.2.75.log: error near line 11053 ===
+11049:     return next(self.gen)
+11050:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2372, in tx
+11051:     c.execute('BEGIN IMMEDIATE' if immediate else 'BEGIN');yield c
+11052:     ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11053: sqlite3.OperationalError: database is locked
+11054: 127.0.0.1 "GET /api/v207/admin/contact-center/merge-requests?organization_id=jubaopen&status=actionable HTTP/1.1" 503 -
+11055: 127.0.0.1 database busy: database is locked
+11056: ERROR:V208_follow_up_notification_service:follow-up notification scan failed
+11057: Traceback (most recent call last):
+11058:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 355, in run
+11059:     try:scan_due_notifications(db)
+11060:         ~~~~~~~~~~~~~~~~~~~~~~^^^^
+11061:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 238, in scan_due_notifications
+11062:     with db.write() as c:
+11063:          ~~~~~~~~^^
+11064:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+11065:     return next(self.gen)
+
+=== jubaopen-210.2.75.log: error near line 11055 ===
+11066:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2386, in write
+11067:     with self.tx(True) as c:yield c
+
+=== jubaopen-210.2.75.log: error near line 11076 ===
+11068:          ~~~~~~~^^^^^^
+11069:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+11070:     return next(self.gen)
+11071:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2370, in tx
+11072:     c=self.connect()
+11073:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2367, in connect
+11074:     c=sqlite3.connect(str(self.path),timeout=5,isolation_level=None,check_same_thread=False);c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');c.execute('PRAGMA busy_timeout=5000');c.execute('PRAGMA journal_mode=WAL');return c
+11075:                                                                                                                                                                                                  ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11076: sqlite3.OperationalError: database is locked
+11077: 127.0.0.1 database busy: database is locked
+11078: 127.0.0.1 database busy: database is locked
+11079: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11080: 127.0.0.1 database busy: database is locked
+11081: 127.0.0.1 database busy: database is locked
+11082: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11083: 127.0.0.1 database busy: database is locked
+11084: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+11085: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11086: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 503 -
+11087: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11088: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11077 ===
+11089: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11078 ===
+11090: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11080 ===
+11091: 127.0.0.1 database busy: database is locked
+11092: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11081 ===
+11093: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11083 ===
+11094: 127.0.0.1 database busy: database is locked
+11095: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11088 ===
+11096: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11097: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+11098: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11099: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+11100: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11090 ===
+11101: 127.0.0.1 database busy: database is locked
+11102: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11091 ===
+11103: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11092 ===
+11104: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11093 ===
+11105: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11094 ===
+11106: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11095 ===
+11107: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11101 ===
+11108: 127.0.0.1 database busy: database is locked
+11109: 127.0.0.1 database busy: database is locked
+11110: 127.0.0.1 database busy: database is locked
+11111: 127.0.0.1 database busy: database is locked
+11112: 127.0.0.1 database busy: database is locked
+11113: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11104 ===
+11114: 127.0.0.1 database busy: database is locked
+11115: 127.0.0.1 database busy: database is locked
+11116: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11105 ===
+11117: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11106 ===
+11118: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11107 ===
+11119: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11108 ===
+11120: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11109 ===
+11121: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11110 ===
+11122: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11111 ===
+11123: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11112 ===
+11124: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11113 ===
+11125: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11114 ===
+11126: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11115 ===
+11127: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11117 ===
+11128: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11129: 127.0.0.1 "POST /api/v207/collector/accounts/detect HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11121 ===
+11130: 127.0.0.1 database busy: database is locked
+11131: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11132: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+11133: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11130 ===
+11134: ERROR:V208_follow_up_notification_service:follow-up notification scan failed
+11135: Traceback (most recent call last):
+11136:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 355, in run
+11137:     try:scan_due_notifications(db)
+11138:         ~~~~~~~~~~~~~~~~~~~~~~^^^^
+11139:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V208_follow_up_notification_service.py", line 224, in scan_due_notifications
+11140:     with db.read() as c:contact_ids=[x['contact_id'] for x in c.execute("SELECT contact_id FROM contacts WHERE deleted_at IS NULL AND next_follow_up_at IS NOT NULL ORDER BY next_follow_up_at LIMIT ?",(limit,)).fetchall()]
+11141:          ~~~~~~~^^
+11142:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+
+=== jubaopen-210.2.75.log: error near line 11154 ===
+11146:          ~~~~~~~^^^^^^^
+11147:   File "D:\51-Python\Lib\contextlib.py", line 141, in __enter__
+11148:     return next(self.gen)
+11149:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2370, in tx
+11150:     c=self.connect()
+11151:   File "I:\0������\27����������\1���ͻ���Ϣ����ϵͳ\2���¼ܹ�\210.2 ҵ��Ա\5 threads����\JubaOpen_3.5.6_Project\V207_shared_db.py", line 2367, in connect
+11152:     c=sqlite3.connect(str(self.path),timeout=5,isolation_level=None,check_same_thread=False);c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');c.execute('PRAGMA busy_timeout=5000');c.execute('PRAGMA journal_mode=WAL');return c
+11153:                                                                                                                                                                                                  ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11154: sqlite3.OperationalError: database is locked
+11155: 127.0.0.1 database busy: database is locked
+11156: 127.0.0.1 database busy: database is locked
+11157: 127.0.0.1 database busy: database is locked
+11158: 127.0.0.1 database busy: database is locked
+11159: 127.0.0.1 database busy: database is locked
+11160: 127.0.0.1 database busy: database is locked
+11161: 127.0.0.1 database busy: database is locked
+11162: 127.0.0.1 database busy: database is locked
+11163: 127.0.0.1 database busy: database is locked
+11164: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11165: 127.0.0.1 database busy: database is locked
+11166: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11155 ===
+11167: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11156 ===
+11168: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11157 ===
+11169: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_c8bc10ef48004bf186dd70dce88e2270/collection-state HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11158 ===
+11170: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11159 ===
+11171: 127.0.0.1 "POST /api/v207/collector/heartbeat HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11160 ===
+11172: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11161 ===
+11173: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11162 ===
+11174: 127.0.0.1 "GET /api/v207/collector/conversations/cnv_3a8be57d327448fbbe293316bc43c688/collection-state HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11163 ===
+11175: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11165 ===
+11176: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11177: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_0eb84221ac434438a882ab1735558e17/version HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11167 ===
+11178: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11179: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11168 ===
+11180: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11170 ===
+11181: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11182: 127.0.0.1 "GET /api/v207/interaction/contacts/ct_c6587bc30e384c7e9b73bf66efc20019/version HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11173 ===
+11183: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11184: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11185: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11179 ===
+11186: 127.0.0.1 database busy: database is locked
+11187: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11188: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11189: 127.0.0.1 database busy: database is locked
+11190: 127.0.0.1 database busy: database is locked
+11191: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+=== jubaopen-210.2.75.log: error near line 11185 ===
+11192: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+11193: 127.0.0.1 database busy: database is locked
+11194: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11195: 127.0.0.1 database busy: database is locked
+11196: 127.0.0.1 "POST /api/v207/collector/follow-up-notifications/poll HTTP/1.1" 503 -
+11197: 127.0.0.1 database busy: database is locked
+
+=== jubaopen-210.2.75.log: error near line 11186 ===
+11198: 127.0.0.1 "POST /api/v207/collector/follow-ups/resolve HTTP/1.1" 503 -
+
+SUMMARY jubaopen-210.2.75.log: matched=7466 maximum 200 contexts exported
